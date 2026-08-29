@@ -1,0 +1,37 @@
+# Normalise line endings so Windows/macOS/Linux teammates don't churn diffs.
+* text=auto eol=lf
+
+# Shell scripts must stay LF even on Windows checkouts.
+*.sh   text eol=lf
+# PowerShell scripts want CRLF.
+*.ps1  text eol=crlf
+
+# Lockfiles: keep diffs but never merge them by hand.
+uv.lock          linguist-generated=true
+package-lock.json linguist-generated=true
+
+# Binary assets — never diff, never normalise.
+*.png  binary
+*.jpg  binary
+*.jpeg binary
+*.gif  binary
+*.ico  binary
+*.webp binary
+*.pdf  binary
+*.zip  binary
+*.gz   binary
+
+# Medical imaging formats.
+*.dcm  binary
+*.nii  binary
+*.mha  binary
+*.mhd  binary
+
+# Model weights and serialised artifacts.
+*.pt    binary
+*.pth   binary
+*.onnx  binary
+*.ckpt  binary
+*.safetensors binary
+*.pkl   binary
+*.joblib binary

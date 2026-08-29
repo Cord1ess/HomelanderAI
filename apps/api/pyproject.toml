@@ -1,0 +1,139 @@
+[project]
+name = "homelander-api"
+version = "0.1.0"
+description = "HomelanderAI — underwriting decision-support API"
+requires-python = ">=3.12,<3.13"
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Core runtime. Installed by `uv sync`. Everyone needs these.
+# Some are declared but not yet used — they land in Phase 1 and are pinned now
+# so the whole team resolves the same versions from day one.
+# ─────────────────────────────────────────────────────────────────────────────
+dependencies = [
+    # Web layer
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.32",
+    "python-multipart>=0.0.18",     # multipart file uploads
+
+    # Config & validation
+    "pydantic>=2.9",
+    "pydantic-settings>=2.6",
+
+    # Persistence                                          (Phase 1)
+    "sqlalchemy[asyncio]>=2.0.36",
+    "alembic>=1.14",
+    "psycopg[binary,pool]>=3.2",    # psycopg3: one driver for sync + async
+
+    # Background jobs                                      (Phase 1)
+    "celery[redis]>=5.4",
+    "redis>=5.2",
+
+    # Object storage                                       (Phase 1)
+    "minio>=7.2",
+
+    # Auth                                                 (Phase 1)
+    "pyjwt[crypto]>=2.10",
+    "argon2-cffi>=23.1",
+
+    # Medical imaging I/O
+    "pydicom>=3.0",
+    "pillow>=11.0",
+
+    # Structured logging
+    "structlog>=24.4",
+]
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Optional extras. Skip these unless you are working on models.
+#
+#   uv sync --extra ml      vision + tabular + explainability   (~2-3 GB, CPU wheels)
+#   uv sync --extra nlp     clinical NLP stack                  (~1 GB)
+#   uv sync --all-extras    everything
+#
+# Split in two because the spaCy/scispaCy stack pins versions tightly and can
+# fail to resolve alongside other packages. Keeping it separate means a broken
+# NLP resolve never blocks someone who only needs torch.
+# ─────────────────────────────────────────────────────────────────────────────
+[project.optional-dependencies]
+ml = [
+    "torch>=2.5",
+    "torchvision>=0.20",
+    "torchxrayvision>=1.3",         # pretrained chest X-ray classifiers (Arm A)
+    "numpy>=1.26",
+    "pandas>=2.2",
+    "scikit-learn>=1.5",            # calibration: Platt / isotonic
+    "xgboost>=2.1",                 # actuarial arm (Arm C)
+    "shap>=0.46",                   # feature attribution
+    "grad-cam>=1.5",                # imports as `pytorch_grad_cam`
+    "SimpleITK>=2.4",
+    "mlflow>=2.18",                 # experiment tracking
+]
+nlp = [
+    "spacy>=3.7,<3.9",
+    "scispacy>=0.5.5",              # biomedical NER
+    "negspacy>=1.0",                # NegEx negation detection
+    "transformers>=4.46",           # PubMedBERT / BioBERT
+]
+# NOT declared above, deliberately:
+#
+#   medspacy — its published sdist is broken (setup.py reads a
+#   requirements/requirements.txt that isn't in the tarball), so it fails to
+#   build metadata on every platform and takes the whole lockfile down with it.
+#   negspacy covers NegEx negation, which is what Phase 3 needs first.
+#
+#   If you later want full ConText assertion detection (FAMILY_HISTORY and
+#   HYPOTHETICAL, not just NEGATED), install it out-of-band from git into the
+#   venv rather than adding it here:
+#     uv pip install "medspacy @ git+https://github.com/medspacy/medspacy"
+#
+#   scispaCy NER models are not pip packages either — they install from URLs.
+#   See README "Working on models".
+
+[dependency-groups]
+dev = [
+    "ruff>=0.8",
+    "pytest>=8.3",
+    "pytest-asyncio>=0.24",
+    "httpx>=0.28",                  # required by fastapi.testclient
+    "flower>=2.0",                  # Celery monitoring UI (Phase 1)
+]
+
+# ─────────────────────────────────────────────────────────────────────────────
+# CPU-only torch wheels. Far smaller than the default CUDA build and correct
+# for the local-compute constraint.
+#
+# If you have an NVIDIA GPU and want CUDA, change the index URL below to
+# https://download.pytorch.org/whl/cu124 and re-run `uv sync --extra ml`.
+# ─────────────────────────────────────────────────────────────────────────────
+[[tool.uv.index]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true
+
+[tool.uv.sources]
+torch = { index = "pytorch-cpu" }
+torchvision = { index = "pytorch-cpu" }
+
+[tool.uv]
+package = false                     # application, not a distributable library
+
+# ─────────────────────────────────────────────────────────────────────────────
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = [
+    "E",      # pycodestyle
+    "F",      # pyflakes
+    "I",      # import sorting
+    "UP",     # pyupgrade
+    "B",      # bugbear
+    "SIM",    # simplify
+    "ASYNC",  # async correctness
+]
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["tests"]
+asyncio_mode = "auto"

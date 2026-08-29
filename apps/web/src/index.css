@@ -1,0 +1,44 @@
+/* Prevents a white flash before Mantine applies the dark scheme. */
+html {
+  background-color: #16181c;
+}
+
+body {
+  margin: 0;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Live status indicator. */
+@keyframes hl-pulse {
+  0% {
+    box-shadow: 0 0 0 0 var(--hl-pulse-color);
+  }
+  70% {
+    box-shadow: 0 0 0 6px transparent;
+  }
+  100% {
+    box-shadow: 0 0 0 0 transparent;
+  }
+}
+
+.hl-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex: none;
+  background-color: var(--hl-dot-color);
+  --hl-pulse-color: var(--hl-dot-color);
+}
+
+.hl-dot[data-live='true'] {
+  animation: hl-pulse 2s infinite;
+}
+
+/* Small-caps section label. */
+.hl-eyebrow {
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  font-size: 0.6875rem;
+  font-weight: 600;
+}
