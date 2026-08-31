@@ -3,8 +3,6 @@ import {
   Badge,
   Box,
   Button,
-  Card,
-  Container,
   Divider,
   Group,
   NumberInput,
@@ -13,9 +11,14 @@ import {
   Stack,
   Switch,
   Text,
-  Title,
 } from '@mantine/core'
+import { IconChevronDown, IconCircleCheck } from '@tabler/icons-react'
 import { useState } from 'react'
+
+import {
+  TierBadge,
+  type Tier,
+} from '../../components/TierBadge'
 
 /**
  * Review workspace — the underwriter, alone, 1–2 days later.
@@ -23,20 +26,16 @@ import { useState } from 'react'
  * Answers one question: should I trust this recommendation, and what do I
  * decide? Evidence on the left, reasoning and decision on the right.
  *
+ * Decision invariants:
+ *  · NO reject button — escalation is the path.
+ *  · Decision is write-once: the panel becomes read-only after submission.
+ *  · `approved_with_adjustment` reveals a final-premium input.
+ *
  * TODO: fetch `GET /api/applications/:id` (score, findings, explanation
  * artifacts, model runs), `GET /api/files/:id` for the X-ray + heatmap, and
  * `POST /api/applications/:id/decision`. Handle "not scored yet", "scoring
  * failed", "no heatmap", and "already decided" states.
  */
-
-type Tier = 'low' | 'moderate' | 'elevated' | 'insufficient' | null
-
-const TIER_META: Record<NonNullable<Tier>, { label: string; color: string }> = {
-  low: { label: 'Low', color: 'teal' },
-  moderate: { label: 'Moderate', color: 'yellow' },
-  elevated: { label: 'Elevated', color: 'red' },
-  insufficient: { label: 'Insufficient evidence', color: 'gray' },
-}
 
 type DecisionType =
   | 'confirmed_fast_track'
@@ -44,190 +43,238 @@ type DecisionType =
   | 'escalated_senior_review'
   | 'requested_additional_evidence'
 
-const DECISIONS: { label: string; value: DecisionType }[] = [
-  { label: 'Confirm fast-track', value: 'confirmed_fast_track' },
-  { label: 'Approve with adjustment', value: 'approved_with_adjustment' },
-  { label: 'Escalate to senior underwriter', value: 'escalated_senior_review' },
-  { label: 'Request more evidence', value: 'requested_additional_evidence' },
+const DECISIONS: { value: DecisionType; label: string }[] = [
+  { value: 'confirmed_fast_track', label: 'Confirm fast-track' },
+  { value: 'approved_with_adjustment', label: 'Approve with adjustment' },
+  { value: 'escalated_senior_review', label: 'Escalate to senior underwriter' },
+  { value: 'requested_additional_evidence', label: 'Request more evidence' },
 ]
 
-const FINDINGS = [
+const FINDINGS_TOP = [
   { label: 'Opacity', value: 0.92 },
   { label: 'Effusion', value: 0.61 },
   { label: 'Nodule', value: 0.47 },
   { label: 'Cardiomegaly', value: 0.33 },
   { label: 'Fibrosis', value: 0.21 },
-] // TODO: from sub_scores; "top 5" + "Show all 18"
+]
+
+const FINDINGS_REST = [
+  { label: 'Atelectasis', value: 0.14 },
+  { label: 'Pneumothorax', value: 0.11 },
+  { label: 'Consolidation', value: 0.09 },
+  { label: 'Edema', value: 0.07 },
+  { label: 'Emphysema', value: 0.05 },
+  { label: 'Mass', value: 0.04 },
+  { label: 'Pleural thickening', value: 0.03 },
+  { label: 'Hernia', value: 0.02 },
+]
+
+function FindingBar({ label, value }: { label: string; value: number }) {
+  return (
+    <div>
+      <Group justify="space-between" mb={4}>
+        <Text size="xs">{label}</Text>
+        <Text size="xs" ff="monospace" c="dimmed">
+          {(value * 100).toFixed(0)}%
+        </Text>
+      </Group>
+      <Box h={6} w="100%" style={{ backgroundColor: 'var(--mantine-color-dark-5)', borderRadius: 3 }}>
+        <Box
+          h="100%"
+          style={{
+            width: `${Math.min(value * 100, 100)}%`,
+            backgroundColor: 'var(--mantine-color-clinical-5)',
+            borderRadius: 3,
+          }}
+        />
+      </Box>
+    </div>
+  )
+}
 
 export function ReviewPage() {
   const [showHeatmap, setShowHeatmap] = useState(false)
+  const [showAll, setShowAll] = useState(false)
   const [decision, setDecision] = useState<DecisionType | null>(null)
+  const [premium, setPremium] = useState<number | undefined>(undefined)
+  const [submitting, setSubmitting] = useState(false)
+  const [decidedAt, setDecidedAt] = useState<string | null>(null)
 
   // Scaffolding — replace with data from the API.
   const tier: Tier = 'low'
-  const decided = false
   const heatmapAvailable = false
+  const decided = decidedAt !== null
+
+  const findings = showAll ? [...FINDINGS_TOP, ...FINDINGS_REST] : FINDINGS_TOP
+  const decisionLabel = DECISIONS.find((d) => d.value === decision)?.label ?? ''
+
+  const submit = () => {
+    if (!decision) return
+    setSubmitting(true)
+    // TODO: POST /api/applications/:id/decision (write-once server-side).
+    window.setTimeout(() => {
+      setSubmitting(false)
+      setDecidedAt('just now')
+    }, 900)
+  }
 
   return (
-    <Container size="xl">
-      <Stack gap="md">
-        {/* ── Header ─────────────────────────────────────────── */}
-        <Group justify="space-between" wrap="wrap">
-          <Stack gap={2}>
-            <Text size="xs" c="dimmed" tt="uppercase" fw={600} style={{ letterSpacing: '0.12em' }}>
-              Application
-            </Text>
-            <Group gap="sm">
-              <Title order={1} ff="monospace">
-                ABC-12345
-              </Title>
-              <Badge color="teal">Ready for review</Badge>
-            </Group>
-            <Text size="sm" c="dimmed">
-              Submitted 2 days ago
-            </Text>
-          </Stack>
-
+    <Stack gap="md">
+      {/* ── Header ─────────────────────────────────────────── */}
+      <Paper p="sm" bd="1px solid var(--mantine-color-default-border)">
+        <Group justify="space-between" wrap="wrap" gap="md">
+          <Group gap="md">
+            <div className="hl-kv">
+              <span className="hl-kv-label">Reference</span>
+              <span className="hl-kv-value hl-mono">ABC-12345</span>
+            </div>
+            <Divider orientation="vertical" />
+            <div className="hl-kv">
+              <span className="hl-kv-label">Status</span>
+              <Badge color="teal" variant="light" size="sm">
+                Ready for review
+              </Badge>
+            </div>
+            <Divider orientation="vertical" />
+            <div className="hl-kv">
+              <span className="hl-kv-label">Applicant</span>
+              <span className="hl-kv-value">A. Rahman</span>
+            </div>
+            <div className="hl-kv">
+              <span className="hl-kv-label">Submitted</span>
+              <span className="hl-kv-value">2 days ago</span>
+            </div>
+          </Group>
           <Group gap="sm">
-            <Text size="sm" c="dimmed">
-              CRS
-            </Text>
-            <Text size="xl" fw={700}>
-              3.2
-            </Text>
-            {tier ? <Badge color={TIER_META[tier].color}>{TIER_META[tier].label}</Badge> : null}
+            <div className="hl-kv" style={{ alignItems: 'flex-end' }}>
+              <span className="hl-kv-label">CRS</span>
+              <span className="hl-kv-value" style={{ fontSize: '1.1rem' }}>
+                3.2
+              </span>
+            </div>
+            <TierBadge tier={tier} />
           </Group>
         </Group>
+      </Paper>
 
-        <Divider />
+      <SimpleGrid cols={{ base: 1, lg: 2 }} spacing="md">
+        {/* ── Left · the image ──────────────────────────────── */}
+        <Paper p="sm" bd="1px solid var(--mantine-color-default-border)">
+          <Group justify="space-between" mb="sm">
+            <Text fw={600} size="sm">
+              Chest X-ray
+            </Text>
+            <Switch
+              label="Grad-CAM overlay"
+              size="xs"
+              checked={showHeatmap}
+              onChange={() => setShowHeatmap((v) => !v)}
+              disabled={!heatmapAvailable}
+            />
+          </Group>
 
-        <SimpleGrid cols={{ base: 1, lg: 2 }} spacing="lg">
-          {/* ── Left · the image ──────────────────────────────── */}
-          <Stack gap="md">
-            <Card>
-              <Group justify="space-between" mb="sm">
-                <Text fw={600} size="sm">
-                  Chest X-ray
-                </Text>
-                <Switch
-                  label="Grad-CAM overlay"
-                  checked={showHeatmap}
-                  onChange={() => setShowHeatmap((v) => !v)}
-                  disabled={!heatmapAvailable}
-                />
-              </Group>
+          <Box
+            h={340}
+            style={{
+              display: 'grid',
+              placeItems: 'center',
+              backgroundColor: 'var(--mantine-color-dark-6)',
+              borderRadius: 'var(--mantine-radius-sm)',
+            }}
+          >
+            <Text c="dimmed" size="sm">
+              X-ray placeholder
+            </Text>
+          </Box>
+          {!heatmapAvailable && (
+            <Text size="xs" c="dimmed" mt="sm">
+              No heatmap produced for this image.
+            </Text>
+          )}
+        </Paper>
 
-              {/* TODO: <img src={`/api/files/:id`} /> of the X-ray (plus heatmap PNG
-                  overlay when the toggle is on). No DICOM viewer in Phase 1. */}
-              <Box
-                h={320}
-                style={{
-                  display: 'grid',
-                  placeItems: 'center',
-                  backgroundColor: 'var(--mantine-color-dark-6)',
-                  borderRadius: 'var(--mantine-radius-sm)',
-                }}
-              >
-                <Text c="dimmed" size="sm">
-                  X-ray placeholder
-                </Text>
-              </Box>
-              {!heatmapAvailable && (
-                <Text size="xs" c="dimmed" mt="sm">
-                  No heatmap produced for this image.
-                </Text>
-              )}
-            </Card>
-          </Stack>
-
-          {/* ── Right · why this score ────────────────────────── */}
-          <Stack gap="md">
-            <Card>
-              <Text fw={600} size="sm" mb="sm">
+        {/* ── Right · why this score ────────────────────────── */}
+        <Stack gap="md">
+          <Paper p="sm" bd="1px solid var(--mantine-color-default-border)">
+            <Group justify="space-between" mb="sm">
+              <Text fw={600} size="sm">
                 Findings
               </Text>
-              <Stack gap="sm">
-                {FINDINGS.map((f) => (
-                  <div key={f.label}>
-                    <Group justify="space-between" mb={4}>
-                      <Text size="xs">{f.label}</Text>
-                      <Text size="xs" ff="monospace">
-                        {f.value.toFixed(2)}
-                      </Text>
-                    </Group>
-                    <Box
-                      h={6}
-                      w="100%"
-                      style={{ backgroundColor: 'var(--mantine-color-dark-5)', borderRadius: 3 }}
-                    >
-                      <Box
-                        h="100%"
-                        style={{
-                          width: `${f.value * 100}%`,
-                          backgroundColor: 'var(--mantine-color-clinical-5)',
-                          borderRadius: 3,
-                        }}
-                      />
-                    </Box>
-                  </div>
-                ))}
-              </Stack>
-              <Button variant="subtle" size="xs" mt="sm" fullWidth>
-                Show all 18
-              </Button>
-            </Card>
-
-            <Card>
-              <Text fw={600} size="sm" mb="sm">
-                What the declared history changed
+              <Text size="xs" c="dimmed">
+                {showAll ? FINDINGS_TOP.length + FINDINGS_REST.length : FINDINGS_TOP.length} shown
               </Text>
-              <Stack gap={4}>
-                <Text size="sm" c="dimmed">
-                  Previously treated TB, course completed, no current symptoms →
-                  lowered
-                </Text>
-              </Stack>
-            </Card>
+            </Group>
+            <Stack gap="sm">
+              {findings.map((f) => (
+                <FindingBar key={f.label} label={f.label} value={f.value} />
+              ))}
+            </Stack>
+            <Button
+              variant="subtle"
+              size="xs"
+              mt="sm"
+              fullWidth
+              rightSection={<IconChevronDown size={14} />}
+              onClick={() => setShowAll((v) => !v)}
+            >
+              {showAll ? 'Show top 5' : `Show all ${FINDINGS_TOP.length + FINDINGS_REST.length}`}
+            </Button>
+          </Paper>
 
-            <Text size="xs" c="dimmed">
-              Model: torxray-v1 · v1.0.3 · evaluated 2 days ago, 14:02
-            </Text>
-          </Stack>
-        </SimpleGrid>
-
-        {/* ── Decision ────────────────────────────────────────── */}
-        {decided ? (
-          <Card>
-            <Text fw={600} size="sm">
-              Decided
-            </Text>
-            <Text size="sm" c="dimmed">
-              <Text component="span">Operator</Text> marked this as{' '}
-              <strong>Confirm fast-track</strong> on 2 days ago, 15:00. Decision
-              is write-once and can no longer be edited.
-            </Text>
-          </Card>
-        ) : (
-          <Card>
+          <Paper p="sm" bd="1px solid var(--mantine-color-default-border)">
             <Text fw={600} size="sm" mb="sm">
-              Decision
+              What the declared history changed
             </Text>
-            {tier === null && (
-              <Alert color="gray" variant="light" mb="sm">
-                <Text size="sm">Not scored yet — evaluation pending. No decision can be made yet.</Text>
-              </Alert>
-            )}
-            <SimpleGrid cols={{ base: 1, sm: 2 }}>
+            <Stack gap={4}>
+              <Text size="sm" c="dimmed">
+                Previously treated TB, course completed, no current symptoms →
+                lowered
+              </Text>
+            </Stack>
+          </Paper>
+
+          <Text size="xs" c="dimmed">
+            Model: torxray-v1 · v1.0.3 · evaluated 2 days ago, 14:02
+          </Text>
+        </Stack>
+      </SimpleGrid>
+
+      {/* ── Decision ────────────────────────────────────────── */}
+      <Paper p="md" bd="1px solid var(--mantine-color-default-border)">
+        <Group justify="space-between" mb="sm">
+          <Text fw={600} size="sm">
+            Decision
+          </Text>
+        </Group>
+
+        {decided ? (
+          <Alert
+            icon={<IconCircleCheck size={18} />}
+            color="teal"
+            variant="light"
+            title="Decision recorded"
+          >
+            <Text size="sm">
+              You marked this as <strong>{decisionLabel}</strong> {decidedAt}.
+              Decisions are write-once and can no longer be edited.
+            </Text>
+          </Alert>
+        ) : (
+          <>
+            <SimpleGrid cols={{ base: 1, sm: 2 }} spacing="sm">
               {DECISIONS.map((d) => (
                 <Button
                   key={d.value}
                   variant={decision === d.value ? 'filled' : 'light'}
+                  color={decision === d.value ? 'clinical' : 'gray'}
+                  justify="space-between"
                   onClick={() => setDecision(d.value)}
                 >
                   {d.label}
                 </Button>
               ))}
             </SimpleGrid>
+
             {decision === 'approved_with_adjustment' && (
               <NumberInput
                 mt="md"
@@ -235,38 +282,38 @@ export function ReviewPage() {
                 placeholder="1,000,000"
                 thousandSeparator=","
                 min={0}
+                value={premium}
+                onChange={(v) => setPremium(typeof v === 'number' ? v : Number(v) || undefined)}
               />
             )}
-            <Text size="xs" c="dimmed" mt="sm">
-              There is no reject button. Escalation to a human underwriter is the
-              path.
-            </Text>
-          </Card>
-        )}
 
-        {/* ── Audit trail ─────────────────────────────────────── */}
-        <Details summary="Audit trail">
+            <Group justify="space-between" mt="md">
+              <Text size="xs" c="dimmed">
+                There is no reject button. Escalation to a human underwriter is
+                the path.
+              </Text>
+              <Button size="xs" disabled={!decision} onClick={submit} loading={submitting}>
+                Submit decision
+              </Button>
+            </Group>
+          </>
+        )}
+      </Paper>
+
+      {/* ── Audit trail ─────────────────────────────────────── */}
+      <details>
+        <summary>
+          <Text component="span" size="sm" c="dimmed">
+            Audit trail
+          </Text>
+        </summary>
+        <Paper bd="1px solid var(--mantine-color-default-border)" p="sm" mt="sm">
           <Text size="sm" c="dimmed">
             TODO: collapsed, expandable table of timestamp / event / actor from
             `GET /api/applications/:id/audit`.
           </Text>
-        </Details>
-      </Stack>
-    </Container>
-  )
-}
-
-function Details({ summary, children }: { summary: string; children: React.ReactNode }) {
-  return (
-    <details>
-      <summary>
-        <Text component="span" size="sm" c="dimmed">
-          {summary}
-        </Text>
-      </summary>
-      <Paper withBorder p="md" mt="sm">
-        {children}
-      </Paper>
-    </details>
+        </Paper>
+      </details>
+    </Stack>
   )
 }
