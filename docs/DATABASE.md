@@ -15,7 +15,7 @@ make sense against that flow.
 |---|---|---|
 | **A. Auth columns** | `users` has no password field, so nobody can log in | **Yes — login** |
 | **B. `tenant_id` everywhere** | Row-level security needs it on every table | **Yes — security** |
-| **C. Intake form fields** | The form collects data with nowhere to go | **Yes — the form** |
+| **C. Intake form fields** | The form collects data with nowhere to go; now **model-driven** with per-arm fields + `models_requested` | **Yes — the form** |
 | **D. Model output detail** | The vision arm returns 18 numbers; there is no column for them | **Yes — scoring** |
 | **E. Audit payloads** | A hash chain you cannot re-verify proves nothing | Yes |
 | **F. Evidence integrity** | The audit trail is specified to record input signatures | Yes |
@@ -138,41 +138,115 @@ connections. **Use `SET LOCAL`, never `SET`.**
 The form in [DASHBOARD.md](DASHBOARD.md) collects coverage details and declared
 medical history. There is nowhere to put either.
 
+> **▶︎ CHANGED** — the intake form is now **model-driven** (see
+> [INTAKE_FORM.md](INTAKE_FORM.md)): the operator selects which model arms apply
+> from a vertical checkbox menu, and each selected model contributes its own
+> risk fields and a required-upload instruction. The schema below is updated to
+> hold (a) the coverage columns, (b) which arms to run, and (c) a **per-model**
+> declared-history shape. Compare against the previous single-TB `symptoms` /
+> `history` object.
+
+**▶︎ CHANGED — `applicants` gains height/weight (feeds the XGBoost tabular arm's
+BMI feature):**
+
+```sql
+ALTER TABLE applicants
+    ADD COLUMN height_cm   NUMERIC(5,2),
+    ADD COLUMN weight_kg   NUMERIC(5,2);
+```
+
+**▶︎ CHANGED — `applications` gains `models_requested` (which arms the
+orchestrator runs) and `policy_term`, alongside the existing coverage and
+declared-history columns:**
+
 ```sql
 ALTER TABLE applications
     ADD COLUMN coverage_type      VARCHAR(50),
     ADD COLUMN coverage_amount    NUMERIC(12,2),
+    ADD COLUMN policy_term        VARCHAR(20),   -- ▶︎ CHANGED: 1/5/10/20 years
+    ADD COLUMN models_requested   JSONB NOT NULL DEFAULT '[]'::jsonb,  -- ▶︎ CHANGED
     ADD COLUMN declared_history   JSONB NOT NULL DEFAULT '{}'::jsonb,
     ADD COLUMN evaluated_at       TIMESTAMPTZ;
 ```
 
-**Why `declared_history` is JSONB and not columns.** The checkbox list will
-change every time we add a condition or a model arm. One JSONB column absorbs
-that; twenty boolean columns mean a migration each time. It is still queryable —
-`declared_history->>'prior_tb' = 'true'` works and can be indexed.
+**Why `declared_history` is JSONB and not columns.** The field set will change
+every time we add a condition, a model arm, or a field on an existing arm. One
+JSONB column absorbs that; many boolean columns mean a migration each time. It
+is still queryable — `declared_history->'cxr_lung'->>'smoker' = 'true'` works and
+can be indexed.
 
-Shape the API will write for Phase 1:
+`models_requested` is an array of arm ids (e.g. `["cxr_lung","mirai"]`). It is
+the intake half of the model registry in [SPEC.md §6](SPEC.md): the orchestrator
+runs exactly the arms it names. Each new arm is a row in the registry table and,
+on the form, one more entry in the vertical menu — it does **not** need a
+migration.
+
+**▶︎ CHANGED — shape the API will write (per-model keyed, one key per selected
+arm):**
 
 ```json
 {
-  "symptoms": {
-    "cough_over_2_weeks": true,
-    "weight_loss": false,
-    "night_sweats": true,
-    "haemoptysis": false,
-    "fever": true
+  "cxr_lung": {
+    "symptoms": {
+      "cough_over_2_weeks": true,
+      "weight_loss": false,
+      "night_sweats": true,
+      "haemoptysis": false,
+      "fever": true
+    },
+    "history": {
+      "prior_tb": true,
+      "prior_tb_treatment_completed": true,
+      "diabetes": false,
+      "hiv": false,
+      "household_tb_contact": false,
+      "antibiotics_no_improvement": false,
+      "smoker": true
+    },
+    "cardio": {
+      "hypertension": false,
+      "high_cholesterol": false,
+      "family_heart_disease": true
+    }
   },
-  "history": {
-    "prior_tb": true,
-    "prior_tb_treatment_completed": true,
-    "diabetes": false,
-    "hiv": false,
-    "household_tb_contact": false,
-    "antibiotics_no_improvement": false,
+  "mirai": {
+    "family_breast_cancer": false,
+    "prior_biopsy": false,
+    "brca_status": "not_tested"
+  },
+  "ham10000": {
+    "skin_type": "II",
+    "prior_skin_cancer": false,
+    "body_site": "left_lower_leg"
+  },
+  "eyepacs": {
+    "diabetes_duration": "under_5_years",
+    "hypertension": false,
     "smoker": true
+  },
+  "xgboost": {
+    "height_cm": 170,
+    "weight_kg": 70,
+    "alcohol": "occasionally",
+    "activity": "moderate",
+    "occupation": "teacher",
+    "smoker": true
+  },
+  "neuro": {
+    "memory_concerns": true,
+    "speech_concerns": false,
+    "mobility_concerns": false
   }
 }
 ```
+
+**▶︎ CHANGED — note on `biobert`:** the clinical-NLP arm reads the uploaded
+clinical note directly and contributes no structured keys to `declared_history`
+in Phase 1.
+
+**▶︎ CHANGED — note on genetic data (`mirai.brca_status`):** genetic-marker data
+ships **default-off**, jurisdiction-gated, per [SPEC.md §10](SPEC.md). The form
+collects it but the extracting consumer must honour the tenant policy flag.
 
 **Do not add a separate `intake` table.** One column on the row it belongs to is
 simpler and there is no second consumer ([DESIGN_POLICY.md](DESIGN_POLICY.md) §2).
