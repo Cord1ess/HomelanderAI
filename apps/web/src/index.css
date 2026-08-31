@@ -3,6 +3,13 @@ html {
   background-color: #16181c;
 }
 
+/* The ERP shell's header is 44px; make the main surface fill the viewport so
+   short pages (e.g. New application) don't expose a bare dark strip below. */
+main {
+  min-height: calc(100vh - 44px);
+  background-color: var(--mantine-color-body);
+}
+
 body {
   margin: 0;
   -webkit-font-smoothing: antialiased;
