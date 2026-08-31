@@ -1,6 +1,7 @@
 # HomelanderAI — Working Specification v1
 
 **Status:** Living document. Supersedes `Idea.md` for anything the two disagree on.
+[DESIGN_POLICY.md](DESIGN_POLICY.md) governs *how* things get built and overrides this document on implementation choices; this one stays the authority on *what* gets built.
 **Context:** Academic capstone / thesis. Team of 2–5. ~3–6 month horizon. Local compute only, no cloud spend.
 
 How to read this:
@@ -250,14 +251,14 @@ Rationale first, alternatives noted. Confirm or override in §15.
 | Validation / schemas | **Pydantic v2** | Source of truth for the API contract. |
 | ORM / migrations | **SQLAlchemy 2.0 + Alembic** | Migrations from commit one. Retrofitting them onto a live schema is miserable. |
 | Database | **PostgreSQL 16** (Docker) | Relational core plus `JSONB` for heterogeneous model outputs, which vary per arm. Row-level tenant scoping. |
-| Object storage | **MinIO** (Docker) | S3-compatible. Images and heatmap artifacts do not belong in Postgres, and a future move to real S3 becomes a config change. |
-| Task queue | **Celery + Redis**, workers in Docker | `Idea.md`'s choice, and it stands — mature, and **Flower gives you a free live job-monitoring UI that demos extremely well**. One caveat: your team is on Windows, where Celery's default prefork pool is broken. Run workers inside Linux containers (which you are doing anyway) and this is a non-issue. *Alternative:* **ARQ** is asyncio-native, pairs more naturally with FastAPI, and needs far less configuration — pick it if the team would rather not learn Celery, and accept losing Flower. |
+| Object storage | **Local filesystem** under `./data` | Superseded MinIO. Uploads and heatmap artifacts are written to disk and served through an authenticated FastAPI route — better access control than presigned URLs, and one fewer service. See [DESIGN_POLICY.md](DESIGN_POLICY.md) §9. |
+| Background jobs | **FastAPI `BackgroundTasks` + a `jobs` table in Postgres** | Superseded Celery + Redis. Inference genuinely cannot run inside a request, but a broker is not the only way to solve that. Define the worker as `def` rather than `async def` and FastAPI runs it in a threadpool, so blocking inference will not stall the event loop; the frontend polls `/api/jobs/{id}`. **Zero new services.** Accepted limits: in-flight jobs are lost on restart, and this will not scale past one machine — neither matters for a capstone, and introducing Celery later is a contained change. See [DESIGN_POLICY.md](DESIGN_POLICY.md) §2, §19. |
 | Auth | **Own JWT + hashed API keys** in Postgres; Argon2id for passwords | Auth0/Clerk means cloud spend, and their tenant models fit awkwardly here. Multi-tenant API-key auth is ~200 lines and you control it. |
 | Inference runtime | **PyTorch** for development, **ONNX Runtime** for serving | ONNX export plus CPU int8 quantisation is the difference between a demo that runs on a laptop and one that does not. Do this per arm once it is trained. |
-| Logging | **structlog**, JSON output, PHI-shaped fields explicitly redacted | Cheap, and log hygiene is a compliance talking point. |
+| Logging | **stdlib `logging`** for now; revisit structured logging when the audit trail lands | structlog was dropped — it cost a dependency and a module to print two lines uvicorn already logs. **The rule that matters is unchanged: applicant evidence is PHI-shaped, so never log note text, pixel data, or raw model inputs — log identifiers and let the audit trail carry the rest.** |
 | Testing | **pytest** + `httpx.AsyncClient`; Postgres via Docker Compose | Add one test asserting no tier can emit a denial, and one asserting cross-tenant queries return empty. |
 
-**Do not build a separate model-serving tier.** No TorchServe, no Triton, no BentoML. Load models once in the Celery worker's startup hook and hold them in process. A serving tier is one more thing to run, one more failure mode, and buys you nothing at your scale.
+**Do not build a separate model-serving tier.** No TorchServe, no Triton, no BentoML. Load models once at application startup and hold them in process. A serving tier is one more thing to run, one more failure mode, and buys you nothing at your scale.
 
 ### Frontend
 
@@ -286,7 +287,7 @@ Monorepo. You control git, so structure it for readable history.
 ```
 /apps
   /api          FastAPI app: routes, auth, tenancy, persistence
-  /worker       Celery tasks, arm orchestration
+  /worker       job runner, arm orchestration
   /web          Next.js underwriter portal
 /packages
   /ml           RiskModelArm implementations, calibration, fusion, XAI
@@ -307,7 +308,7 @@ Monorepo. You control git, so structure it for readable history.
 
 | Owner | Surface |
 |---|---|
-| Backend / infra | FastAPI, Postgres, Celery, tenancy, audit log, Compose |
+| Backend / infra | FastAPI, Postgres, job runner, tenancy, audit log, Compose |
 | ML — vision | Arm A, Grad-CAM, ONNX export, calibration |
 | ML — text + tabular | Arms B and C, fusion layer, SHAP |
 | Frontend | Portal, viewer, attribution UI, dashboard |
@@ -374,7 +375,7 @@ Two rules that matter more than the schedule: **the mock-mode demo must never br
 ## 15. Open Decisions — DECIDE
 
 1. **Framing.** Confirm the shift to decision-support-with-human-sign-off (§1). Everything downstream assumes it.
-2. **Task queue.** Celery + Redis (mature, Flower UI, more config) or ARQ (async-native, lighter, no Flower)?
+2. ~~**Task queue.**~~ **Resolved:** neither. `BackgroundTasks` + a `jobs` table, per the design policy. No broker.
 3. **Third arm.** Arm C as NHANES-trained tabular XGBoost, as recommended — or would you rather have a fourth *imaging* arm (fundus/DR) and a simpler tabular stub?
 4. **CXR dataset.** NIH ChestX-ray14 (open, start today), CheXpert (registration), or MIMIC-CXR (only if someone already holds PhysioNet credentialing)?
 5. **DICOM viewer.** Confirm server-rendered PNG for v1 with Cornerstone3D as a stretch goal.
@@ -391,7 +392,7 @@ Two rules that matter more than the schedule: **the mock-mode demo must never br
 | 1. Core concept | **REVISED** — automated gateway → decision support with human sign-off |
 | 2. Problem & purpose | **LOCKED** — currency figures relabelled illustrative; progression-horizon claim narrowed |
 | 3. Stakeholders | **REVISED** — claims adjusters and applicant portal cut from v1 |
-| 4. Architecture (FastAPI, Celery, Redis) | **LOCKED** — Windows/Celery caveat noted; frontend and storage specified |
+| 4. Architecture (FastAPI, Celery, Redis) | **REVISED** — FastAPI locked; Celery, Redis and MinIO dropped under [DESIGN_POLICY.md](DESIGN_POLICY.md) |
 | 4. Model stack (8 arms) | **REVISED** — datasets/frameworks corrected; cut to 3 arms with an extension interface |
 | 5. CRS formula | **REVISED** — calibration added; fixed weights become a baseline against learned fusion |
 | 5. Decision tiers | **LOCKED** — thresholds made configurable and derived; `INSUFFICIENT_EVIDENCE` added; no-auto-denial made an invariant |

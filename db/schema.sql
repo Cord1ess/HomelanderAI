@@ -106,6 +106,7 @@ CREATE TABLE users (
     tenant_id        UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
     full_name        VARCHAR(255) NOT NULL,
     email            VARCHAR(255) NOT NULL,
+    password_hash    VARCHAR(255) NOT NULL,
     role             user_role NOT NULL,
     license_number   VARCHAR(100),
     created_at       TIMESTAMPTZ NOT NULL DEFAULT now(),
