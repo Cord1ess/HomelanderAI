@@ -24,9 +24,24 @@
         background: #0f1419;
       }
       .boot-logo {
-        width: 260px;
-        height: auto;
-        max-width: 70vw;
+        width: 220px;
+        height: 220px;
+        max-width: 60vw;
+        max-height: 60vh;
+        border-radius: 50%;
+        object-fit: contain;
+        background: #fff;
+        border: 1px solid rgba(255, 255, 255, 0.16);
+        box-shadow:
+          0 2px 14px rgba(0, 0, 0, 0.4),
+          inset 0 0 0 1px rgba(0, 0, 0, 0.04);
+      }
+      .boot-label {
+        font-size: 0.7rem;
+        font-weight: 600;
+        letter-spacing: 0.12em;
+        text-transform: uppercase;
+        color: #8a929e;
       }
       .boot-spinner {
         width: 34px;
@@ -48,6 +63,7 @@
       <div id="boot-loader">
         <img class="boot-logo" src="/favicon.svg" alt="HomelanderAI" />
         <div class="boot-spinner" aria-hidden="true"></div>
+        <div class="boot-label">Loading</div>
       </div>
     </div>
     <script type="module" src="/src/main.tsx"></script>
