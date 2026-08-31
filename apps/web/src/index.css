@@ -42,3 +42,96 @@ body {
   font-size: 0.6875rem;
   font-weight: 600;
 }
+
+/* Thin scrollbars for dense panels. */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(120, 130, 145, 0.45) transparent;
+}
+
+/* App shell — dense fixed sidebar. */
+.hl-shell-nav {
+  display: flex;
+  flex-direction: column;
+}
+
+.hl-nav-link {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.5rem 0.65rem;
+  margin: 0.0625rem 0.4rem;
+  border-radius: 0.375rem;
+  font-size: 0.8rem;
+  font-weight: 500;
+  color: var(--mantine-color-dimmed);
+  text-decoration: none;
+  transition: background-color 0.12s ease, color 0.12s ease;
+}
+
+.hl-nav-link:hover {
+  background-color: var(--mantine-color-default-hover);
+  color: var(--mantine-color-text);
+}
+
+.hl-nav-link[data-active='true'] {
+  background-color: var(--mantine-color-clinical-light);
+  color: var(--mantine-color-clinical-light-color);
+}
+
+.hl-shell-header {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  height: 44px;
+  padding: 0 0.9rem;
+  background-color: var(--mantine-color-dark-8);
+  border-bottom: 1px solid var(--mantine-color-default-border);
+}
+
+/* Key/value stat block. */
+.hl-kv {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+
+.hl-kv-label {
+  font-size: 0.65rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--mantine-color-dimmed);
+}
+
+.hl-kv-value {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--mantine-color-text);
+}
+
+/* Utility grid/flex helpers. */
+.hl-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.hl-card-pad {
+  padding: 0.85rem 1rem;
+}
+
+/* Monospace numeric cells. */
+.hl-mono {
+  font-family: var(--mantine-font-family-monospace);
+  font-size: 0.75rem;
+}
+
+/* Text ellipsis for table cells. */
+.hl-ellipsis {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

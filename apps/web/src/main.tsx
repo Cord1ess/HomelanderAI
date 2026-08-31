@@ -6,11 +6,9 @@ import { createRoot } from 'react-dom/client'
 import { BrowserRouter } from 'react-router-dom'
 
 // Mantine stylesheets must be imported before our own CSS so we can override.
-// Add the matching import when you start using a package:
-//   import '@mantine/dropzone/styles.css'
-//   import '@mantine/charts/styles.css'
 import '@mantine/core/styles.css'
 import '@mantine/notifications/styles.css'
+import '@mantine/dropzone/styles.css'
 import './index.css'
 
 import { App } from './App'
