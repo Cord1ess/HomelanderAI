@@ -22,7 +22,7 @@ export function BrandIcon({
 }) {
   return (
     <svg
-      viewBox="0 0 1408 768"
+      viewBox="0 0 1014 714"
       width={width ?? 220}
       height={height ?? 120}
       style={style}
