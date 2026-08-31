@@ -12,11 +12,15 @@ arms apply from a **vertical checkbox menu** ("click all that applicable"); each
 selected model expands a **panel** with:
 
 - an **instruction** telling the operator which **report/upload** must be
-  submitted for that model (and the accepted file types), and
+  submitted for that model, and **its own file upload** (Dropzone + per-model
+  file list), and
 - that model's **risk-factor fields**.
 
-The applicant + coverage sections stay model-agnostic at the top. Evidence is a
-single dropzone, with each model's panel instructing which file to attach.
+The applicant + coverage sections stay model-agnostic at the top. The Applicant
+section also captures a **required face photo** for identification (never a
+model input). There is **no universal evidence dropzone** — each report is
+uploaded inside the model that consumes it, so the form collapses to **3
+sections** (Applicant, Coverage, Models).
 
 ## Model registry
 
@@ -39,14 +43,19 @@ factors ride on the single CXR panel.
 
 Fields collected per selected model are stored as a **per-model-keyed**
 `declared_history` JSONB on `applications`, alongside a `models_requested` array
-telling the orchestrator which arms to run. See [DATABASE.md §C](DATABASE.md) —
-**that section is the authority and every change there is highlighted `▶︎ CHANGED`**
-so DB-doc edits are unmistakable.
+telling the orchestrator which arms to run. Each model's **uploads** live in its
+own panel and are stored on `evidence_files` with a `model_arm_id`. The client's
+**face photo** is stored on `applicants.face_photo_path` (identity only — never
+a model input). See [DATABASE.md §C](DATABASE.md) / [§F](DATABASE.md) —
+**those sections are the authority and every change there is highlighted
+`▶︎ CHANGED`** so DB-doc edits are unmistakable.
 
 ## Workflow (small-chunk commits)
 
 One atomic, build/lint-green commit per step. Each step is committed before the
-next is started.
+next is started. Both rounds are recorded below.
+
+**Round 1 — model-driven form (7 model tabs via a vertical checkbox menu):**
 
 1. **Docs config** — this file (workflow + registry).
 2. **DB markdown** — update `docs/DATABASE.md` §C: add `applicants.height_cm` /
@@ -57,13 +66,22 @@ next is started.
    `applications`). `evidence_file_type` enum unchanged (modality recorded in file
    metadata, not a new enum).
 4. **Form** — restructure `IntakePage.tsx` in one coherent commit (the registry,
-   vertical checkbox menu, `selectedModels`/`modelFields` state, `ModelPanel`
-   pop-outs with per-model instructions + fields, XGBoost fields-only, extended
-   `FILE_TYPES`, and required-upload gating all share the single file, so they
-   are committed together rather than as artificial partial states).
-5. ~~**Form panels**~~ — folded into step 4 (same file).
-6. ~~**Form evidence/gating**~~ — folded into step 4 (same file).
-7. **Screen spec** — rewrite `DASHBOARD.md` §3 for the model-selector design.
+   vertical checkbox menu, `selectedModels`/`modelFields` state, per-model
+   panels with instructions + fields, XGBoost fields-only, required-upload
+   gating all share the single file, so they are committed together rather than
+   as artificial partial states).
+
+**Round 2 — uploads move into each model's panel + required face photo:**
+
+5. **DB markdown** — `docs/DATABASE.md` §C/§F: add
+   `applicants.face_photo_path` (identity, no model) and
+   `evidence_files.model_arm_id` + index, highlighted `▶︎ CHANGED`.
+6. **Schema** — mirror `face_photo_path` + `model_arm_id` into `db/schema.sql`.
+7. **Form** — replace the universal Evidence dropzone with a **per-model
+   `PanelUpload`** inside each tab, and add a **required `FacePhotoUpload`** in
+   the Applicant section. Form collapses to 3 sections.
+
+**Docs:** `DASHBOARD.md` §3 rewritten at the end of each round.
 
 Verification before each commit: `npm run lint` · `npm run typecheck` ·
 `npm run build` (in `apps/web`).

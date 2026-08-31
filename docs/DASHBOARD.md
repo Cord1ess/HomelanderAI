@@ -93,7 +93,7 @@ Why this matters:
 - It is simpler to build, and needs no draft-saving, no step state, no
   server-side partial records.
 
-Show a small sticky progress hint ("3 of 4 sections complete") if you like — but
+Show a small sticky progress hint ("2 of 3 sections complete") if you like — but
 one page, one submit.
 
 ### Section 1 — Applicant
@@ -103,10 +103,13 @@ one page, one submit.
 | Reference | text | **yes** | The carrier's own client ID. Must be unique per tenant — surface a clear error on collision, do not just fail |
 | Date of birth | date | no | |
 | Sex | select | no | Female / Male / Other / Prefer not to say |
+| Face photo | image upload | **yes** | Single image for **identification only** — shown with the applicant's details, never run through a model. `.png .jpg`, max 10 MB, preview + remove |
 
 **There is no name field, deliberately.** The database has no column for it. If
 someone asks, that is PII minimisation and it is a feature — see
-[DATABASE.md](DATABASE.md).
+[DATABASE.md](DATABASE.md). The face photo follows the same rule: stored
+de-identified, filename not the person's name
+([DATABASE.md §C](DATABASE.md), [SPEC.md §9](SPEC.md)).
 
 ### Section 2 — Coverage requested
 
@@ -121,9 +124,18 @@ someone asks, that is PII minimisation and it is a feature — see
 The form is **model-driven** (see [INTAKE_FORM.md](INTAKE_FORM.md) and
 [MODEL.md](Model.md)). A **vertical checkbox menu** on the left lists every
 model arm ("click all that applicable"). Selecting a model **pops out its
-panel** on the right with (a) an **instruction** naming the report/upload to
-attach, and (b) that model's risk-factor fields. Pick several and their panels
-stack.
+panel** on the right with:
+
+- an **instruction** naming the report/upload to attach, and **its own file
+  upload** (Mantine `Dropzone` + per-model file list, remove button, max 50 MB),
+  and
+- that model's risk-factor fields.
+
+Pick several and their panels stack. **There is no separate "Evidence" section —
+each report is uploaded inside the model that consumes it.** The file's type is
+fixed by its model, so there is no manual type dropdown. Each uploaded report is
+stored with its `model_arm_id` so the orchestrator reads exactly the right
+inputs ([DATABASE.md §F](DATABASE.md)).
 
 The chest X-ray is a **single arm** (TorchXRayVision / DenseNet) that replaces
 the old OpenCXR + CheXpert + CXR-CVD entries; its panel carries the TB field set
@@ -143,34 +155,15 @@ The genetic/BRCA field ships **default-off**, jurisdiction-gated, per
 [SPEC.md §10](SPEC.md): it is collected but a consumer must honour the tenant
 policy flag.
 
-### Section 4 — Evidence
-
-Mantine `Dropzone`, click or drag, multiple files. Follow each selected model's
-instruction to attach its report.
-
-| File type | In model panels | Phase 1 |
-|---|---|---|
-| Chest X-ray | Chest X-ray arm | **Required when that arm is selected** — nothing can be scored without it |
-| Mammogram | Mirai | Required when selected · stored for the arm |
-| Retinal photo | EyePACS | Required when selected · stored |
-| Lesion photo | HAM10000 | Required when selected · stored |
-| MRI scan | Neuro MRI | Required when selected · stored |
-| Clinical note | BioBERT | Required when selected · read by NLP |
-| Lab report | — | Optional, stored only |
-
-Each dropped file gets a row showing filename, size, a type dropdown (all types
-above), and a remove button. Max 50 MB per file — show the limit before they hit
-it, not after.
-
 **"Stored only" means exactly that.** In Phase 1 only the chest X-ray is
 analysed; other reports are stored for the arms that will read them. Do not
 imply files are being read that are not.
 
 ### Submit
 
-Disabled until: reference filled, coverage type and amount filled, **at least
-one model selected**, and **every required report for the selected models is
-attached**.
+Disabled until: face photo + reference filled (1), coverage type and amount
+filled (2), **at least one model selected**, and **every required report for the
+selected models is attached in its own panel** (3).
 
 On submit — one `POST /api/applications` as `multipart/form-data`, everything in
 one request. On success go to a confirmation panel that says, in words the
