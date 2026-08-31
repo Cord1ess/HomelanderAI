@@ -461,15 +461,6 @@ export function IntakePage() {
         />
 
         <SimpleGrid cols={{ base: 1, md: 2 }} spacing="lg" mt="md">
-          <FacePhotoUpload
-            file={facePhoto}
-            preview={facePreview}
-            note={rejectNote.face}
-            onDrop={addFacePhoto}
-            onReject={addFaceReject}
-            onRemove={() => setFace(null)}
-          />
-
           <Stack gap="sm">
             <Group grow align="flex-start">
               <TextInput label="Name" required placeholder="Client name" {...form.getInputProps('name')} />
@@ -486,6 +477,15 @@ export function IntakePage() {
               />
             </Group>
           </Stack>
+
+          <FacePhotoUpload
+            file={facePhoto}
+            preview={facePreview}
+            note={rejectNote.face}
+            onDrop={addFacePhoto}
+            onReject={addFaceReject}
+            onRemove={() => setFace(null)}
+          />
         </SimpleGrid>
       </Section>
 
@@ -645,7 +645,7 @@ function FacePhotoUpload({
         </Text>
       </Text>
       <Text size="xs" c="dimmed" mb="sm">
-        For identification only — shown with the applicant’s details. No model
+        For identification only, No model
         runs on this photo.
       </Text>
 
