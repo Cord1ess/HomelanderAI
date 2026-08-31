@@ -1,68 +1,129 @@
 import {
   Alert,
+  Anchor,
+  Box,
   Button,
   Card,
-  Container,
+  Center,
+  Divider,
+  Group,
+  Paper,
   PasswordInput,
   Stack,
   Text,
   TextInput,
-  Title,
 } from '@mantine/core'
-import { IconAlertCircle } from '@tabler/icons-react'
-import { useState } from 'react'
+import { IconAlertCircle, IconShieldLock } from '@tabler/icons-react'
+import { useState, type FormEvent } from 'react'
+
+import { BrandIcon } from '../../components/BrandIcon'
 
 /**
- * Login — email + password + submit. No signup, no reset, no SSO.
+ * Login — the one screen that lives OUTSIDE the guarded app shell.
  *
- * On success the API sets an httpOnly cookie; the frontend then reports who is
- * logged in via `GET /api/auth/me`. A 401 anywhere redirects to /login.
+ * Email + password only: no signup, no reset, no SSO. On success the API sets
+ * an httpOnly cookie; the frontend then confirms who is signed in via
+ * `GET /api/auth/me`, and all 401s redirect back here.
  *
  * TODO: call `POST /api/auth/login`, then `GET /api/auth/me`, then navigate to
- * the queue. Handle 401 → redirect in a shared client/guard layer.
+ * the queue.
  */
 export function LoginPage() {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
+  const [submitting, setSubmitting] = useState(false)
+  const [touched, setTouched] = useState(false)
+
+  const handleSubmit = (e: FormEvent<HTMLFormElement>) => {
+    e.preventDefault()
+    setTouched(true)
+    if (!email || !password) return
+    setSubmitting(true)
+    // TODO: POST /api/auth/login, then GET /api/auth/me, then navigate to "/".
+    window.setTimeout(() => setSubmitting(false), 900)
+  }
+
+  const showError = touched && (!email || !password)
 
   return (
-    <Container size={420} py={80}>
-      <Card padding="xl">
-        <Stack gap="md">
-          <Stack gap={2}>
-            <Text ff="monospace" fw={700} size="sm" c="clinical.4">
-              ▚ HomelanderAI
+    <Box h="100vh" style={{ display: 'flex', alignItems: 'center' }}>
+      <Paper
+        radius={0}
+        w={280}
+        h="100%"
+        style={{
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          justifyContent: 'center',
+          gap: 14,
+          textAlign: 'center',
+        }}
+        visibleFrom="sm"
+      >
+        <BrandIcon width={200} height={80} />
+        <Text size="xs" c="dimmed" px="lg">
+          AI-assisted respiratory underwriting for carriers.
+        </Text>
+        <Divider my="md" w="70%" />
+        <Group gap={6} c="dimmed">
+          <IconShieldLock size={16} />
+          <Text size="xs">Operator / underwriter access</Text>
+        </Group>
+      </Paper>
+
+      <Center m="auto" px="xl" w="100%" style={{ maxWidth: 460 }}>
+        <Card w="100%" padding="xl" radius="md">
+          <Stack gap="md" hiddenFrom="sm" align="center">
+            <BrandIcon width={200} height={70} />
+          </Stack>
+
+          <Stack gap={4} mb="lg">
+            <Text size="lg" fw={600}>
+              Sign in
             </Text>
-            <Title order={1}>Sign in</Title>
             <Text size="sm" c="dimmed">
-              Operator or underwriter access.
+              Continue to the review queue.
             </Text>
           </Stack>
 
-          <TextInput
-            label="Email"
-            placeholder="you@carrier.example"
-            required
-            value={email}
-            onChange={(e) => setEmail(e.currentTarget.value)}
-          />
-          <PasswordInput
-            label="Password"
-            placeholder="••••••••"
-            required
-            value={password}
-            onChange={(e) => setPassword(e.currentTarget.value)}
-          />
+          <form onSubmit={handleSubmit} noValidate>
+            <Stack gap="sm">
+              <TextInput
+                label="Email"
+                placeholder="you@carrier.example"
+                required
+                value={email}
+                onChange={(e) => setEmail(e.currentTarget.value)}
+              />
+              <PasswordInput
+                label="Password"
+                placeholder="••••••••"
+                required
+                value={password}
+                onChange={(e) => setPassword(e.currentTarget.value)}
+              />
 
-          <Alert color="red" variant="light" icon={<IconAlertCircle size={16} />}>
-            <Text size="sm">Link the login mutation here.</Text>
-          </Alert>
+              {showError && (
+                <Alert color="red" variant="light" icon={<IconAlertCircle size={16} />}>
+                  <Text size="sm">Enter your email and password.</Text>
+                </Alert>
+              )}
 
-          <Button type="submit" fullWidth>
-            Sign in
-          </Button>
-        </Stack>
-      </Card>
-    </Container>
+              <Button type="submit" fullWidth loading={submitting}>
+                Sign in
+              </Button>
+
+              <Text size="xs" c="dimmed" ta="center">
+                Trouble signing in?{' '}
+                <Anchor size="xs" href="#" onClick={(e) => e.preventDefault()}>
+                  Contact support
+                </Anchor>
+              </Text>
+            </Stack>
+          </form>
+        </Card>
+      </Center>
+    </Box>
   )
 }
