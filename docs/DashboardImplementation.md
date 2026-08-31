@@ -69,6 +69,50 @@ Until the endpoints exist, `signIn()` just records the email locally and
 - Replace `AuthContext.signIn`'s hard-coded `{ role: 'underwriter', tenant:
   'demo-carrier' }` with the `GET /api/auth/me` payload.
 
+### Login API contract (how the backend should serve it)
+
+The current mock accepts *any* non-empty email/password. The real endpoint must
+serve that same screen while actually proving identity. Contract:
+
+`POST /api/auth/login`
+
+Request:
+```json
+{
+  "email": "string (trimmed, lower-cased by the server)",
+  "password": "string"
+}
+```
+
+Server-side validation (in this order — each is a `400`, never a `401`):
+1. `email` missing / not a valid-format address (`522^\S+@\S+\.\S+$`-style check,
+   not a hard RFC parse) → `400 invalid_email`.
+2. `password` missing or empty → `400 invalid_password`.
+3. No user matches the email → **`401 invalid_credentials`**.
+4. Password does not verify → **`401 invalid_credentials`** (same body as #3, so
+   the response can't be used to enumerate accounts).
+
+Responses:
+- Success `200`: sets a signed `httpOnly`, `Secure`, `SameSite=Lax` cookie
+  (`homelander_session` JWT, ~30 min, issued against `app.tenant_id` per
+  DATABASE.md). Body can be `204` or a light `{ ok: true }` — no token echoed.
+- `401` → client shows "Invalid email or password" inline (error text identical
+  whether the email is unknown or the password is wrong).
+- `423`/gaurd for locked/deactivated operators → "Contact support".
+
+Rate limiting: per-IP + per-account exponential backoff (e.g. 5 attempts then
+`429` with a `Retry-After`) to blunt credential stuffing.
+
+Follow-ups already specified: `GET /api/auth/me` returns `{ user, tenant, role }`
+to seed the session, and `POST /api/auth/logout` clears the cookie. Any `401`
+from a guarded call ends the session and redirects to `/login?expired=1`.
+
+> Why this matters: the frontend mock deliberately has no password policy in
+> code. Validation, account lookup, hashing/verification and rate limiting all
+> live server-side — the client only renders "valid" vs "invalid". When the
+> endpoint deploys, `LoginPage` swaps the fake 650 ms submit for the real call and
+> nothing else in the UI changes.
+
 ## Session-expired state
 
 A session goes stale either because the cookie expired or a refresh dropped the
