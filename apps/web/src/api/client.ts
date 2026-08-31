@@ -1,3 +1,5 @@
+import type { AuthResponse, LoginPayload, RegisterTenantPayload } from '../types/auth'
+
 /**
  * Minimal API client.
  *
@@ -12,6 +14,7 @@
 // Relative, so the Vite dev proxy handles it and the production build works
 // from whatever origin serves the bundle.
 const BASE_URL = '/api'
+
 
 export class ApiError extends Error {
   // Declared explicitly rather than as a constructor parameter property:
@@ -48,6 +51,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   return (await response.json()) as T
 }
 
+
 export interface HealthResponse {
   status: 'ok'
   service: string
@@ -57,3 +61,26 @@ export interface HealthResponse {
 }
 
 export const getHealth = () => request<HealthResponse>('/health')
+
+// Auth API methods
+export const login = (payload: LoginPayload) =>
+  request<AuthResponse>('/auth/login', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  })
+
+export const registerTenant = (payload: RegisterTenantPayload) =>
+  request<AuthResponse>('/auth/register-tenant', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  })
+
+export const getCurrentUser = () => request<AuthResponse>('/auth/me')
+
+export const logout = () =>
+  request<{ status: 'ok' }>('/auth/logout', {
+    method: 'POST',
+  })
+

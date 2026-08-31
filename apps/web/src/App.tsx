@@ -1,243 +1,166 @@
 import {
-  Alert,
   Anchor,
+  Avatar,
   Badge,
   Box,
+  Button,
   Card,
-  Code,
   Container,
-  Divider,
   Group,
+  Paper,
   SimpleGrid,
   Stack,
   Text,
+  ThemeIcon,
   Title,
 } from '@mantine/core'
-import { IconAlertTriangle } from '@tabler/icons-react'
-import { useQuery } from '@tanstack/react-query'
-import type { CSSProperties, ReactNode } from 'react'
+import {
+  IconActivity,
+  IconBuilding,
+  IconCheck,
+  IconClock,
+  IconFileAnalytics,
+  IconLogout,
+  IconUser,
+} from '@tabler/icons-react'
+import { BrowserRouter, Route, Routes } from 'react-router-dom'
 
-import { getHealth } from './api/client'
+import { ProtectedRoute } from './components/auth/ProtectedRoute'
+import { AuthProvider, useAuth } from './context/AuthContext'
+import { AuthPage } from './pages/AuthPage'
 
-/**
- * Phase 0 landing page.
- *
- * Doubles as the reference implementation of the polling pattern the job
- * pipeline will need — `useQuery` with `refetchInterval` is exactly how the
- * applicant job status view will work.
- */
-
-function Eyebrow({ children }: { children: ReactNode }) {
-  return (
-    <Text className="hl-eyebrow" c="dimmed">
-      {children}
-    </Text>
-  )
-}
-
-function Row({ label, value }: { label: string; value: ReactNode }) {
-  return (
-    <Group justify="space-between" gap="xl" wrap="nowrap">
-      <Text size="sm" c="dimmed">
-        {label}
-      </Text>
-      <Text size="sm" ff="monospace" ta="right">
-        {value}
-      </Text>
-    </Group>
-  )
-}
-
-function Dot({ color, live }: { color: string; live: boolean }) {
-  return (
-    <Box
-      className="hl-dot"
-      data-live={live}
-      style={{ '--hl-dot-color': color } as CSSProperties}
-    />
-  )
-}
-
-function formatUptime(seconds: number): string {
-  if (seconds < 60) return `${seconds.toFixed(1)}s`
-  const minutes = Math.floor(seconds / 60)
-  if (minutes < 60) return `${minutes}m ${Math.round(seconds % 60)}s`
-  return `${Math.floor(minutes / 60)}h ${minutes % 60}m`
-}
-
-const INSTALLED = [
-  {
-    group: 'Frontend',
-    items: ['React 19 + Vite', 'Mantine 9', 'TanStack Query', 'React Router', 'Recharts'],
-  },
-  {
-    group: 'Backend',
-    items: ['FastAPI', 'Pydantic v2', 'SQLAlchemy 2 + Alembic', 'Celery + Redis', 'structlog'],
-  },
-  {
-    group: 'Optional extras',
-    items: [
-      'torch (CPU) + TorchXRayVision',
-      'XGBoost + scikit-learn',
-      'SHAP + Grad-CAM',
-      'spaCy + scispaCy',
-      'MLflow',
-    ],
-  },
-]
-
-const PHASE_ONE = [
-  ['PostgreSQL', 'tenant_id + row-level security'],
-  ['Redis + Celery', 'async inference jobs, Flower dashboard'],
-  ['MinIO', 'evidence packages and heatmap artifacts'],
-  ['Auth', 'JWT session cookie + hashed carrier API keys'],
-  ['Alembic', 'baseline migration and schema'],
-]
-
-export function App() {
-  const { data, error, isPending } = useQuery({
-    queryKey: ['health'],
-    queryFn: getHealth,
-    refetchInterval: 5_000,
-  })
-
-  const online = Boolean(data) && !error
+function MainDashboard() {
+  const { user, tenant, logout } = useAuth()
 
   return (
-    <Box bg="var(--mantine-color-body)" mih="100vh" py={64}>
-      <Container size={680}>
-        <Stack gap={40}>
-          {/* ── Header ─────────────────────────────────────── */}
-          <Stack gap={6}>
-            <Group gap="sm">
-              <Text ff="monospace" fw={700} size="sm" c="clinical.4">
-                ▚
-              </Text>
-              <Text ff="monospace" fw={600} size="sm">
-                HomelanderAI
-              </Text>
-              <Badge size="xs" color="gray" radius="sm">
-                Phase 0
-              </Badge>
-            </Group>
-            <Title order={1}>Development environment</Title>
-            <Text c="dimmed" size="sm">
-              Scaffold only — no pipeline, no models, no database yet. Everything below is
-              installed and ready to build on.
-            </Text>
-          </Stack>
-
-          {/* ── API status ─────────────────────────────────── */}
-          <Stack gap="xs">
-            <Eyebrow>API connection</Eyebrow>
-            <Card>
-              <Group justify="space-between" wrap="nowrap">
-                <Group gap="sm" wrap="nowrap">
-                  <Dot
-                    color={
-                      online
-                        ? 'var(--mantine-color-teal-5)'
-                        : isPending
-                          ? 'var(--mantine-color-yellow-5)'
-                          : 'var(--mantine-color-red-6)'
-                    }
-                    live={online}
-                  />
-                  <Text size="sm" fw={500}>
-                    {online ? 'Server is running' : isPending ? 'Connecting…' : 'Not reachable'}
-                  </Text>
-                </Group>
-                <Code>GET /api/health</Code>
+    <Box bg="var(--mantine-color-body)" mih="100vh" py={32}>
+      <Container size="md">
+        <Stack gap={24}>
+          {/* ── Top Bar / Header ────────────────────────────────────────────── */}
+          <Paper p="md" radius="md" withBorder bg="dark.7">
+            <Group justify="space-between">
+              <Group gap="sm">
+                <ThemeIcon size={32} radius="md" color="clinical.5" variant="filled">
+                  <IconActivity size={18} />
+                </ThemeIcon>
+                <Text ff="monospace" fw={700} size="lg" c="clinical.4">
+                  HomelanderAI
+                </Text>
+                <Badge size="xs" color="clinical" variant="outline">
+                  Portal
+                </Badge>
               </Group>
 
-              {data && (
-                <>
-                  <Divider my="md" />
-                  <Stack gap={8}>
-                    <Row label="Service" value={data.service} />
-                    <Row label="Version" value={data.version} />
-                    <Row label="Environment" value={data.environment} />
-                    <Row label="Uptime" value={formatUptime(data.uptime_seconds)} />
-                  </Stack>
-                  <Text size="xs" c="dimmed" mt="md">
-                    Polling every 5s via TanStack Query — the same pattern the inference job
-                    view will use.
-                  </Text>
-                </>
-              )}
-
-              {error && (
-                <>
-                  <Divider my="md" />
-                  <Alert
-                    color="red"
-                    variant="light"
-                    icon={<IconAlertTriangle size={16} />}
-                    title="Start the API"
-                  >
-                    <Stack gap={6}>
-                      <Text size="sm">{error.message}</Text>
-                      <Code block>
-                        cd apps/api{'\n'}uv run uvicorn app.main:app --reload
-                      </Code>
-                    </Stack>
-                  </Alert>
-                </>
-              )}
-            </Card>
-          </Stack>
-
-          {/* ── Installed ──────────────────────────────────── */}
-          <Stack gap="xs">
-            <Eyebrow>Installed</Eyebrow>
-            <SimpleGrid cols={{ base: 1, sm: 3 }} spacing="md">
-              {INSTALLED.map(({ group, items }) => (
-                <Card key={group} padding="md">
-                  <Text size="xs" fw={600} mb={8}>
-                    {group}
-                  </Text>
-                  <Stack gap={4}>
-                    {items.map((item) => (
-                      <Text key={item} size="xs" c="dimmed" ff="monospace">
-                        {item}
-                      </Text>
-                    ))}
-                  </Stack>
-                </Card>
-              ))}
-            </SimpleGrid>
-            <Text size="xs" c="dimmed">
-              The optional extras are declared but not installed by default. Run{' '}
-              <Code>uv sync --extra ml</Code> only if you are working on models.
-            </Text>
-          </Stack>
-
-          {/* ── Next phase ─────────────────────────────────── */}
-          <Stack gap="xs">
-            <Eyebrow>Wired up next</Eyebrow>
-            <Card padding="md">
-              <Stack gap={10}>
-                {PHASE_ONE.map(([name, detail]) => (
-                  <Group key={name} justify="space-between" gap="xl" wrap="nowrap">
-                    <Group gap="sm" wrap="nowrap">
-                      <Dot color="var(--mantine-color-dark-3)" live={false} />
-                      <Text size="sm" ff="monospace">
-                        {name}
-                      </Text>
-                    </Group>
-                    <Text size="xs" c="dimmed" ta="right">
-                      {detail}
+              <Group gap="md">
+                <Group gap="xs">
+                  <Avatar color="clinical" radius="xl" size="sm">
+                    <IconUser size={14} />
+                  </Avatar>
+                  <Stack gap={0}>
+                    <Text fw={600} size="xs">
+                      {user?.fullName ?? 'Underwriter'}
                     </Text>
-                  </Group>
-                ))}
-              </Stack>
-            </Card>
-          </Stack>
 
-          {/* ── Footer ─────────────────────────────────────── */}
+                    <Text size="10px" c="dimmed">
+                      {tenant?.name ?? 'Carrier'} ({user?.role ?? 'Role'})
+                    </Text>
+                  </Stack>
+                </Group>
+
+                <Button
+                  variant="subtle"
+                  color="gray"
+                  size="xs"
+                  leftSection={<IconLogout size={14} />}
+                  onClick={logout}
+                >
+                  Sign Out
+                </Button>
+              </Group>
+            </Group>
+          </Paper>
+
+          {/* ── Basic Dashboard Welcome Card ────────────────────────────────── */}
+          <Card shadow="sm" radius="md" p="xl" withBorder bg="dark.8">
+            <Stack gap="md">
+              <Group justify="space-between" align="flex-start">
+                <Stack gap={4}>
+                  <Title order={2} size="h2">
+                    Welcome back, {user?.fullName ?? 'Underwriter'}
+                  </Title>
+                  <Text size="sm" c="dimmed">
+                    Signed in to <strong>{tenant?.name ?? 'Carrier Organization'}</strong> decision workspace.
+                  </Text>
+                </Stack>
+                <Badge size="sm" color="teal" variant="light">
+                  Session Active
+                </Badge>
+              </Group>
+
+              {/* Baseline Metric Overview */}
+              <SimpleGrid cols={{ base: 1, sm: 3 }} spacing="md" mt="sm">
+                <Paper p="md" radius="md" withBorder bg="dark.7">
+                  <Group justify="space-between" mb={4}>
+                    <Text size="xs" c="dimmed" fw={600} tt="uppercase">
+                      Active Cases
+                    </Text>
+                    <IconFileAnalytics size={16} color="var(--mantine-color-clinical-4)" />
+                  </Group>
+                  <Text fw={700} size="xl">
+                    0
+                  </Text>
+                  <Text size="xs" c="dimmed" mt={2}>
+                    Submitted evidence packages
+                  </Text>
+                </Paper>
+
+                <Paper p="md" radius="md" withBorder bg="dark.7">
+                  <Group justify="space-between" mb={4}>
+                    <Text size="xs" c="dimmed" fw={600} tt="uppercase">
+                      Pending Review
+                    </Text>
+                    <IconClock size={16} color="var(--mantine-color-yellow-5)" />
+                  </Group>
+                  <Text fw={700} size="xl">
+                    0
+                  </Text>
+                  <Text size="xs" c="dimmed" mt={2}>
+                    Awaiting human confirmation
+                  </Text>
+                </Paper>
+
+                <Paper p="md" radius="md" withBorder bg="dark.7">
+                  <Group justify="space-between" mb={4}>
+                    <Text size="xs" c="dimmed" fw={600} tt="uppercase">
+                      System Status
+                    </Text>
+                    <IconCheck size={16} color="var(--mantine-color-teal-4)" />
+                  </Group>
+                  <Text fw={700} size="sm" c="teal.3">
+                    Operational
+                  </Text>
+                  <Text size="xs" c="dimmed" mt={2}>
+                    Decision-support pipeline ready
+                  </Text>
+                </Paper>
+              </SimpleGrid>
+
+              {/* Placeholder Note */}
+              <Paper p="sm" radius="sm" bg="dark.9" withBorder style={{ borderStyle: 'dashed' }} mt="xs">
+                <Group gap="xs">
+                  <IconBuilding size={16} color="var(--mantine-color-clinical-4)" />
+                  <Text size="xs" c="dimmed">
+                    Underwriting case management, DICOM imaging viewer, and model risk scoring features will be enabled in upcoming phases.
+                  </Text>
+                </Group>
+              </Paper>
+            </Stack>
+          </Card>
+
+          {/* ── Footer ──────────────────────────────────────────────────────── */}
           <Group justify="space-between">
             <Text size="xs" c="dimmed">
-              Research software. Not a medical device.
+              HomelanderAI • Research software. Not a medical device.
             </Text>
             <Anchor href="/docs" target="_blank" size="xs" ff="monospace">
               /docs →
@@ -246,5 +169,25 @@ export function App() {
         </Stack>
       </Container>
     </Box>
+  )
+}
+
+export function App() {
+  return (
+    <BrowserRouter>
+      <AuthProvider>
+        <Routes>
+          <Route path="/auth" element={<AuthPage />} />
+          <Route
+            path="/"
+            element={
+              <ProtectedRoute>
+                <MainDashboard />
+              </ProtectedRoute>
+            }
+          />
+        </Routes>
+      </AuthProvider>
+    </BrowserRouter>
   )
 }
