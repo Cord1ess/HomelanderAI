@@ -19,14 +19,16 @@ import {
   IconChevronsRight,
   IconFilePlus,
   IconLayoutDashboard,
+  IconLogout,
   IconMoon,
   IconSun,
   IconUser,
 } from '@tabler/icons-react'
 import type { JSX } from 'react'
-import { NavLink as RouterLink, Outlet, useLocation } from 'react-router-dom'
+import { NavLink as RouterLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
 
 import { BrandIcon } from '../../components/BrandIcon'
+import { useAuth } from '../../auth/AuthContext'
 
 /**
  * ERP-style shell for the authenticated dashboard.
@@ -124,11 +126,7 @@ export function AppLayout() {
               label={item.label}
               icon={item.icon}
               collapsed={!navOpened}
-              active={
-                item.to === '/'
-                  ? location.pathname === '/'
-                  : location.pathname.startsWith(item.to)
-              }
+              active={location.pathname.startsWith(item.to)}
             />
           ))}
         </Box>
@@ -142,13 +140,13 @@ export function AppLayout() {
 }
 
 const NAV: { to: string; label: string; icon: () => JSX.Element }[] = [
-  { to: '/', label: 'Queue', icon: () => <IconLayoutDashboard size={18} /> },
+  { to: '/queue', label: 'Queue', icon: () => <IconLayoutDashboard size={18} /> },
   { to: '/applications/new', label: 'New application', icon: () => <IconFilePlus size={18} /> },
   { to: '/notifications', label: 'Notifications', icon: () => <IconBell size={18} /> },
 ]
 
 function routeFor(path: string) {
-  if (path === '/') return { title: 'Review queue' }
+  if (path === '/queue') return { title: 'Review queue' }
   if (path.startsWith('/applications/new')) return { title: 'New application' }
   if (path.startsWith('/applications/')) return { title: 'Underwriting review' }
   if (path.startsWith('/notifications')) return { title: 'Notifications' }
@@ -201,6 +199,8 @@ function NavItem({
 
 function UserMenu() {
   const { colorScheme, toggleColorScheme } = useMantineColorScheme()
+  const { user, signOut } = useAuth()
+  const navigate = useNavigate()
 
   return (
     <Menu position="bottom-end" withinPortal>
@@ -214,7 +214,7 @@ function UserMenu() {
       <Menu.Dropdown miw={180}>
         <Menu.Label>signed in as</Menu.Label>
         <Menu.Item leftSection={<IconUser size={14} />}>
-          reviewer@homelander.ai
+          {user?.email ?? 'unknown'}
         </Menu.Item>
         <Menu.Divider />
         <Menu.Item
@@ -230,7 +230,16 @@ function UserMenu() {
           Toggle theme
         </Menu.Item>
         <Menu.Divider />
-        <Menu.Label>TODO: wired to POST /api/auth/logout</Menu.Label>
+        <Menu.Item
+          color="red"
+          leftSection={<IconLogout size={14} />}
+          onClick={() => {
+            signOut()
+            navigate('/')
+          }}
+        >
+          Sign out
+        </Menu.Item>
       </Menu.Dropdown>
     </Menu>
   )

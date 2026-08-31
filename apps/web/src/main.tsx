@@ -12,6 +12,7 @@ import '@mantine/dropzone/styles.css'
 import './index.css'
 
 import { App } from './App'
+import { AuthProvider } from './auth/AuthContext'
 import { theme } from './theme'
 
 const queryClient = new QueryClient({
@@ -32,9 +33,11 @@ createRoot(root).render(
     <MantineProvider theme={theme} defaultColorScheme="dark">
       <QueryClientProvider client={queryClient}>
         <Notifications position="top-right" />
-        <BrowserRouter>
-          <App />
-        </BrowserRouter>
+        <AuthProvider>
+          <BrowserRouter>
+            <App />
+          </BrowserRouter>
+        </AuthProvider>
       </QueryClientProvider>
     </MantineProvider>
   </StrictMode>,
