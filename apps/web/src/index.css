@@ -262,3 +262,110 @@ body {
   border-color: rgba(75, 153, 149, 0.45) !important;
   box-shadow: 0 18px 40px -22px rgba(0, 0, 0, 0.7);
 }
+
+/* ── Neo-brutalist public pages ────────────────────────────────────── */
+
+:root {
+  --neo-bg: #f3f0e7;
+  --neo-card: #fffdf7;
+  --neo-ink: #101010;
+  --neo-line: #101010;
+  --neo-shadow: #101010;
+  --neo-accent: #2f7f7b;
+  --neo-accent-ink: #ffffff;
+}
+
+.neo-shell {
+  min-height: 100vh;
+  background: var(--neo-bg);
+  color: var(--neo-ink);
+}
+
+/* Chunky bordered cards — flat, hard offset shadow, no blur. */
+.neo-card {
+  background: var(--neo-card);
+  border: 3px solid var(--neo-line);
+  box-shadow: 6px 6px 0 var(--neo-shadow);
+}
+
+.neo-card--teal {
+  background: var(--neo-accent);
+  color: var(--neo-accent-ink);
+}
+
+.neo-card--yellow {
+  background: #ffe135;
+}
+
+/* Circular brand mark — the logo plate is already light; give it a hard,
+   neo-brutalist ring + offset shadow instead of the old soft glow. */
+.neo-brand-chip {
+  border-radius: 999px;
+  background: #fff;
+  border: 3px solid var(--neo-line);
+  box-shadow: 5px 5px 0 var(--neo-accent);
+  overflow: hidden;
+}
+
+/* Chunky inline chip / tag. */
+.neo-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.3rem 0.75rem;
+  border: 2px solid var(--neo-line);
+  background: var(--neo-card);
+  box-shadow: 3px 3px 0 var(--neo-shadow);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  font-size: 0.7rem;
+}
+
+/* Hard shadow press-down for interactive elements. */
+.neo-press {
+  transition: transform 0.06s ease, box-shadow 0.06s ease;
+}
+
+.neo-press:hover {
+  transform: translate(-2px, -2px);
+  box-shadow: 8px 8px 0 var(--neo-shadow);
+}
+
+.neo-press:active {
+  transform: translate(2px, 2px);
+  box-shadow: 2px 2px 0 var(--neo-shadow);
+}
+
+/* Hover lift for feature cards. */
+.neo-lift {
+  transition: transform 0.12s ease, box-shadow 0.12s ease;
+}
+
+.neo-lift:hover {
+  transform: translate(-3px, -3px);
+  box-shadow: 10px 10px 0 var(--neo-ink);
+}
+
+/* Neo headline display type. */
+.neo-display {
+  font-weight: 800;
+  letter-spacing: -0.03em;
+  line-height: 1.02;
+}
+
+.neo-underline {
+  text-decoration: underline;
+  text-decoration-thickness: 6px;
+  text-decoration-color: var(--neo-accent);
+  text-underline-offset: 6px;
+}
+
+/* Marquee / ticker strip inside a bordered, hard-shadow band. */
+.neo-ticker {
+  border-top: 3px solid var(--neo-line);
+  border-bottom: 3px solid var(--neo-line);
+  background: var(--neo-accent);
+  color: var(--neo-accent-ink);
+}
+
