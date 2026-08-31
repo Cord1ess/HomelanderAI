@@ -136,7 +136,9 @@ CREATE INDEX idx_api_keys_tenant_id ON api_keys(tenant_id);
 CREATE TABLE applicants (
     id             UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     tenant_id      UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
-    external_ref   VARCHAR(100) NOT NULL,
+    external_ref   VARCHAR(100) NOT NULL,   -- auto-assigned from applicants_ref_seq (see trigger below)
+    name           VARCHAR(150),            -- operator-entered; carrier reference, not from file header
+    phone          VARCHAR(30),             -- operator-entered; carrier reference, not from file header
     date_of_birth  DATE,
     sex            VARCHAR(20),
     height_cm      NUMERIC(5,2),     -- feeds the XGBoost (tabular) BMI feature
@@ -145,6 +147,24 @@ CREATE TABLE applicants (
     created_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
     CONSTRAINT uq_applicants_tenant_external_ref UNIQUE (tenant_id, external_ref)
 );
+
+-- Per-tenant-diagnostic reference, generated automatically by the database at
+-- INSERT time: HL-<seq>. Guaranteed monotonic and globally unique, so it works
+-- without the client ever typing or guessing an id.
+CREATE SEQUENCE applicants_ref_seq;
+
+CREATE OR REPLACE FUNCTION applicants_gen_ref() RETURNS trigger AS $$
+BEGIN
+    NEW.external_ref := 'HL-' || lpad(nextval('applicants_ref_seq')::text, 6, '0');
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER trg_applicants_gen_ref
+    BEFORE INSERT ON applicants
+    FOR EACH ROW
+    WHEN (NEW.external_ref IS NULL OR NEW.external_ref = '')
+    EXECUTE FUNCTION applicants_gen_ref();
 
 CREATE INDEX idx_applicants_tenant_id ON applicants(tenant_id);
 
