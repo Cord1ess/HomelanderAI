@@ -205,6 +205,48 @@ For underwriting the question is not "does this person have TB" — it is
 **"is there an undisclosed condition that changes the risk"**, and that is a
 screening question a human then resolves.
 
+#### Resolved — Route B, and the diagnosis above was half wrong
+
+Measured on our own code, September 2026:
+
+| Scoring | Data | AUC |
+|---|---|---|
+| Hand-weighted composite | Kaggle samples (source-confounded) | 0.450 |
+| Hand-weighted composite | Shenzhen (single source) | **0.772** |
+| Logistic regression on the same 18 findings | Shenzhen, 5-fold CV | **0.877 ± 0.037** |
+
+**The model was never the main problem — the data was.** Identical code scores
+0.450 on the confounded sample set and 0.772 on clean single-source films. Row 1
+was measuring the scanner; rows 2 and 3 measure lungs.
+
+This also corrects the assessment above: Route B was rated *"honest but weak on
+its own"*, and that judgement was formed on the confounded data. With learned
+rather than hand-picked weights it reaches 0.877, inside the published range for
+this task. **No fine-tuning was needed**, so Route A stays on the shelf and
+Route C's API dependency is avoided entirely.
+
+Worth noting the expert feature list was part of the problem. `TB_SUGGESTIVE`
+was chosen by hand and included Fibrosis and Consolidation; the learned model
+puts its largest weights on Lung Lesion, Pneumothorax and Nodule, and pushes
+Fibrosis and Atelectasis *negative*. Expert intuition cost roughly 0.105 AUC.
+
+**Two caveats that must travel with the number:**
+
+- **It is internal.** Five-fold cross-validation on one hospital. Montgomery
+  remains undownloadable, so there is no external number yet. Published TB work
+  routinely drops sharply on external data — one study went 85% to 65%. Treat
+  0.877 as an upper bound.
+- **Two learned weights are clinically odd.** Fracture pushes *toward* TB and
+  Fibrosis pushes *away*, and neither matches clinical reasoning — upper-lobe
+  fibrosis is classically post-TB. That suggests the model is partly using
+  correlations that are real in Shenzhen but may not transfer. It is a reason to
+  get the external test set, and an honest limitation for the write-up.
+
+The trained weights live in `apps/api/app/arms/tb_xray_model.json` as plain
+JSON — 18 coefficients, an intercept and the scaler's mean/scale. Reviewable in
+a diff, and scoring is one dot product, so scikit-learn is not needed at
+runtime.
+
 ### Deferred arms
 
 | Arm | Why deferred |
@@ -279,6 +321,52 @@ This becomes real once §7's learned fusion layer exists: SHAP over Model L is m
 ---
 
 ## 9. Data Strategy
+
+### TB training data — which datasets, and why not Kaggle
+
+**Use Shenzhen and Montgomery. Do not train on the Kaggle TB database.**
+
+The Kaggle "Tuberculosis (TB) Chest X-ray Database" is the obvious choice and
+the wrong one. Its own documentation says it was assembled from three sources:
+
+| Source | TB | Normal |
+|---|---|---|
+| NLM | 336 | 324 |
+| Belarus | 169 | 137 |
+| RSNA | 195 | **3,039** |
+
+87% of its Normal images come from RSNA while its TB images mostly do not, so
+"TB vs Normal" is partly "which hospital's scanner". We measured the fingerprint
+on the 20 samples shipped with the reference project: TB images stored as
+grayscale at mean brightness 141, Normal images stored as RGB at mean 123 with
+50% more contrast spread. The classes differ in *file encoding* before anyone
+looks at a lung.
+
+A model trained on that will report 95-99% accuracy and be measuring the
+scanner. That is worse than a model that obviously fails, because it passes a
+demo and collapses on real data. The literature calls this shortcut learning and
+names brightness and contrast as the usual culprits.
+
+There is also a leakage trap: Kaggle's "NLM" portion appears to *be* Shenzhen
+(both are exactly 336 TB images), so training on Shenzhen and testing on Kaggle
+would be testing on the training set.
+
+**What we use instead**
+
+| Dataset | Size | Role |
+|---|---|---|
+| Shenzhen | 662 (336 TB / 326 normal) | Training. One hospital, near-balanced, so no source shortcut exists |
+| Montgomery | 138 (58 TB / 80 normal) | External test. Different country, equipment and decade |
+
+`scripts/fetch_tb_data.py` downloads both. Shenzhen comes from a Hugging Face
+mirror as individual PNGs fetched in parallel — the original NLM host serves at
+~0.16 MB/s, a 13-hour download, and aggressively rate-limits. **Montgomery is
+only on that slow host and is currently not obtainable**; until it lands,
+validation numbers are internal (cross-validated on Shenzhen), and must be
+labelled as such rather than passed off as external.
+
+Never report a Kaggle accuracy figure as the headline. If a number above ~95%
+appears, treat it as evidence of a shortcut, not success.
 
 ### Intake and PII minimisation — LOCKED
 

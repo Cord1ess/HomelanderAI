@@ -7,6 +7,42 @@ below is justified against it.
 
 ---
 
+## Status — 2026-09-01
+
+| Piece | State |
+|---|---|
+| `scoring.py` — rules, CRS, tiers | **Done**, 18 tests |
+| `intake.py` — DICOM de-identification, hashing | **Done**, 17 tests |
+| `arms/` — registry + TB arm + learned scorer + Grad-CAM | **Done**, 19 tests |
+| `pipeline.py` — evidence in, score out | **Done**, 11 tests |
+| `audit.py` — hash chain + verifier | **Done**, 12 tests |
+| TB model — trained and exported | **Done**, AUC 0.877 (internal) |
+| Database persistence | **Blocked** — schema changes not landed, no Postgres available |
+| HTTP endpoints | **Blocked** — dashboard track, and needs persistence |
+
+77 tests passing. Everything above runs without a database by design, so the
+blocked half is a thin persistence layer over finished logic.
+
+**Model status.** Logistic regression over TorchXRayVision's 18 findings,
+trained on Shenzhen. AUC 0.877 (5-fold CV) against 0.772 for the hand-weighted
+composite it replaced. **Internal validation only** — Montgomery is not
+downloadable, so there is no external number. See SPEC §6.
+
+Fast loop while developing (skips model inference, well under a second):
+
+```bash
+uv run pytest tests/test_scoring.py tests/test_intake.py tests/test_audit.py
+```
+
+Reproduce the model (features cache after the first run, then it is instant):
+
+```bash
+python scripts/fetch_tb_data.py shenzhen
+python scripts/tb_experiment.py
+```
+
+---
+
 ## What Phase 1 delivers
 
 An application submitted through the intake form is de-identified, stored,

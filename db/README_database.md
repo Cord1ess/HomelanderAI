@@ -1,5 +1,11 @@
 # HomelanderAI — Database
 
+## v2 update
+
+Per `DATABASE.md`: added auth columns (`password_hash`/Argon2id, `is_active`), `tenant_id` + Row-Level Security on every tenant-owned table, intake form fields (`declared_history` JSONB, coverage fields), model output detail (`sub_scores.details`, `model_runs.error_message`), audit payload + DB-enforced append-only triggers, evidence integrity fields (`content_hash`, `deidentified_at`), scoring provenance (`method`, `tier_thresholds`), and `processing_started_at` for stuck-job recovery. Added `db/seed.sql` for local dev login. See `DATABASE.md` for full rationale.
+
+Applied directly to `schema.sql` rather than as Alembic migrations, since no live data exists yet — migrations start once a real database is running.
+
 PostgreSQL 16 schema for the HomelanderAI decision-support platform. This is the database layer for the project described in the main [README.md](./README.md) and [SaaS Specification](./Software_project_proposal.pdf).
 
 ## Files

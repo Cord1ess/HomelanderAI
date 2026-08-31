@@ -128,6 +128,7 @@ apps/
 docs/
   SPEC.md               working specification — scope, decisions, roadmap
   DESIGN_POLICY.md      how we implement — read before writing code
+  TB.md                 how TB screening works, start to finish
   DATABASE.md           schema changes needed (handoff)
   DASHBOARD.md          screens, intake form, API contract (handoff)
   PHASE1_PLAN.md        TB screening + scoring, in three commits
@@ -146,9 +147,18 @@ The ML libraries are heavy, so they're optional extras. Skip them unless you're 
 
 ```bash
 cd apps/api
-uv sync --extra ml       # torch (CPU), TorchXRayVision, XGBoost, SHAP, Grad-CAM, MLflow  (~2-3 GB)
-uv sync --extra nlp      # spaCy, scispaCy, negspaCy, transformers                        (~1 GB)
-uv sync --all-extras     # everything
+uv sync --extra vision   # torch (CPU), TorchXRayVision, Grad-CAM, scikit-learn  (~2-3 GB)
+```
+
+The API runs fine without it — the chest X-ray arm reports itself unavailable
+and the pipeline degrades rather than crashing, so nobody working on the
+dashboard or the database needs a multi-gigabyte download.
+
+Then fetch the training data (~3.6 GB, gitignored):
+
+```bash
+python scripts/fetch_tb_data.py          # Shenzhen + Montgomery
+python scripts/tb_experiment.py          # does the model actually detect TB?
 ```
 
 **Torch is pinned to CPU wheels** via a dedicated index in `pyproject.toml` — much smaller, and correct for the local-compute constraint. If you have an NVIDIA GPU, change that index URL to the matching `cuXXX` variant and re-sync.
