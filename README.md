@@ -128,6 +128,7 @@ apps/
 docs/
   SPEC.md               working specification — scope, decisions, roadmap
   DESIGN_POLICY.md      how we implement — read before writing code
+  TB.md                 how TB screening works, start to finish
   DATABASE.md           schema changes needed (handoff)
   DASHBOARD.md          screens, intake form, API contract (handoff)
   PHASE1_PLAN.md        TB screening + scoring, in three commits
