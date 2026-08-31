@@ -1,4 +1,5 @@
 import {
+  ActionIcon,
   Alert,
   Box,
   Button,
@@ -16,7 +17,7 @@ import {
 } from '@mantine/core'
 import { Dropzone, IMAGE_MIME_TYPE } from '@mantine/dropzone'
 import { useForm } from '@mantine/form'
-import { IconAlertCircle, IconCircleCheck, IconFileUpload } from '@tabler/icons-react'
+import { IconAlertCircle, IconCircleCheck, IconFileUpload, IconX } from '@tabler/icons-react'
 import { useState } from 'react'
 
 import { Section } from './components'
@@ -30,24 +31,23 @@ import { Section } from './components'
  * The form is **model-driven** (see docs/INTAKE_FORM.md): the operator picks
  * which model arms apply from a vertical checkbox menu ("click all that
  * applicable"). Each selected model pops out a panel with:
- *   - an instruction telling the operator which report/upload to attach, and
- *   - that model's risk-factor fields.
+ *   - its own file upload (which report to attach), and
+ *   - its risk-factor fields.
  *
- * Applicant + coverage stay model-agnostic at the top; evidence is a single
- * dropzone that each model's panel points at.
+ * A **face photo** for identification is captured in the Applicant section. It
+ * is stored against the applicant and is NEVER a model input.
  *
- * Section completeness is derived from form state:
- *   1 · Applicant   → reference set
- *   2 · Coverage    → type + amount set
- *   3 · Models      → at least one model selected
- *   4 · Evidence    → every selected model's required upload is attached
+ * Sections: 1 · Applicant (incl. face photo) · 2 · Coverage · 3 · Models.
  *
- * Submit stays disabled until applicant reference + coverage type/amount +
- * ≥1 model selected + all required uploads present.
+ * Submit is disabled until: face photo + reference set (1), coverage
+ * type/amount set (2), ≥1 model selected and every selected model's required
+ * report is attached (3).
  *
  * TODO: `POST /api/applications` as `multipart/form-data` in one request,
  * posting `models_requested` + the per-model `declared_history` JSONB shape in
- * DATABASE.md §C; real upload progress; confirmation persists after success.
+ * DATABASE.md §C, plus uploads (one per arm, `model_arm_id`) and the face photo
+ * (stored on `applicants.face_photo_path`, not an evidence file); real upload
+ * progress; confirmation persists after success.
  */
 
 type Scalar = string | boolean | number | string[] | null
@@ -65,7 +65,7 @@ interface ModelDef {
   id: string
   label: string
   modality: string
-  upload: { category: string; extension: string; instruction: string } | null
+  upload: { category: string; accept: string[]; instruction: string } | null
   fields: SimpleField[]
 }
 
@@ -96,7 +96,7 @@ const MODELS: ModelDef[] = [
     modality: 'TorchXRayVision (DenseNet)',
     upload: {
       category: 'Chest X-ray',
-      extension: '.dcm, .png, .jpg',
+      accept: ['.dcm', '.png', '.jpg', '.jpeg'],
       instruction: 'Chest X-ray — .dcm, .png, or .jpg',
     },
     fields: [],
@@ -107,7 +107,7 @@ const MODELS: ModelDef[] = [
     modality: 'Breast · mammography',
     upload: {
       category: 'Mammogram',
-      extension: '.dcm',
+      accept: ['.dcm'],
       instruction: 'Mammogram, 4 views — .dcm',
     },
     fields: [
@@ -128,7 +128,7 @@ const MODELS: ModelDef[] = [
     modality: 'Dermoscopy · skin',
     upload: {
       category: 'Lesion photo',
-      extension: '.png, .jpg',
+      accept: ['.png', '.jpg', '.jpeg'],
       instruction: 'Lesion photograph — .png or .jpg',
     },
     fields: [
@@ -149,7 +149,7 @@ const MODELS: ModelDef[] = [
     modality: 'Retinopathy · fundus',
     upload: {
       category: 'Retinal photo',
-      extension: '.png, .jpg, .dcm',
+      accept: ['.png', '.jpg', '.jpeg', '.dcm'],
       instruction: 'Retinal / fundus photo — .png, .jpg, or .dcm',
     },
     fields: [
@@ -170,7 +170,7 @@ const MODELS: ModelDef[] = [
     modality: 'Clinical NLP · EHR',
     upload: {
       category: 'Clinical note',
-      extension: '.pdf, .txt',
+      accept: ['.pdf', '.txt'],
       instruction: 'Clinical note / physician report — .pdf or .txt',
     },
     fields: [],
@@ -195,7 +195,7 @@ const MODELS: ModelDef[] = [
     modality: '3D brain · MONAI',
     upload: {
       category: 'MRI scan',
-      extension: '.dcm',
+      accept: ['.dcm'],
       instruction: 'Brain MRI — .dcm',
     },
     fields: [
@@ -206,17 +206,8 @@ const MODELS: ModelDef[] = [
   },
 ]
 
-const FILE_TYPES: string[] = [
-  'Chest X-ray',
-  'Mammogram',
-  'Retinal photo',
-  'Lesion photo',
-  'Clinical note',
-  'Lab report',
-  'MRI scan',
-]
-
 const MAX_FILE_BYTES = 50 * 1024 * 1024
+const MAX_FACE_BYTES = 10 * 1024 * 1024
 
 interface IntakeForm {
   reference: string
@@ -260,8 +251,10 @@ export function IntakePage() {
     },
   })
 
-  const [files, setFiles] = useState<EvidenceFile[]>([])
-  const [rejectNote, setRejectNote] = useState<string | null>(null)
+  const [modelFiles, setModelFiles] = useState<Record<string, EvidenceFile[]>>({})
+  const [facePhoto, setFacePhoto] = useState<File | null>(null)
+  const [facePreview, setFacePreview] = useState<string | null>(null)
+  const [rejectNote, setRejectNote] = useState<Record<string, string | null>>({})
   const [submitting, setSubmitting] = useState(false)
   const [submitted, setSubmitted] = useState(false)
 
@@ -292,55 +285,75 @@ export function IntakePage() {
 
   const selected = MODELS.filter((m) => form.values.selectedModels.includes(m.id))
 
-  const onDrop = (dropped: File[]) => {
-    setRejectNote(null)
-    const accepted: EvidenceFile[] = dropped.map((f) => ({
+  const addModelFiles = (modelId: string, dropped: File[], fileType: string) => {
+    setRejectNote((p) => ({ ...p, [modelId]: null }))
+    const added: EvidenceFile[] = dropped.map((f) => ({
       id: crypto.randomUUID(),
       name: f.name,
       size: f.size,
-      fileType: 'Chest X-ray',
+      fileType,
     }))
-    setFiles((prev) => [...prev, ...accepted])
+    setModelFiles((prev) => ({ ...prev, [modelId]: [...(prev[modelId] ?? []), ...added] }))
   }
 
-  const onReject = (rejects: { file: File }[]) => {
+  const addModelReject = (modelId: string, rejects: { file: File }[]) => {
     const tooBig = rejects.some((r) => r.file.size > MAX_FILE_BYTES)
-    setRejectNote(
-      tooBig
-        ? 'One or more files were rejected — files over 50 MB are not accepted.'
-        : 'One or more files were rejected. Check the accepted types for each model.',
-    )
+    setRejectNote((p) => ({
+      ...p,
+      [modelId]: tooBig
+        ? 'File rejected — the 50 MB limit was exceeded.'
+        : 'File rejected — check the accepted type for this model.',
+    }))
   }
 
-  const removeFile = (id: string) => setFiles((prev) => prev.filter((f) => f.id !== id))
+  const removeModelFile = (modelId: string, id: string) =>
+    setModelFiles((prev) => ({
+      ...prev,
+      [modelId]: (prev[modelId] ?? []).filter((f) => f.id !== id),
+    }))
 
-  const hasUploadFor = (model: ModelDef) =>
-    model.upload === null ||
-    files.some((f) => f.fileType === model.upload!.category)
+  const setFace = (file: File | null) => {
+    if (facePreview) URL.revokeObjectURL(facePreview)
+    setFacePhoto(file)
+    setFacePreview(file ? URL.createObjectURL(file) : null)
+  }
 
-  const allRequiredUploadsPresent = () =>
-    selected.length > 0 && selected.every(hasUploadFor)
+  const addFacePhoto = (dropped: File[]) => {
+    setRejectNote((p) => ({ ...p, face: null }))
+    if (dropped.length === 0) return
+    setFace(dropped[0])
+  }
+
+  const addFaceReject = (rejects: { file: File }[]) => {
+    const tooBig = rejects.some((r) => r.file.size > MAX_FACE_BYTES)
+    setRejectNote((p) => ({
+      ...p,
+      face: tooBig
+        ? 'Face photo rejected — the 10 MB limit was exceeded.'
+        : 'Face photo rejected — use a .png or .jpg image.',
+    }))
+  }
+
+  const modelHasUpload = (m: ModelDef) => (modelFiles[m.id] ?? []).length > 0
+
+  const modelsSectionComplete =
+    selected.length > 0 && selected.every((m) => m.upload === null || modelHasUpload(m))
 
   const sections = [
-    Boolean(form.values.reference.trim()),
+    Boolean(form.values.reference.trim()) && Boolean(facePhoto),
     Boolean(form.values.coverageType) && (form.values.coverageAmount ?? 0) > 0,
-    form.values.selectedModels.length > 0,
-    allRequiredUploadsPresent(),
+    modelsSectionComplete,
   ]
   const completeCount = sections.filter(Boolean).length
 
-  const canSubmit =
-    Boolean(form.values.reference.trim()) &&
-    Boolean(form.values.coverageType) &&
-    (form.values.coverageAmount ?? 0) > 0 &&
-    form.values.selectedModels.length > 0 &&
-    allRequiredUploadsPresent()
+  const canSubmit = sections[0] && sections[1] && modelsSectionComplete
 
   const handleSubmit = () => {
     if (!canSubmit) return
     setSubmitting(true)
     // TODO: POST /api/applications (multipart) with models_requested +
-    // per-model declared_history (DATABASE.md §C), then navigate to the queue.
+    // per-model declared_history (DATABASE.md §C), uploads keyed by
+    // model_arm_id, and the face photo stored on applicants.face_photo_path.
     window.setTimeout(() => {
       setSubmitting(false)
       setSubmitted(true)
@@ -376,7 +389,7 @@ export function IntakePage() {
       >
         <Group justify="space-between">
           <Text size="xs" c="dimmed">
-            {completeCount} of 4 sections complete
+            {completeCount} of 3 sections complete
           </Text>
           <Text size="xs" fw={600} c={canSubmit ? 'teal' : 'dimmed'}>
             {canSubmit ? 'Ready to submit' : 'Not ready to submit'}
@@ -393,7 +406,8 @@ export function IntakePage() {
         </Text>
         <Text size="sm" c="dimmed">
           Fill this out while the client is in front of you. Pick the models that
-          apply, then follow each one’s upload instruction. One page, one submit.
+          apply, attach each one’s report in its panel, and capture the client’s
+          face photo. One page, one submit.
         </Text>
       </div>
 
@@ -416,6 +430,15 @@ export function IntakePage() {
             {...form.getInputProps('sex')}
           />
         </Group>
+
+        <FacePhotoUpload
+          file={facePhoto}
+          preview={facePreview}
+          note={rejectNote.face}
+          onDrop={addFacePhoto}
+          onReject={addFaceReject}
+          onRemove={() => setFace(null)}
+        />
       </Section>
 
       <Divider my="xs" />
@@ -453,8 +476,8 @@ export function IntakePage() {
       {/* ── Section 3 · Models ─────────────────────────────────── */}
       <Section n="3" title="Models" complete={sections[2]}>
         <Text size="sm" c="dimmed">
-          Click all that apply. Each model tells you which report to submit and
-          which questions it needs answered.
+          Click all that apply. Each model’s panel shows which report to upload
+          and which questions it needs answered.
         </Text>
 
         <Group align="flex-start" wrap="nowrap" gap="lg">
@@ -493,27 +516,23 @@ export function IntakePage() {
             )}
             {selected.map((m) => (
               <Paper key={m.id} bd="1px solid var(--mantine-color-default-border)" p="md">
-                <Group justify="space-between" mb="sm">
-                  <Text fw={600} size="sm">
-                    {m.label}
-                    <Text span c="dimmed" fw={400}>
-                      {' '}
-                      · {m.modality}
-                    </Text>
+                <Text fw={600} size="sm" mb="sm">
+                  {m.label}
+                  <Text span c="dimmed" fw={400}>
+                    {' '}
+                    · {m.modality}
                   </Text>
-                </Group>
+                </Text>
 
                 {m.upload ? (
-                  <Alert
-                    icon={<IconFileUpload size={16} />}
-                    color="clinical"
-                    variant="light"
-                    mb="md"
-                  >
-                    <Text size="sm">
-                      Please submit: <Text span fw={600}>{m.upload.instruction}</Text>
-                    </Text>
-                  </Alert>
+                  <PanelUpload
+                    model={m}
+                    files={modelFiles[m.id] ?? []}
+                    note={rejectNote[m.id]}
+                    onDrop={(files) => addModelFiles(m.id, files, m.upload!.category)}
+                    onReject={(rejects) => addModelReject(m.id, rejects)}
+                    onRemove={(id) => removeModelFile(m.id, id)}
+                  />
                 ) : (
                   <Alert color="gray" variant="light" mb="md">
                     <Text size="sm">No report needed — complete the demographic form.</Text>
@@ -534,77 +553,11 @@ export function IntakePage() {
 
       <Divider my="xs" />
 
-      {/* ── Section 4 · Evidence ───────────────────────────────── */}
-      <Section n="4" title="Evidence" complete={sections[3]}>
-        <Text size="sm" c="dimmed" mb="xs">
-          Attach the reports each selected model asked for. Upload progress below.
-        </Text>
-        <DropShell onDrop={onDrop} onReject={onReject} />
-
-        {rejectNote && (
-          <Alert color="red" variant="light" icon={<IconAlertCircle size={16} />}>
-            <Text size="sm">{rejectNote}</Text>
-          </Alert>
-        )}
-
-        {files.length > 0 && (
-          <Table>
-            <Table.Thead>
-              <Table.Tr>
-                <Table.Th>File</Table.Th>
-                <Table.Th>Size</Table.Th>
-                <Table.Th>Type</Table.Th>
-                <Table.Th w={60} />
-              </Table.Tr>
-            </Table.Thead>
-            <Table.Tbody>
-              {files.map((f) => (
-                <Table.Tr key={f.id}>
-                  <Table.Td ff="monospace">{f.name}</Table.Td>
-                  <Table.Td>{formatSize(f.size)}</Table.Td>
-                  <Table.Td>
-                    <Select
-                      data={FILE_TYPES}
-                      value={f.fileType}
-                      onChange={(v) =>
-                        setFiles((prev) =>
-                          prev.map((x) =>
-                            x.id === f.id ? { ...x, fileType: v ?? 'Chest X-ray' } : x,
-                          ),
-                        )
-                      }
-                      size="xs"
-                    />
-                  </Table.Td>
-                  <Table.Td>
-                    <Button
-                      size="xs"
-                      variant="subtle"
-                      color="red"
-                      onClick={() => removeFile(f.id)}
-                    >
-                      Remove
-                    </Button>
-                  </Table.Td>
-                </Table.Tr>
-              ))}
-            </Table.Tbody>
-          </Table>
-        )}
-
-        <Text size="xs" c="dimmed">
-          In Phase 1 only the chest X-ray is analysed. Other reports (mammograms,
-          retinal photos, lesions, MRIs, clinical notes) are stored for the arms
-          that read them.
-        </Text>
-      </Section>
-
-      <Divider my="xs" />
-
       <Group justify="space-between" align="flex-start">
         <Text size="xs" c="dimmed" maw={420}>
-          Disabled until reference, coverage type and amount are filled, at least
-          one model is selected, and every required report is attached.
+          Disabled until the face photo and reference are set, coverage type and
+          amount are filled, at least one model is selected, and every required
+          report is attached in its model’s panel.
         </Text>
         <Button size="sm" disabled={!canSubmit} loading={submitting} onClick={handleSubmit}>
           Submit application
@@ -617,6 +570,182 @@ export function IntakePage() {
         </Group>
       )}
     </Stack>
+  )
+}
+
+function FacePhotoUpload({
+  file,
+  preview,
+  note,
+  onDrop,
+  onReject,
+  onRemove,
+}: {
+  file: File | null
+  preview: string | null
+  note: string | null
+  onDrop: (files: File[]) => void
+  onReject: (rejects: { file: File }[]) => void
+  onRemove: () => void
+}) {
+  return (
+    <Paper bd="1px solid var(--mantine-color-default-border)" p="md" mt="md">
+      <Text fw={600} size="sm" mb="sm">
+        Face photo{' '}
+        <Text span c="red">
+          *
+        </Text>
+      </Text>
+      <Text size="xs" c="dimmed" mb="sm">
+        For identification only — shown with the applicant’s details. No model
+        runs on this photo.
+      </Text>
+
+      {file && preview ? (
+        <Group align="flex-start" gap="md">
+          <Box
+            w={96}
+            h={96}
+            style={{
+              borderRadius: 6,
+              overflow: 'hidden',
+              border: '1px solid var(--mantine-color-default-border)',
+              flexShrink: 0,
+            }}
+          >
+            <img
+              src={preview}
+              alt="Face photo preview"
+              style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+            />
+          </Box>
+          <Stack gap={4} align="flex-start">
+            <Text ff="monospace" size="sm">
+              {file.name}
+            </Text>
+            <Text size="xs" c="dimmed">
+              {formatSize(file.size)}
+            </Text>
+            <Button size="xs" variant="subtle" color="red" onClick={onRemove}>
+              Remove
+            </Button>
+          </Stack>
+        </Group>
+      ) : (
+        <Dropzone
+          accept={IMAGE_MIME_TYPE}
+          maxSize={MAX_FACE_BYTES}
+          multiple={false}
+          onDrop={onDrop}
+          onReject={onReject}
+        >
+          <Group justify="center" py="md" style={{ pointerEvents: 'none' }}>
+            <Text size="sm" c="dimmed">
+              Drop the client’s face photo here, or click to browse — .png or
+              .jpg, max 10 MB.
+            </Text>
+          </Group>
+        </Dropzone>
+      )}
+
+      {note && (
+        <Alert color="red" variant="light" icon={<IconAlertCircle size={16} />} mt="sm">
+          <Text size="sm">{note}</Text>
+        </Alert>
+      )}
+    </Paper>
+  )
+}
+
+function PanelUpload({
+  model,
+  files,
+  note,
+  onDrop,
+  onReject,
+  onRemove,
+}: {
+  model: ModelDef
+  files: EvidenceFile[]
+  note: string | null
+  onDrop: (files: File[]) => void
+  onReject: (rejects: { file: File }[]) => void
+  onRemove: (id: string) => void
+}) {
+  const upload = model.upload!
+  return (
+    <Box mb="md">
+      <Alert icon={<IconFileUpload size={16} />} color="clinical" variant="light" mb="sm">
+        <Text size="sm">
+          Please submit: <Text span fw={600}>{upload.instruction}</Text>
+        </Text>
+      </Alert>
+
+      <Dropzone
+        accept={upload.accept}
+        maxSize={MAX_FILE_BYTES}
+        multiple
+        onDrop={onDrop}
+        onReject={onReject}
+      >
+        <Group justify="center" gap="xl" py="sm" style={{ pointerEvents: 'none' }}>
+          <Dropzone.Accept>
+            <IconFileUpload size={24} color="var(--mantine-color-clinical-5)" />
+          </Dropzone.Accept>
+          <Dropzone.Reject>
+            <IconAlertCircle size={24} color="var(--mantine-color-red-5)" />
+          </Dropzone.Reject>
+          <Dropzone.Idle>
+            <IconFileUpload size={24} color="var(--mantine-color-dimmed)" />
+          </Dropzone.Idle>
+          <Stack gap={2} align="center">
+            <Text fw={500} size="sm">
+              Drop files here or click to browse
+            </Text>
+            <Text size="xs" c="dimmed">
+              {upload.instruction} · max 50 MB per file
+            </Text>
+          </Stack>
+        </Group>
+      </Dropzone>
+
+      {note && (
+        <Alert color="red" variant="light" icon={<IconAlertCircle size={16} />} mt="sm">
+          <Text size="sm">{note}</Text>
+        </Alert>
+      )}
+
+      {files.length > 0 && (
+        <Table mt="sm">
+          <Table.Thead>
+            <Table.Tr>
+              <Table.Th>File</Table.Th>
+              <Table.Th>Size</Table.Th>
+              <Table.Th w={60} />
+            </Table.Tr>
+          </Table.Thead>
+          <Table.Tbody>
+            {files.map((f) => (
+              <Table.Tr key={f.id}>
+                <Table.Td ff="monospace">{f.name}</Table.Td>
+                <Table.Td>{formatSize(f.size)}</Table.Td>
+                <Table.Td>
+                  <ActionIcon
+                    size="sm"
+                    variant="subtle"
+                    color="red"
+                    aria-label="Remove file"
+                    onClick={() => onRemove(f.id)}
+                  >
+                    <IconX size={14} />
+                  </ActionIcon>
+                </Table.Td>
+              </Table.Tr>
+            ))}
+          </Table.Tbody>
+        </Table>
+      )}
+    </Box>
   )
 }
 
@@ -769,44 +898,5 @@ function CxrPanel({
         </Stack>
       </Box>
     </Stack>
-  )
-}
-
-function DropShell({
-  onDrop,
-  onReject,
-}: {
-  onDrop: (files: File[]) => void
-  onReject: (files: { file: File }[]) => void
-}) {
-  return (
-    <Dropzone
-      onDrop={onDrop}
-      onReject={onReject}
-      accept={IMAGE_MIME_TYPE}
-      maxSize={MAX_FILE_BYTES}
-      multiple
-    >
-      <Group justify="center" gap="xl" py="md" style={{ pointerEvents: 'none' }}>
-        <Dropzone.Accept>
-          <IconFileUpload size={28} color="var(--mantine-color-clinical-5)" />
-        </Dropzone.Accept>
-        <Dropzone.Reject>
-          <IconAlertCircle size={28} color="var(--mantine-color-red-5)" />
-        </Dropzone.Reject>
-        <Dropzone.Idle>
-          <IconFileUpload size={28} color="var(--mantine-color-dimmed)" />
-        </Dropzone.Idle>
-
-        <Stack gap={2} align="center">
-          <Text fw={500} size="sm">
-            Drop files here or click to browse
-          </Text>
-          <Text size="xs" c="dimmed">
-            Max 50 MB per file.
-          </Text>
-        </Stack>
-      </Group>
-    </Dropzone>
   )
 }
