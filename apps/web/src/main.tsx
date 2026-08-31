@@ -3,6 +3,7 @@ import { Notifications } from '@mantine/notifications'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
+import { BrowserRouter } from 'react-router-dom'
 
 // Mantine stylesheets must be imported before our own CSS so we can override.
 // Add the matching import when you start using a package:
@@ -33,7 +34,9 @@ createRoot(root).render(
     <MantineProvider theme={theme} defaultColorScheme="dark">
       <QueryClientProvider client={queryClient}>
         <Notifications position="top-right" />
-        <App />
+        <BrowserRouter>
+          <App />
+        </BrowserRouter>
       </QueryClientProvider>
     </MantineProvider>
   </StrictMode>,
