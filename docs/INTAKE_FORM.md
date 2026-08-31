@@ -56,12 +56,13 @@ next is started.
 3. **Schema** — mirror those columns into `db/schema.sql` (`applicants`,
    `applications`). `evidence_file_type` enum unchanged (modality recorded in file
    metadata, not a new enum).
-4. **Form foundation** — restructure `IntakePage.tsx`: model registry config +
-   vertical checkbox menu + `selectedModels` / `modelFields` state + `toggleModel`.
-5. **Form panels** — add `ModelPanel` pop-out (instruction Alert + per-model
-   fields; XGBoost fields-only).
-6. **Form evidence/gating** — extend `FILE_TYPES`, wire required-upload gating,
-   recompute progress + submit state.
+4. **Form** — restructure `IntakePage.tsx` in one coherent commit (the registry,
+   vertical checkbox menu, `selectedModels`/`modelFields` state, `ModelPanel`
+   pop-outs with per-model instructions + fields, XGBoost fields-only, extended
+   `FILE_TYPES`, and required-upload gating all share the single file, so they
+   are committed together rather than as artificial partial states).
+5. ~~**Form panels**~~ — folded into step 4 (same file).
+6. ~~**Form evidence/gating**~~ — folded into step 4 (same file).
 7. **Screen spec** — rewrite `DASHBOARD.md` §3 for the model-selector design.
 
 Verification before each commit: `npm run lint` · `npm run typecheck` ·
