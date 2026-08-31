@@ -114,56 +114,63 @@ someone asks, that is PII minimisation and it is a feature — see
 |---|---|---|---|
 | Coverage type | select | **yes** | Life / Health / Critical illness |
 | Coverage amount | number | **yes** | BDT. Thousands separators |
+| Policy term | select | no | 1 / 5 / 10 / 20 years |
 
-### Section 3 — Declared health
+### Section 3 — Models (model-driven)
 
-Checkboxes. The client answers, the operator ticks. **These directly drive the
-risk score**, so the labels must be plain enough to read aloud.
+The form is **model-driven** (see [INTAKE_FORM.md](INTAKE_FORM.md) and
+[MODEL.md](Model.md)). A **vertical checkbox menu** on the left lists every
+model arm ("click all that applicable"). Selecting a model **pops out its
+panel** on the right with (a) an **instruction** naming the report/upload to
+attach, and (b) that model's risk-factor fields. Pick several and their panels
+stack.
 
-**Current symptoms**
+The chest X-ray is a **single arm** (TorchXRayVision / DenseNet) that replaces
+the old OpenCXR + CheXpert + CXR-CVD entries; its panel carries the TB field set
+*and* the CXR-CVD cardio risk factors.
 
-- Cough lasting more than 2 weeks
-- Unexplained weight loss
-- Night sweats
-- Coughing up blood
-- Fever
+| Model tab | Upload instruction | Fields |
+|---|---|---|
+| **Chest X-ray** · TorchXRayVision | Chest X-ray — `.dcm .png .jpg` | Current symptoms (cough>2wk, weight loss, night sweats, haemoptysis, fever) · TB history (prior TB + ↳ completed course, diabetes, HIV, household TB contact, antibiotics no improvement, smoker) · Cardiovascular (hypertension, high cholesterol, family heart disease) |
+| **Mirai** · mammography | Mammogram, 4 views — `.dcm` | Family history breast cancer · prior biopsy · BRCA/genetic result (`not tested / negative / positive` — default-off, jurisdiction-gated) |
+| **HAM10000** · dermoscopy | Lesion photo — `.png .jpg` | Skin type (I–VI) · prior skin cancer · body site |
+| **EyePACS** · retinopathy | Retinal photo — `.png .jpg .dcm` | Diabetes duration · hypertension · smoking |
+| **BioBERT** · clinical NLP | Clinical note / report — `.pdf .txt` | *none structured — reads the note* |
+| **XGBoost** · tabular | **No report needed** | Height · weight (→BMI) · alcohol · physical activity · occupation · smoking |
+| **Neuro MRI** · 3D brain | Brain MRI — `.dcm` | Memory · speech · mobility concerns |
 
-**Medical history**
-
-- Previously treated for TB
-  - ↳ *if ticked, reveal:* "Completed the full course of treatment"
-- Diabetes
-- HIV positive
-- Someone in the household has had TB
-- Took a course of antibiotics without improvement
-- Current or former smoker
-
-Group these in two visually distinct blocks. The nested treatment-completed
-checkbox should only appear when "previously treated for TB" is ticked —
-**that specific pair flips the outcome**, so it must be unambiguous.
-
-Post as the nested JSON shape defined in [DATABASE.md §C](DATABASE.md).
+The genetic/BRCA field ships **default-off**, jurisdiction-gated, per
+[SPEC.md §10](SPEC.md): it is collected but a consumer must honour the tenant
+policy flag.
 
 ### Section 4 — Evidence
 
-Mantine `Dropzone`, click or drag, multiple files.
+Mantine `Dropzone`, click or drag, multiple files. Follow each selected model's
+instruction to attach its report.
 
-| Type | Accept | Phase 1 |
+| File type | In model panels | Phase 1 |
 |---|---|---|
-| Chest X-ray | `.dcm`, `.png`, `.jpg` | **Required** — nothing can be scored without it |
-| Lab report | `.pdf`, `.png`, `.jpg` | Optional, stored only |
-| Clinical note | `.pdf`, `.txt` | Optional, stored only |
+| Chest X-ray | Chest X-ray arm | **Required when that arm is selected** — nothing can be scored without it |
+| Mammogram | Mirai | Required when selected · stored for the arm |
+| Retinal photo | EyePACS | Required when selected · stored |
+| Lesion photo | HAM10000 | Required when selected · stored |
+| MRI scan | Neuro MRI | Required when selected · stored |
+| Clinical note | BioBERT | Required when selected · read by NLP |
+| Lab report | — | Optional, stored only |
 
-Each dropped file gets a row showing filename, size, a type dropdown, and a
-remove button. Max 50 MB per file — show the limit before they hit it, not after.
+Each dropped file gets a row showing filename, size, a type dropdown (all types
+above), and a remove button. Max 50 MB per file — show the limit before they hit
+it, not after.
 
 **"Stored only" means exactly that.** In Phase 1 only the chest X-ray is
-analysed. Do not imply other files are being read.
+analysed; other reports are stored for the arms that will read them. Do not
+imply files are being read that are not.
 
 ### Submit
 
-Disabled until: reference filled, coverage type and amount filled, at least one
-chest X-ray attached.
+Disabled until: reference filled, coverage type and amount filled, **at least
+one model selected**, and **every required report for the selected models is
+attached**.
 
 On submit — one `POST /api/applications` as `multipart/form-data`, everything in
 one request. On success go to a confirmation panel that says, in words the
