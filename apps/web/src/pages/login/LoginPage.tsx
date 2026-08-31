@@ -85,7 +85,7 @@ export function LoginPage() {
           <Stack gap="lg">
             <Stack align="center" gap="sm">
               <Box className="neo-brand-chip" p={6}>
-                <BrandIcon width={104} height={50} style={{ display: 'block' }} />
+                <BrandIcon width={88} height={88} style={{ display: 'block' }} />
               </Box>
               <Stack gap={4} align="center">
                 <Text className="neo-display" style={{ fontSize: '1.5rem' }} ta="center">

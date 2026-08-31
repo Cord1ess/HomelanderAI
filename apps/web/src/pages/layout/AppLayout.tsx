@@ -126,8 +126,8 @@ export function AppLayout() {
             }}
           >
             <BrandIcon
-              width={navOpened ? 116 : 54}
-              height={navOpened ? 54 : 25}
+              width={navOpened ? 68 : 30}
+              height={navOpened ? 68 : 30}
               style={{ display: 'block', flex: 'none' }}
             />
           </Box>

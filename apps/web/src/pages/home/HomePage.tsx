@@ -79,8 +79,8 @@ export function HomePage() {
         <Container size="lg" py="lg">
           <Group justify="space-between" align="center">
             <Group gap="sm" align="center">
-              <Box className="neo-brand-chip neo-press" p={6}>
-                <BrandIcon width={92} height={46} style={{ display: 'block' }} />
+              <Box className="neo-brand-chip neo-press" p={5}>
+                <BrandIcon width={56} height={56} style={{ display: 'block' }} />
               </Box>
               <Text className="neo-display" size="xl" style={{ fontSize: '1.4rem' }}>
                 HomelanderAI
@@ -170,8 +170,9 @@ export function HomePage() {
                     variant="default"
                     size="lg"
                     radius={0}
+                    color="clinical"
                     rightSection={<IconArrowRight size={18} />}
-                    style={{ border: '3px solid var(--neo-ink)', boxShadow: '6px 6px 0 var(--neo-ink)', fontWeight: 800, background: 'var(--neo-card)' }}
+                    style={{ border: '3px solid var(--neo-ink)', boxShadow: '6px 6px 0 var(--neo-ink)', fontWeight: 800, background: 'var(--neo-card)',color: 'var(--neo-ink)' }}
                   >
                     See the platform
                   </Button>
@@ -194,7 +195,7 @@ export function HomePage() {
                   style={{ display: 'grid', placeItems: 'center' }}
                 >
                   <Box className="neo-brand-chip" p={12}>
-                    <BrandIcon width={260} height={122} style={{ display: 'block' }} />
+                    <BrandIcon width={232} height={232} style={{ display: 'block' }} />
                   </Box>
                 </Box>
               </Box>
