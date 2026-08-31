@@ -393,6 +393,16 @@ intake path, and it is a strong, concrete point for the compliance chapter
 
 You will not have real carrier applicant files, and you must not seek them.
 
+> **REVERSAL (2026-09-01) — by request of the product owner.** The intake form
+> now collects the applicant's **name and phone number** (operator-entered for
+> the carrier's use) and a **DB-generated reference** (`HL-<seq>`, from
+> `applicants_ref_seq`). This overrides the earlier "no name column" rule above,
+> but **only** for operator-entered applicant contact data. Evidence handling is
+> unchanged: DICOM header tags and clinical-note identifiers are **still**
+> stripped on ingest per the bullets above. The `applicants` contract is now
+> `external_ref` (auto), `name`, `phone`, `date_of_birth`, `sex` — see
+> [DATABASE.md §C](DATABASE.md).
+
 **Build a synthetic applicant generator in week 1–2.** It stitches a public image, a template-generated clinical note, and a sampled demographic/lab row into a plausible applicant package with a known ground-truth label. This unblocks the entire team before a single model works: backend gets fixtures, frontend gets realistic data, ML gets an integration target, and your demo is reproducible on any machine.
 
 Rules:
