@@ -138,45 +138,6 @@ body {
 
 /* ── Home / login landing ─────────────────────────────────────────── */
 
-/* Soft radial glow + faint grid behind the hero. */
-.home-aurora {
-  position: relative;
-  overflow: hidden;
-}
-
-.home-aurora::before {
-  content: '';
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
-  background:
-    radial-gradient(60% 40% at 50% 0%, rgba(75, 153, 149, 0.16), transparent 70%),
-    radial-gradient(40% 30% at 85% 20%, rgba(120, 130, 160, 0.08), transparent 70%),
-    radial-gradient(40% 30% at 12% 25%, rgba(75, 153, 149, 0.06), transparent 70%);
-}
-
-.home-grid {
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
-  background-image:
-    linear-gradient(rgba(130, 145, 165, 0.06) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(130, 145, 165, 0.06) 1px, transparent 1px);
-  background-size: 46px 46px;
-  -webkit-mask-image: radial-gradient(70% 60% at 50% 0%, #000 40%, transparent 100%);
-  mask-image: radial-gradient(70% 60% at 50% 0%, #000 40%, transparent 100%);
-}
-
-/* The brand mark sits in a white rounded plate (the artwork is light). */
-.home-brand-chip {
-  border-radius: 16px;
-  background: #fff;
-  box-shadow:
-    0 0 0 1px rgba(255, 255, 255, 0.08),
-    0 24px 60px -20px rgba(0, 0, 0, 0.6),
-    0 0 80px -20px rgba(75, 153, 149, 0.45);
-}
-
 /* Gentle float for the hero brand mark. */
 @keyframes hl-float {
   0%,
@@ -190,33 +151,6 @@ body {
 
 .home-float {
   animation: hl-float 6s ease-in-out infinite;
-}
-
-/* Soft sheen sweeping across the hero keyline. */
-@keyframes hl-sheen {
-  0% {
-    transform: translateX(-120%);
-  }
-  60%,
-  100% {
-    transform: translateX(220%);
-  }
-}
-
-.home-sheen {
-  position: relative;
-  overflow: hidden;
-}
-
-.home-sheen::after {
-  content: '';
-  position: absolute;
-  top: 0;
-  left: 0;
-  width: 40%;
-  height: 100%;
-  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.12), transparent);
-  animation: hl-sheen 4.5s ease-in-out infinite;
 }
 
 /* Entrance reveal — fade + rise. */
@@ -250,17 +184,6 @@ body {
 }
 .home-rise-5 {
   animation-delay: 0.45s;
-}
-
-/* Feature card hover lift. */
-.home-feature {
-  transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease;
-}
-
-.home-feature:hover {
-  transform: translateY(-3px);
-  border-color: rgba(75, 153, 149, 0.45) !important;
-  box-shadow: 0 18px 40px -22px rgba(0, 0, 0, 0.7);
 }
 
 /* ── Neo-brutalist public pages ────────────────────────────────────── */

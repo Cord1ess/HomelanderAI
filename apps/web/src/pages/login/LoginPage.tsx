@@ -4,7 +4,6 @@ import {
   Box,
   Button,
   Group,
-  Paper,
   PasswordInput,
   Stack,
   Text,
@@ -20,19 +19,14 @@ import { BrandIcon } from '../../components/BrandIcon'
 /**
  * Login — the one screen that lives OUTSIDE the guarded app shell.
  *
- * Email + password only: no signup, no reset, no SSO. In-memory (mock) session
- * for now — on success we record the user locally and land on the queue.
+ * Neo-brutalist persona to match the home page: light background, hard black
+ * borders, chunky shadows, dark ink text. Behaviour is unchanged:
  *
- * Maybe-from URL:
- *   ?expired=1  → rendered as a "session expired, sign in again" banner
- *                (the RequireAuth guard redirects here when the in-memory
- *                session is lost, e.g. after a refresh).
- *
- * TODO: real flow when /api/auth/* lands:
- *   1. POST /api/auth/login  → server sets httpOnly cookie
- *   2. GET  /api/auth/me     → confirm identity, then navigate to /queue
- *   3. Any 401 → clear session + redirect here with ?expired=1
- * See docs/DashboardImplementation.md.
+ *   • Email + password only. In-memory (mock) session — accepts any non-empty
+ *     pair for now; see docs/DashboardImplementation.md for the real contract.
+ *   • ?expired=1  → "session expired" banner (RequireAuth redirects here when
+ *     the in-memory session is lost, e.g. after a refresh).
+ *   • On success → /queue. The submit button is disabled/loading in-flight.
  */
 export function LoginPage() {
   const { signIn } = useAuth()
@@ -62,43 +56,46 @@ export function LoginPage() {
   }
 
   return (
-    <Box className="home-aurora" bg="var(--mantine-color-dark-9)" mih="100vh" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-      <div className="home-grid" />
+    <Box className="neo-shell" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '2rem' }}>
+      <Box w="100%" style={{ maxWidth: 480 }}>
+        {expired && (
+          <Alert
+            color="yellow"
+            radius={0}
+            icon={<IconAlertCircle size={18} />}
+            style={{
+              border: '3px solid var(--neo-ink)',
+              boxShadow: '6px 6px 0 var(--neo-ink)',
+              backgroundColor: '#fff3bf',
+              marginBottom: '1.5rem',
+            }}
+          >
+            <Stack gap={2}>
+              <Text size="sm" fw={800} c="var(--neo-ink)">
+                Your session has expired
+              </Text>
+              <Text size="xs" c="var(--neo-ink)" opacity={0.75}>
+                Sign in again to continue where you left off.
+              </Text>
+            </Stack>
+          </Alert>
+        )}
 
-      <Box w="100%" px="md" style={{ maxWidth: 460 }}>
-        <Paper
-          p="xl"
-          radius="md"
-          className="home-rise home-rise-1"
-          style={{ border: '1px solid var(--mantine-color-dark-6)', backgroundColor: 'var(--mantine-color-dark-8)' }}
-        >
+        <Box className="neo-card" p="xl">
           <Stack gap="lg">
             <Stack align="center" gap="sm">
-              <Paper className="home-brand-chip" p={5} radius="sm" w={104}>
-                <BrandIcon width={94} height={44} style={{ display: 'block' }} />
-              </Paper>
+              <Box className="neo-brand-chip" p={6}>
+                <BrandIcon width={104} height={50} style={{ display: 'block' }} />
+              </Box>
               <Stack gap={4} align="center">
-                <Text size="lg" fw={700} ta="center">
+                <Text className="neo-display" style={{ fontSize: '1.5rem' }} ta="center">
                   Sign in to the console
                 </Text>
-                <Text size="sm" c="dimmed" ta="center">
+                <Text size="sm" c="var(--neo-ink)" opacity={0.72} ta="center">
                   Continue to the underwriting review queue.
                 </Text>
               </Stack>
             </Stack>
-
-            {expired && (
-              <Alert color="yellow" variant="light" icon={<IconAlertCircle size={16} />}>
-                <Stack gap={2}>
-                  <Text size="sm" fw={600}>
-                    Your session has expired
-                  </Text>
-                  <Text size="xs" c="dimmed">
-                    Sign in again to continue where you left off.
-                  </Text>
-                </Stack>
-              </Alert>
-            )}
 
             <form onSubmit={handleSubmit} noValidate>
               <Stack gap="sm">
@@ -107,6 +104,8 @@ export function LoginPage() {
                   placeholder="you@carrier.example"
                   required
                   autoComplete="username"
+                  size="md"
+                  styles={{ input: { border: '2px solid var(--neo-ink)', borderRadius: 0 }, label: { fontWeight: 700 } }}
                   value={email}
                   onChange={(e) => setEmail(e.currentTarget.value)}
                 />
@@ -115,36 +114,58 @@ export function LoginPage() {
                   placeholder="••••••••"
                   required
                   autoComplete="current-password"
+                  size="md"
+                  styles={{ input: { border: '2px solid var(--neo-ink)', borderRadius: 0 }, label: { fontWeight: 700 } }}
                   value={password}
                   onChange={(e) => setPassword(e.currentTarget.value)}
                 />
 
                 {error && (
-                  <Alert color="red" variant="light" icon={<IconAlertCircle size={16} />}>
-                    <Text size="sm">{error}</Text>
+                  <Alert
+                    color="red"
+                    radius={0}
+                    icon={<IconAlertCircle size={16} />}
+                    style={{ border: '2px solid var(--neo-ink)', backgroundColor: '#ffc9c9' }}
+                  >
+                    <Text size="sm" fw={700} c="var(--neo-ink)">
+                      {error}
+                    </Text>
                   </Alert>
                 )}
 
-                <Button type="submit" fullWidth color="clinical" loading={submitting} disabled={submitting}>
-                  Sign in
-                </Button>
+                <Box className="neo-press">
+                  <Button
+                    type="submit"
+                    fullWidth
+                    size="lg"
+                    radius={0}
+                    color="clinical"
+                    loading={submitting}
+                    disabled={submitting}
+                    style={{ border: '3px solid var(--neo-ink)', boxShadow: '6px 6px 0 var(--neo-accent)', fontWeight: 800 }}
+                  >
+                    Sign in
+                  </Button>
+                </Box>
               </Stack>
             </form>
 
-            <Group justify="space-between" c="dimmed">
-              <Anchor size="xs" component={Link} to="/">
+            <Group justify="space-between" wrap="wrap">
+              <Anchor size="xs" component={Link} to="/" style={{ fontWeight: 700, color: 'var(--neo-ink)' }}>
                 <Group gap={4}>
                   <IconArrowLeft size={12} />
                   Back to home
                 </Group>
               </Anchor>
-              <Group gap={4}>
+              <Group gap={4} c="var(--neo-ink)" opacity={0.7}>
                 <IconShieldLock size={12} />
-                <Text size="xs">Operator / underwriter access</Text>
+                <Text size="xs" fw={600}>
+                  Operator / underwriter access
+                </Text>
               </Group>
             </Group>
           </Stack>
-        </Paper>
+        </Box>
       </Box>
     </Box>
   )
