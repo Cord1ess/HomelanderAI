@@ -111,11 +111,26 @@ export function AppLayout() {
 
       <AppShell.Navbar className="hl-shell-nav">
         <Group px={navOpened ? 'xs' : 0} py="xs" justify="center">
-          <BrandIcon
-            width={navOpened ? 150 : 30}
-            height={navOpened ? 60 : 30}
-            style={navOpened ? undefined : { display: 'block' }}
-          />
+          <Box
+            style={{
+              width: navOpened ? 88 : 40,
+              height: navOpened ? 88 : 40,
+              borderRadius: '50%',
+              overflow: 'hidden',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              backgroundColor: '#fff',
+              border: '1px solid rgba(255,255,255,0.16)',
+              boxShadow: '0 2px 10px rgba(0,0,0,0.35), inset 0 0 0 1px rgba(0,0,0,0.04)',
+            }}
+          >
+            <BrandIcon
+              width={navOpened ? 116 : 54}
+              height={navOpened ? 54 : 25}
+              style={{ display: 'block', flex: 'none' }}
+            />
+          </Box>
         </Group>
 
         <Box flex={1} mt="xs">
