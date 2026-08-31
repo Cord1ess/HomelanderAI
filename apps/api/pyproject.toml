@@ -5,42 +5,22 @@ description = "HomelanderAI — underwriting decision-support API"
 requires-python = ">=3.12,<3.13"
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Core runtime. Installed by `uv sync`. Everyone needs these.
-# Some are declared but not yet used — they land in Phase 1 and are pinned now
-# so the whole team resolves the same versions from day one.
+# Core runtime. Everything here is imported by code that exists today.
+#
+# We do not pre-declare dependencies for planned work — add each one when the
+# import that needs it is written:
+#
+#     uv add sqlalchemy       # then commit pyproject.toml *and* uv.lock together
+#
+# Likely next, when Phase 1 starts: sqlalchemy, alembic, psycopg (Postgres),
+# pyjwt + argon2-cffi (auth), python-multipart (uploads). Phase 2 adds pydicom
+# and pillow. See docs/DESIGN_POLICY.md §4 and §8.
 # ─────────────────────────────────────────────────────────────────────────────
 dependencies = [
-    # Web layer
     "fastapi>=0.115",
     "uvicorn[standard]>=0.32",
-    "python-multipart>=0.0.18",     # multipart file uploads
-
-    # Config & validation
     "pydantic>=2.9",
     "pydantic-settings>=2.6",
-
-    # Persistence                                          (Phase 1)
-    "sqlalchemy[asyncio]>=2.0.36",
-    "alembic>=1.14",
-    "psycopg[binary,pool]>=3.2",    # psycopg3: one driver for sync + async
-
-    # Background jobs                                      (Phase 1)
-    "celery[redis]>=5.4",
-    "redis>=5.2",
-
-    # Object storage                                       (Phase 1)
-    "minio>=7.2",
-
-    # Auth                                                 (Phase 1)
-    "pyjwt[crypto]>=2.10",
-    "argon2-cffi>=23.1",
-
-    # Medical imaging I/O
-    "pydicom>=3.0",
-    "pillow>=11.0",
-
-    # Structured logging
-    "structlog>=24.4",
 ]
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -95,7 +75,6 @@ dev = [
     "pytest>=8.3",
     "pytest-asyncio>=0.24",
     "httpx>=0.28",                  # required by fastapi.testclient
-    "flower>=2.0",                  # Celery monitoring UI (Phase 1)
 ]
 
 # ─────────────────────────────────────────────────────────────────────────────

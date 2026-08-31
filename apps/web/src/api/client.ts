@@ -19,26 +19,25 @@ export class ApiError extends Error {
   // runtime code.
   readonly status: number
 
-  constructor(status: number, message: string, options?: ErrorOptions) {
-    super(message, options)
+  constructor(status: number, message: string) {
+    super(message)
     this.name = 'ApiError'
     this.status = status
   }
 }
 
-async function request<T>(path: string, init?: RequestInit): Promise<T> {
+async function request<T>(path: string): Promise<T> {
   let response: Response
 
   try {
     response = await fetch(`${BASE_URL}${path}`, {
       // Session will be an httpOnly cookie, so credentials must ride along.
       credentials: 'include',
-      headers: { Accept: 'application/json', ...init?.headers },
-      ...init,
+      headers: { Accept: 'application/json' },
     })
-  } catch (cause) {
+  } catch {
     // fetch only rejects on network-level failure — most often "API not running".
-    throw new ApiError(0, 'Could not reach the API. Is it running on port 8000?', { cause })
+    throw new ApiError(0, 'Could not reach the API. Is it running on port 8000?')
   }
 
   if (!response.ok) {

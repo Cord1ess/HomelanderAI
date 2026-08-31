@@ -1,8 +1,8 @@
 """Liveness endpoint.
 
-Deliberately reports only on the API process itself. Once Postgres, Redis and
-MinIO are wired up in Phase 1, add a separate `/api/health/dependencies` that
-pings them — keep this one cheap so it stays a true liveness probe.
+Deliberately reports only on the API process itself. Once Postgres is wired up
+in Phase 1, add a separate `/api/health/dependencies` that pings it — keep this
+one cheap so it stays a true liveness probe.
 """
 
 import time

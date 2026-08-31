@@ -72,7 +72,7 @@ const INSTALLED = [
   },
   {
     group: 'Backend',
-    items: ['FastAPI', 'Pydantic v2', 'SQLAlchemy 2 + Alembic', 'Celery + Redis', 'structlog'],
+    items: ['FastAPI', 'Uvicorn', 'Pydantic v2', 'pydantic-settings'],
   },
   {
     group: 'Optional extras',
@@ -88,10 +88,10 @@ const INSTALLED = [
 
 const PHASE_ONE = [
   ['PostgreSQL', 'tenant_id + row-level security'],
-  ['Redis + Celery', 'async inference jobs, Flower dashboard'],
-  ['MinIO', 'evidence packages and heatmap artifacts'],
-  ['Auth', 'JWT session cookie + hashed carrier API keys'],
   ['Alembic', 'baseline migration and schema'],
+  ['Background jobs', 'BackgroundTasks + a jobs table, no broker'],
+  ['Evidence storage', 'uploads written to ./data on disk'],
+  ['Auth', 'JWT session cookie + hashed carrier API keys'],
 ]
 
 export function App() {

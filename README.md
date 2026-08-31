@@ -29,7 +29,7 @@ This is an academic capstone project. It is not a medical device, not clinically
 | [uv](https://docs.astral.sh/uv/getting-started/installation/) | 0.5+ | Manages Python itself — you do **not** need Python pre-installed. It fetches 3.12 for this project. |
 | [Node.js](https://nodejs.org) | 22+ | Tested on 24.18. Comes with npm. |
 | Git | any | |
-| [Docker Desktop](https://www.docker.com/products/docker-desktop/) | — | **Not needed yet.** Required from Phase 1, when Postgres/Redis/MinIO land. |
+| [Docker Desktop](https://www.docker.com/products/docker-desktop/) | — | **Not needed yet.** Required from Phase 1, when Postgres lands. |
 
 > Your system Python version doesn't matter. uv pins 3.12 for this project because torch and spaCy don't yet support 3.13+.
 
@@ -97,11 +97,9 @@ Infrastructure — **Phase 1 onward**, needs Docker Desktop:
 
 | Command | Does |
 |---|---|
-| `npm run infra:up` | Start postgres, redis, minio |
+| `npm run infra:up` | Start Postgres |
 | `npm run infra:ps` | Status |
 | `npm run infra:down` | Stop (keeps data) |
-
-MinIO console: http://localhost:9001 (`minioadmin` / `minioadmin`)
 
 Working directly in one app? `apps/api` takes `uv run pytest`, `uv run ruff check .`; `apps/web` takes the usual `npm run dev`/`build`/`lint`.
 
@@ -118,7 +116,6 @@ apps/
     app/
       main.py           app factory, CORS, router registration
       config.py         settings from .env (pydantic-settings)
-      logging_config.py structlog setup
       routers/          HTTP routes
     tests/
     pyproject.toml      Python deps + ruff/pytest config
@@ -130,10 +127,11 @@ apps/
       api/client.ts     fetch wrapper
 docs/
   SPEC.md               working specification — scope, decisions, roadmap
+  DESIGN_POLICY.md      how we implement — read before writing code
   Idea.md               original concept (superseded by SPEC.md)
 ```
 
-Landing in later phases: `apps/worker` (Celery tasks), `packages/ml` (model arms, calibration, fusion, XAI), `docs/adr` (decision records).
+Landing in later phases: `packages/ml` (model arms, calibration, fusion, XAI), `docs/adr` (decision records).
 
 `packages/ml` must stay importable and testable without the API running, so ML work never requires Docker.
 
@@ -231,8 +229,8 @@ Explainability is a product output, not a debug feature. If an arm cannot explai
 | Frontend | React 19, Vite 8, TypeScript, Mantine 9, TanStack Query, React Router |
 | API | FastAPI, Python 3.12, Pydantic v2 |
 | Persistence | PostgreSQL 16, SQLAlchemy 2.0, Alembic, `tenant_id` + row-level security |
-| Jobs | Celery + Redis, Flower for monitoring |
-| Object storage | MinIO (S3-compatible) |
+| Jobs | FastAPI `BackgroundTasks` + a `jobs` table in Postgres — no broker |
+| Evidence storage | Local filesystem under `./data`, served via authenticated routes |
 | Auth | JWT session cookie + hashed carrier API keys, Argon2id |
 | ML | PyTorch, TorchXRayVision, scispaCy + negspaCy, PubMedBERT, XGBoost, scikit-learn |
 | Explainability | pytorch-grad-cam, SHAP |

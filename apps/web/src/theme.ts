@@ -16,24 +16,10 @@ const clinical: MantineColorsTuple = [
   '#06625e',
 ]
 
-// Reserved for risk tiers so they read consistently everywhere they appear.
-const tier: MantineColorsTuple = [
-  '#fff4e2',
-  '#ffe9cc',
-  '#fed09b',
-  '#fdb564',
-  '#fc9e38',
-  '#fc911c',
-  '#fc8a0c',
-  '#e17600',
-  '#c86800',
-  '#ae5800',
-]
-
 export const theme = createTheme({
   primaryColor: 'clinical',
   primaryShade: { light: 7, dark: 5 },
-  colors: { clinical, tier },
+  colors: { clinical },
 
   defaultRadius: 'sm',
 
