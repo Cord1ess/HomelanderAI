@@ -147,13 +147,22 @@ medical history. There is nowhere to put either.
 > `history` object.
 
 **▶︎ CHANGED — `applicants` gains height/weight (feeds the XGBoost tabular arm's
-BMI feature):**
+BMI feature) and a `face_photo_path` (identity photo, NOT a model input):**
 
 ```sql
 ALTER TABLE applicants
-    ADD COLUMN height_cm   NUMERIC(5,2),
-    ADD COLUMN weight_kg   NUMERIC(5,2);
+    ADD COLUMN height_cm       NUMERIC(5,2),
+    ADD COLUMN weight_kg       NUMERIC(5,2),
+    ADD COLUMN face_photo_path VARCHAR(500);  -- ▶︎ CHANGED
 ```
+
+**▶︎ CHANGED — note on `face_photo_path`:** this is the client's face photo,
+captured in the "general information" section. It is for **identification only —
+no model ever runs on it**, so it intentionally lives on `applicants` (identity),
+not in `evidence_files` (model inputs). Store it de-identified like other files
+(files under `./data`, relative `storage_path`; see §F). The stored filename must
+not be the person's name — consistent with the no-name / PII-minimisation design
+in [SPEC.md §9](SPEC.md).
 
 **▶︎ CHANGED — `applications` gains `models_requested` (which arms the
 orchestrator runs) and `policy_term`, alongside the existing coverage and
@@ -321,14 +330,25 @@ and braces — this is the one table where it is worth both.
 [SPEC.md §4](SPEC.md) requires the audit record to include **input signatures**.
 `evidence_files` currently stores only a path.
 
+**▶︎ CHANGED — per-model uploads:** each model's panel uploads its own report, so
+`evidence_files` gains a link to the arm that consumes it. The orchestrator
+reads a model's inputs via `WHERE model_arm_id = <arm>`.
+
 ```sql
 ALTER TABLE evidence_files
     ADD COLUMN original_filename VARCHAR(255),
     ADD COLUMN mime_type         VARCHAR(100),
     ADD COLUMN size_bytes        BIGINT,
     ADD COLUMN content_hash      VARCHAR(64),   -- sha256 of the stored (de-identified) file
-    ADD COLUMN deidentified_at   TIMESTAMPTZ;   -- NULL = not a DICOM, or not yet processed
+    ADD COLUMN deidentified_at   TIMESTAMPTZ,   -- NULL = not a DICOM, or not yet processed
+    ADD COLUMN model_arm_id      UUID REFERENCES model_arms(id) ON DELETE SET NULL;  -- ▶︎ CHANGED
+
+CREATE INDEX idx_evidence_files_model_arm_id ON evidence_files(model_arm_id);  -- ▶︎ CHANGED
 ```
+
+`model_arm_id` is **nullable on purpose**: a generic lab report or a file not
+yet tied to an arm has no owner. The face photo is **not** stored here — it is an
+identity column on `applicants` (§C), never a model input.
 
 `content_hash` is the input signature: it proves which exact bytes were scored.
 `deidentified_at` records that the DICOM header was stripped and when.
