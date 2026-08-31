@@ -5,7 +5,6 @@ import {
   Button,
   Container,
   Group,
-  Paper,
   SimpleGrid,
   Stack,
   Text,
@@ -20,6 +19,7 @@ import {
   IconShieldLock,
   IconStethoscope,
 } from '@tabler/icons-react'
+import type { CSSProperties } from 'react'
 import { Link } from 'react-router-dom'
 
 import { BrandIcon } from '../../components/BrandIcon'
@@ -27,10 +27,10 @@ import { BrandIcon } from '../../components/BrandIcon'
 /**
  * Home landing — public, outside the guarded console.
  *
- * A modern SaaS hero: brand mark + animated keyline up top, an eyebrow →
- * headline → value prop, a pair of CTAs (sign-in, then a scroll to the
- * features), trust chips and a feature grid. Motion is subtle (rise-on-load,
- * a floating brand mark, a soft sheen) — no gradients-for-gradient's-sake.
+ * Neo-brutalist persona: a light, near-white page with hard black borders,
+ * chunky offset shadows and loud clinical-teal accents. Dark ink text on the
+ * light background keeps everything readable, in contrast to the dark ERP
+ * console behind the login.
  */
 
 const FEATURES = [
@@ -56,145 +56,215 @@ const FEATURES = [
   },
 ]
 
-const CHIPS = ['Decision support, human sign-off', 'PII-minimised intake', 'CPU-feasible models']
+const TICKER = [
+  'AI decision support',
+  'Human sign-off required',
+  'TB chest X-ray screening',
+  'Explainable Grad-CAM',
+  'Full audit trail',
+]
+
+const linkStyle: CSSProperties = {
+  fontWeight: 700,
+  color: 'var(--neo-ink)',
+  textDecorationColor: 'var(--neo-accent)',
+  textUnderlineOffset: 4,
+}
 
 export function HomePage() {
   return (
-    <Box className="home-aurora" bg="var(--mantine-color-dark-9)" mih="100vh">
-      <div className="home-grid" />
-
+    <Box className="neo-shell">
       {/* Top bar */}
-      <Container size="lg" py="md">
-        <Group justify="space-between" align="center">
-          <Group gap="sm" align="center">
-            <Paper className="home-brand-chip" p={4} radius="sm" w={92}>
-              <BrandIcon width={84} height={40} style={{ display: 'block' }} />
-            </Paper>
-            <Text fw={700} size="sm" c="gray.1">
-              HomelanderAI
-            </Text>
-          </Group>
+      <Box style={{ borderBottom: '3px solid var(--neo-line)' }}>
+        <Container size="lg" py="lg">
+          <Group justify="space-between" align="center">
+            <Group gap="sm" align="center">
+              <Box className="neo-brand-chip neo-press" p={6}>
+                <BrandIcon width={92} height={46} style={{ display: 'block' }} />
+              </Box>
+              <Text className="neo-display" size="xl" style={{ fontSize: '1.4rem' }}>
+                HomelanderAI
+              </Text>
+            </Group>
 
-          <Group gap="lg" visibleFrom="sm">
-            <Anchor size="sm" c="dimmed" href="#features">
-              Features
-            </Anchor>
-            <Anchor size="sm" c="dimmed" href="#features">
-              How it works
-            </Anchor>
-            <Anchor size="sm" c="dimmed" href="#security">
-              Security
-            </Anchor>
-          </Group>
+            <Group gap="lg" visibleFrom="sm">
+              <Anchor size="sm" style={linkStyle} href="#features">
+                Features
+              </Anchor>
+              <Anchor size="sm" style={linkStyle} href="#features">
+                How it works
+              </Anchor>
+              <Anchor size="sm" style={linkStyle} href="#security">
+                Security
+              </Anchor>
+            </Group>
 
-          <Button component={Link} to="/login" color="clinical" size="xs" radius="md">
-            Sign in
-          </Button>
-        </Group>
-      </Container>
+            <Box className="neo-press">
+              <Button
+                component={Link}
+                to="/login"
+                size="sm"
+                radius={0}
+                style={{
+                  border: '3px solid var(--neo-line)',
+                  boxShadow: '4px 4px 0 var(--neo-ink)',
+                  fontWeight: 800,
+                }}
+              >
+                Sign in →
+              </Button>
+            </Box>
+          </Group>
+        </Container>
+      </Box>
 
       {/* Hero */}
-      <Container size="lg" py={88}>
-        <Stack align="center" gap="xl" ta="center">
-          <Box className="home-rise home-rise-1 home-float">
-            <Paper className="home-brand-chip home-sheen" p={10} radius="lg">
-              <BrandIcon width={240} height={110} style={{ display: 'block' }} />
-            </Paper>
-          </Box>
+      <Box py={72}>
+        <Container size="lg">
+          <SimpleGrid cols={{ base: 1, lg: 2 }} spacing={48}>
+            <Stack gap="lg">
+              <div>
+                <Badge
+                  variant="filled"
+                  color="dark"
+                  radius={0}
+                  size="md"
+                  style={{ border: '2px solid var(--neo-ink)', boxShadow: '3px 3px 0 var(--neo-accent)' }}
+                >
+                  AI-assisted underwriting
+                </Badge>
+              </div>
 
-          <Stack align="center" gap="sm" maw={760}>
-            <Badge
-              className="home-rise home-rise-2"
-              color="clinical"
-              variant="light"
-              size="sm"
-              radius="xl"
-            >
-              AI-assisted underwriting
-            </Badge>
-            <Text
-              className="home-rise home-rise-2"
-              fw={700}
-              style={{ fontSize: 'clamp(2rem, 5vw, 3.25rem)', lineHeight: 1.08, letterSpacing: '-0.02em' }}
-            >
-              Catch early risk before it becomes a claim
-            </Text>
-            <Text className="home-rise home-rise-3" size="md" c="dimmed" maw={620} style={{ lineHeight: 1.6 }}>
-              HomelanderAI screens chest X-rays and declared history to give
-              underwriters a recommendation — and the evidence behind it — before a
-              claim can expose the gap between premium collected and the claim paid.
-            </Text>
-          </Stack>
+              <Text
+                className="home-rise home-rise-1 neo-display"
+                style={{ fontSize: 'clamp(2.4rem, 6vw, 4rem)' }}
+              >
+                Catch early risk{' '}
+                <span className="neo-underline">before</span> it becomes a claim
+              </Text>
 
-          <Group className="home-rise home-rise-4" gap="sm" justify="center">
-            <Button component={Link} to="/login" color="clinical" size="md" radius="md">
-              Sign in to the console
-            </Button>
-            <Button
-              variant="default"
-              size="md"
-              radius="md"
-              rightSection={<IconArrowRight size={16} />}
-              component="a"
-              href="#features"
-            >
-              See the platform
-            </Button>
-          </Group>
+              <Text size="md" c="dark" style={{ lineHeight: 1.6, maxWidth: 520 }}>
+                HomelanderAI screens chest X-rays and declared history to give
+                underwriters a recommendation — and the evidence behind it —
+                before a claim can expose the gap between the premium collected
+                and the claim paid.
+              </Text>
 
-          <Group className="home-rise home-rise-4" gap="xs" justify="center" wrap="wrap">
-            {CHIPS.map((chip) => (
-              <Badge key={chip} variant="outline" color="gray" size="sm" radius="xl">
-                {chip}
-              </Badge>
+              <Group gap="md">
+                <Box className="neo-press">
+                  <Button
+                    component={Link}
+                    to="/login"
+                    size="lg"
+                    radius={0}
+                    color="clinical"
+                    style={{ border: '3px solid var(--neo-ink)', boxShadow: '6px 6px 0 var(--neo-accent)', fontWeight: 800 }}
+                  >
+                    Sign in to the console
+                  </Button>
+                </Box>
+                <Box className="neo-press">
+                  <Button
+                    component="a"
+                    href="#features"
+                    variant="default"
+                    size="lg"
+                    radius={0}
+                    rightSection={<IconArrowRight size={18} />}
+                    style={{ border: '3px solid var(--neo-ink)', boxShadow: '6px 6px 0 var(--neo-ink)', fontWeight: 800, background: 'var(--neo-card)' }}
+                  >
+                    See the platform
+                  </Button>
+                </Box>
+              </Group>
+
+              <Group gap="xs" wrap="wrap">
+                {['Human sign-off', 'PII-minimised intake', 'CPU-feasible models'].map((c) => (
+                  <span key={c} className="neo-tag">
+                    {c}
+                  </span>
+                ))}
+              </Group>
+            </Stack>
+
+            <Group justify="center">
+              <Box className="neo-card" p="lg">
+                <Box
+                  className="home-rise home-rise-3 home-float"
+                  style={{ display: 'grid', placeItems: 'center' }}
+                >
+                  <Box className="neo-brand-chip" p={12}>
+                    <BrandIcon width={260} height={122} style={{ display: 'block' }} />
+                  </Box>
+                </Box>
+              </Box>
+            </Group>
+          </SimpleGrid>
+        </Container>
+      </Box>
+
+      {/* Ticker */}
+      <Box className="neo-ticker" py="sm">
+        <Container size="lg">
+          <Group gap="lg" wrap="wrap" justify="center" c="var(--neo-accent-ink)">
+            {TICKER.map((t, i) => (
+              <Group key={t} gap="lg" wrap="nowrap">
+                {i > 0 && <Text c="var(--neo-accent-ink)" opacity={0.6}>◆</Text>}
+                <Text size="sm" fw={700} tt="uppercase" style={{ letterSpacing: '0.08em' }}>
+                  {t}
+                </Text>
+              </Group>
             ))}
           </Group>
-        </Stack>
-      </Container>
+        </Container>
+      </Box>
 
       {/* Features */}
-      <Box id="features" py={{ base: 48, md: 64 }} style={{ borderTop: '1px solid var(--mantine-color-dark-7)' }}>
+      <Box id="features" py={{ base: 56, md: 72 }}>
         <Container size="lg">
           <Stack gap="xl">
             <Stack gap={4} align="center" ta="center">
-              <Text className="hl-eyebrow" c="clinical.4">
+              <Text className="hl-eyebrow" c="var(--neo-accent)" fw={800}>
                 What the console gives you
               </Text>
-              <Text fw={700} size="xl">
+              <Text className="neo-display" style={{ fontSize: 'clamp(1.6rem, 4vw, 2.4rem)' }}>
                 Built for the two moments that matter
               </Text>
             </Stack>
 
-            <SimpleGrid cols={{ base: 1, sm: 2, lg: 4 }} spacing="md">
+            <SimpleGrid cols={{ base: 1, sm: 2, lg: 4 }} spacing="lg">
               {FEATURES.map((f) => (
-                <Paper
+                <Box
                   key={f.title}
+                  className="neo-card neo-lift"
                   p="lg"
-                  radius="md"
-                  className="home-feature"
-                  style={{ border: '1px solid var(--mantine-color-dark-6)', backgroundColor: 'var(--mantine-color-dark-8)' }}
+                  style={{ display: 'flex', flexDirection: 'column', gap: '0.8rem' }}
                 >
-                  <Stack gap="sm">
-                    <ThemeIcon size={40} radius="md" color="clinical" variant="light">
-                      <f.icon size={20} />
-                    </ThemeIcon>
-                    <Text fw={600} size="sm">
-                      {f.title}
-                    </Text>
-                    <Text size="xs" c="dimmed" style={{ lineHeight: 1.55 }}>
-                      {f.body}
-                    </Text>
-                  </Stack>
-                </Paper>
+                  <ThemeIcon
+                    size={44}
+                    radius={0}
+                    color="clinical"
+                    variant="filled"
+                    style={{ border: '2px solid var(--neo-ink)', boxShadow: '3px 3px 0 var(--neo-ink)' }}
+                  >
+                    <f.icon size={22} />
+                  </ThemeIcon>
+                  <Text fw={800} size="md" c="var(--neo-ink)">
+                    {f.title}
+                  </Text>
+                  <Text size="sm" c="var(--neo-ink)" opacity={0.72} style={{ lineHeight: 1.55 }}>
+                    {f.body}
+                  </Text>
+                </Box>
               ))}
             </SimpleGrid>
 
             {/* Security note (id="security" target) */}
-            <Group id="security" gap="xs" justify="center" c="dimmed" mt="sm">
-              <IconShieldLock size={16} color="var(--mantine-color-clinical-5)" />
-              <Text size="xs">
-                Decisions require licensed human sign-off. Health data is minimised
-                and never stored in the browser.
+            <Group id="security" gap="xs" justify="center" mt="sm">
+              <IconShieldLock size={18} color="var(--neo-accent)" />
+              <Text size="sm" fw={600} c="var(--neo-ink)">
+                Decisions require licensed human sign-off. Health data is
+                minimised and never stored in the browser.
               </Text>
             </Group>
           </Stack>
@@ -202,16 +272,16 @@ export function HomePage() {
       </Box>
 
       {/* Footer */}
-      <Box style={{ borderTop: '1px solid var(--mantine-color-dark-7)' }} py="lg">
+      <Box style={{ borderTop: '3px solid var(--neo-line)' }} py="lg">
         <Container size="lg">
-          <Group justify="space-between">
+          <Group justify="space-between" wrap="wrap">
             <Group gap="xs">
-              <IconBuildingBank size={16} style={{ color: 'var(--mantine-color-dimmed)' }} />
-              <Text size="xs" c="dimmed">
+              <IconBuildingBank size={18} style={{ color: 'var(--neo-ink)' }} />
+              <Text size="sm" fw={700} c="var(--neo-ink)">
                 HomelanderAI · Underwriting decision support
               </Text>
             </Group>
-            <Text size="xs" c="dimmed">
+            <Text size="sm" fw={600} c="var(--neo-ink)">
               © {new Date().getFullYear()} HomelanderAI
             </Text>
           </Group>
