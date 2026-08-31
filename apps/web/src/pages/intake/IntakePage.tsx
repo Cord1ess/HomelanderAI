@@ -16,7 +16,7 @@ import {
   Text,
   TextInput,
 } from '@mantine/core'
-import { Dropzone, IMAGE_MIME_TYPE } from '@mantine/dropzone'
+import { Dropzone } from '@mantine/dropzone'
 import { useForm } from '@mantine/form'
 import { IconAlertCircle, IconCircleCheck, IconFileUpload, IconX } from '@tabler/icons-react'
 import { useEffect, useState } from 'react'
@@ -69,11 +69,28 @@ type SimpleField =
   | { kind: 'select'; key: string; label: string; data: string[]; placeholder?: string }
   | { kind: 'number'; key: string; label: string; description?: string }
 
+/**
+ * File-type filters, as MIME-type keys with extensions in the value array.
+ *
+ * The shape matters. react-dropzone validates the **key** as a MIME type and
+ * silently drops any entry whose key is not one, warning to the console. Passing
+ * an array of bare extensions (`['.dcm', '.png']`) leaves an empty accept object
+ * — which disables filtering entirely and accepts every file type.
+ *
+ * `.dcm` has no registered browser MIME type and most browsers report an empty
+ * string for it, so the extension in the value array is what actually matches.
+ */
+type AcceptMap = Record<string, string[]>
+
+const DICOM: AcceptMap = { 'application/dicom': ['.dcm'] }
+const PHOTO: AcceptMap = { 'image/png': ['.png'], 'image/jpeg': ['.jpg', '.jpeg'] }
+const DOCUMENT: AcceptMap = { 'application/pdf': ['.pdf'], 'text/plain': ['.txt'] }
+
 interface ModelDef {
   id: string
   label: string
   modality: string
-  upload: { category: string; accept: string[]; instruction: string } | null
+  upload: { category: string; accept: AcceptMap; instruction: string } | null
   fields: SimpleField[]
 }
 
@@ -104,7 +121,7 @@ const MODELS: ModelDef[] = [
     modality: 'TorchXRayVision (DenseNet)',
     upload: {
       category: 'Chest X-ray',
-      accept: ['.dcm', '.png', '.jpg', '.jpeg'],
+      accept: { ...DICOM, ...PHOTO },
       instruction: 'Chest X-ray — .dcm, .png, or .jpg',
     },
     fields: [],
@@ -115,7 +132,7 @@ const MODELS: ModelDef[] = [
     modality: 'Breast · mammography',
     upload: {
       category: 'Mammogram',
-      accept: ['.dcm'],
+      accept: DICOM,
       instruction: 'Mammogram, 4 views — .dcm',
     },
     fields: [
@@ -136,7 +153,7 @@ const MODELS: ModelDef[] = [
     modality: 'Dermoscopy · skin',
     upload: {
       category: 'Lesion photo',
-      accept: ['.png', '.jpg', '.jpeg'],
+      accept: PHOTO,
       instruction: 'Lesion photograph — .png or .jpg',
     },
     fields: [
@@ -157,7 +174,7 @@ const MODELS: ModelDef[] = [
     modality: 'Retinopathy · fundus',
     upload: {
       category: 'Retinal photo',
-      accept: ['.png', '.jpg', '.jpeg', '.dcm'],
+      accept: { ...PHOTO, ...DICOM },
       instruction: 'Retinal / fundus photo — .png, .jpg, or .dcm',
     },
     fields: [
@@ -178,7 +195,7 @@ const MODELS: ModelDef[] = [
     modality: 'Clinical NLP · EHR',
     upload: {
       category: 'Clinical note',
-      accept: ['.pdf', '.txt'],
+      accept: DOCUMENT,
       instruction: 'Clinical note / physician report — .pdf or .txt',
     },
     fields: [],
@@ -203,7 +220,7 @@ const MODELS: ModelDef[] = [
     modality: '3D brain · MONAI',
     upload: {
       category: 'MRI scan',
-      accept: ['.dcm'],
+      accept: DICOM,
       instruction: 'Brain MRI — .dcm',
     },
     fields: [
@@ -681,7 +698,7 @@ function FacePhotoUpload({
         </Group>
       ) : (
         <Dropzone
-          accept={IMAGE_MIME_TYPE}
+          accept={PHOTO}
           maxSize={MAX_FACE_BYTES}
           multiple={false}
           onDrop={onDrop}
