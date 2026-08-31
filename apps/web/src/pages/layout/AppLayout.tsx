@@ -2,68 +2,136 @@ import {
   ActionIcon,
   AppShell,
   Badge,
+  Box,
   Burger,
   Group,
+  Menu,
   Text,
+  ThemeIcon,
+  Tooltip,
+  UnstyledButton,
+  useMantineColorScheme,
 } from '@mantine/core'
-import { IconBell } from '@tabler/icons-react'
 import { useDisclosure } from '@mantine/hooks'
-import { Link, Outlet } from 'react-router-dom'
+import {
+  IconBell,
+  IconChevronsLeft,
+  IconChevronsRight,
+  IconFilePlus,
+  IconLayoutDashboard,
+  IconMoon,
+  IconSun,
+  IconUser,
+} from '@tabler/icons-react'
+import type { JSX } from 'react'
+import { NavLink as RouterLink, Outlet, useLocation } from 'react-router-dom'
+
+import { BrandIcon } from '../../components/BrandIcon'
 
 /**
- * Shared shell for the authenticated dashboard.
+ * ERP-style shell for the authenticated dashboard.
  *
- * Header carries the app mark, a "Review a new client" shortcut, and the
- * notifications bell with an unread count. Nav links land on the five Phase 1
- * screens. TODO: wire unread count to `GET /api/notifications`, session to
- * `GET /api/auth/me`, and logout to `POST /api/auth/logout`.
+ * A fixed, collapsible icon sidebar mirrors an underwriting console: a compact
+ * brand lockup up top, icon nav with tooltips, and a thin header carrying the
+ * current screen title, the notifications bell and a user menu.
+ *
+ * TODO: unread count → `GET /api/notifications`; session → `GET /api/auth/me`;
+ * logout → `POST /api/auth/logout`.
  */
 export function AppLayout() {
-  const [opened, { toggle }] = useDisclosure()
+  const [navOpened, { toggle: toggleNav }] = useDisclosure(true)
+  const [mobileOpened, { toggle: toggleMobile }] = useDisclosure(false)
+  const location = useLocation()
+
+  const title = routeFor(location.pathname)?.title
+  const unread = 3
 
   return (
     <AppShell
-      header={{ height: 60 }}
-      navbar={{ width: 220, breakpoint: 'sm', collapsed: { mobile: !opened } }}
+      header={{ height: 44 }}
+      navbar={{
+        width: navOpened ? 200 : 56,
+        breakpoint: 'sm',
+        collapsed: { mobile: !mobileOpened },
+      }}
       padding="md"
+      transitionDuration={150}
     >
       <AppShell.Header>
-        <Group h="100%" px="md" justify="space-between">
-          <Group gap="sm">
-            <Burger opened={opened} onClick={toggle} hiddenFrom="sm" size="sm" />
-            <Text ff="monospace" fw={700} size="sm" c="clinical.4">
-              ▚
-            </Text>
-            <Text ff="monospace" fw={600} size="sm" component={Link} to="/">
-              HomelanderAI
+        <Group h="100%" px="sm" justify="space-between" gap="sm" wrap="nowrap">
+          <Group gap="sm" wrap="nowrap">
+            <Burger
+              opened={mobileOpened}
+              onClick={toggleMobile}
+              hiddenFrom="sm"
+              size="sm"
+            />
+            <ActionIcon
+              variant="subtle"
+              aria-label="Toggle sidebar"
+              onClick={toggleNav}
+              visibleFrom="sm"
+            >
+              {navOpened ? (
+                <IconChevronsLeft size={16} />
+              ) : (
+                <IconChevronsRight size={16} />
+              )}
+            </ActionIcon>
+            <Text size="sm" fw={600}>
+              {title}
             </Text>
           </Group>
 
-          <Group gap="sm">
+          <Group gap={6} wrap="nowrap">
             <ActionIcon
-              variant="light"
-              component={Link}
+              variant="subtle"
+              component={RouterLink}
               to="/notifications"
               aria-label="Notifications"
             >
               <IconBell size={18} />
-              <Badge
-                size="xs"
-                color="red"
-                variant="filled"
-                style={{ position: 'absolute', top: 4, right: 4 }}
-              >
-                0
-              </Badge>
+              {unread > 0 && (
+                <Badge
+                  size="xs"
+                  color="red"
+                  variant="filled"
+                  style={{ position: 'absolute', top: 2, right: 2 }}
+                >
+                  {unread}
+                </Badge>
+              )}
             </ActionIcon>
+            <UserMenu />
           </Group>
         </Group>
       </AppShell.Header>
 
-      <AppShell.Navbar p="md">
-        <NavLink to="/">Queue</NavLink>
-        <NavLink to="/applications/new">Review a new client</NavLink>
-        <NavLink to="/notifications">Notifications</NavLink>
+      <AppShell.Navbar className="hl-shell-nav">
+        <Group px={navOpened ? 'xs' : 0} py="xs" justify="center">
+          <BrandIcon
+            width={navOpened ? 150 : 30}
+            height={navOpened ? 60 : 30}
+            style={navOpened ? undefined : { display: 'block' }}
+          />
+        </Group>
+
+        <Box flex={1} mt="xs">
+          {NAV.map((item) => (
+            <NavItem
+              key={item.to}
+              to={item.to}
+              label={item.label}
+              icon={item.icon}
+              collapsed={!navOpened}
+              active={
+                item.to === '/'
+                  ? location.pathname === '/'
+                  : location.pathname.startsWith(item.to)
+              }
+            />
+          ))}
+        </Box>
       </AppShell.Navbar>
 
       <AppShell.Main>
@@ -73,16 +141,97 @@ export function AppLayout() {
   )
 }
 
-function NavLink({ to, children }: { to: string; children: string }) {
-  return (
-    <Text
-      component={Link}
+const NAV: { to: string; label: string; icon: () => JSX.Element }[] = [
+  { to: '/', label: 'Queue', icon: () => <IconLayoutDashboard size={18} /> },
+  { to: '/applications/new', label: 'New application', icon: () => <IconFilePlus size={18} /> },
+  { to: '/notifications', label: 'Notifications', icon: () => <IconBell size={18} /> },
+]
+
+function routeFor(path: string) {
+  if (path === '/') return { title: 'Review queue' }
+  if (path.startsWith('/applications/new')) return { title: 'New application' }
+  if (path.startsWith('/applications/')) return { title: 'Underwriting review' }
+  if (path.startsWith('/notifications')) return { title: 'Notifications' }
+  return { title: 'HomelanderAI' }
+}
+
+function NavItem({
+  to,
+  label,
+  icon,
+  collapsed,
+  active,
+}: {
+  to: string
+  label: string
+  icon: () => JSX.Element
+  collapsed: boolean
+  active: boolean
+}) {
+  const link = (
+    <RouterLink
       to={to}
-      size="sm"
-      c="dimmed"
-      style={{ textDecoration: 'none', paddingBlock: 6 }}
+      className="hl-nav-link"
+      data-active={active}
+      style={
+        collapsed
+          ? { justifyContent: 'center', paddingInline: 0 }
+          : undefined
+      }
     >
-      {children}
-    </Text>
+      <ThemeIcon
+        variant={active ? 'filled' : 'transparent'}
+        color={active ? 'clinical' : 'gray'}
+        size={20}
+      >
+        {icon()}
+      </ThemeIcon>
+      {!collapsed && <span>{label}</span>}
+    </RouterLink>
+  )
+
+  if (!collapsed) return link
+
+  return (
+    <Tooltip label={label} position="right" withinPortal withArrow>
+      {link}
+    </Tooltip>
+  )
+}
+
+function UserMenu() {
+  const { colorScheme, toggleColorScheme } = useMantineColorScheme()
+
+  return (
+    <Menu position="bottom-end" withinPortal>
+      <Menu.Target>
+        <UnstyledButton aria-label="Account menu">
+          <ActionIcon variant="subtle">
+            <IconUser size={18} />
+          </ActionIcon>
+        </UnstyledButton>
+      </Menu.Target>
+      <Menu.Dropdown miw={180}>
+        <Menu.Label>signed in as</Menu.Label>
+        <Menu.Item leftSection={<IconUser size={14} />}>
+          reviewer@homelander.ai
+        </Menu.Item>
+        <Menu.Divider />
+        <Menu.Item
+          leftSection={
+            colorScheme === 'dark' ? (
+              <IconSun size={14} />
+            ) : (
+              <IconMoon size={14} />
+            )
+          }
+          onClick={toggleColorScheme}
+        >
+          Toggle theme
+        </Menu.Item>
+        <Menu.Divider />
+        <Menu.Label>TODO: wired to POST /api/auth/logout</Menu.Label>
+      </Menu.Dropdown>
+    </Menu>
   )
 }
