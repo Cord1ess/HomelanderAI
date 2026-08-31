@@ -139,8 +139,9 @@ CREATE TABLE applicants (
     external_ref   VARCHAR(100) NOT NULL,
     date_of_birth  DATE,
     sex            VARCHAR(20),
-    height_cm      NUMERIC(5,2),   -- feeds the XGBoost (tabular) BMI feature
+    height_cm      NUMERIC(5,2),     -- feeds the XGBoost (tabular) BMI feature
     weight_kg      NUMERIC(5,2),
+    face_photo_path VARCHAR(500),    -- identity photo; NO model reads this
     created_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
     CONSTRAINT uq_applicants_tenant_external_ref UNIQUE (tenant_id, external_ref)
 );
@@ -177,11 +178,13 @@ CREATE TABLE evidence_files (
     id               UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     application_id   UUID NOT NULL REFERENCES applications(id) ON DELETE CASCADE,
     file_type        evidence_file_type NOT NULL,
+    model_arm_id     UUID REFERENCES model_arms(id) ON DELETE SET NULL,  -- arm that consumes this upload; NULL = not arm-bound
     storage_path     VARCHAR(500) NOT NULL,
     uploaded_at      TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
 CREATE INDEX idx_evidence_files_application_id ON evidence_files(application_id);
+CREATE INDEX idx_evidence_files_model_arm_id ON evidence_files(model_arm_id);
 
 -- ============================================================================
 -- MODEL_ARMS  (registered model arms — pluggable, not hardcoded)
