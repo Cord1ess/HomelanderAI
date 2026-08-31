@@ -139,6 +139,8 @@ CREATE TABLE applicants (
     external_ref   VARCHAR(100) NOT NULL,
     date_of_birth  DATE,
     sex            VARCHAR(20),
+    height_cm      NUMERIC(5,2),   -- feeds the XGBoost (tabular) BMI feature
+    weight_kg      NUMERIC(5,2),
     created_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
     CONSTRAINT uq_applicants_tenant_external_ref UNIQUE (tenant_id, external_ref)
 );
@@ -154,7 +156,13 @@ CREATE TABLE applications (
     tenant_id       UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
     applicant_id    UUID NOT NULL REFERENCES applicants(id) ON DELETE CASCADE,
     status          application_status NOT NULL DEFAULT 'submitted',
-    submitted_at    TIMESTAMPTZ NOT NULL DEFAULT now()
+    coverage_type   VARCHAR(50),                          -- Life / Health / Critical illness
+    coverage_amount NUMERIC(12,2),                        -- in BDT
+    policy_term     VARCHAR(20),                          -- 1 / 5 / 10 / 20 years
+    models_requested JSONB NOT NULL DEFAULT '[]'::jsonb,  -- arm ids to run, e.g. ["cxr_lung","mirai"]
+    declared_history JSONB NOT NULL DEFAULT '{}'::jsonb,  -- per-arm keyed risk fields
+    submitted_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
+    evaluated_at    TIMESTAMPTZ
 );
 
 CREATE INDEX idx_applications_tenant_id ON applications(tenant_id);
