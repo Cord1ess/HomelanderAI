@@ -29,14 +29,15 @@ export class ApiError extends Error {
   }
 }
 
-async function request<T>(path: string): Promise<T> {
+async function request<T>(path: string, init?: RequestInit): Promise<T> {
   let response: Response
 
   try {
     response = await fetch(`${BASE_URL}${path}`, {
       // Session will be an httpOnly cookie, so credentials must ride along.
       credentials: 'include',
-      headers: { Accept: 'application/json' },
+      headers: { Accept: 'application/json', ...init?.headers },
+      ...init,
     })
   } catch {
     // fetch only rejects on network-level failure — most often "API not running".
@@ -44,7 +45,20 @@ async function request<T>(path: string): Promise<T> {
   }
 
   if (!response.ok) {
-    throw new ApiError(response.status, `${response.status} ${response.statusText}`)
+    let errorDetail = `${response.status} ${response.statusText}`
+    try {
+      const errJson = await response.json()
+      if (errJson?.detail) {
+        if (typeof errJson.detail === 'string') {
+          errorDetail = errJson.detail
+        } else if (Array.isArray(errJson.detail)) {
+          errorDetail = errJson.detail.map((d: { msg?: string }) => d.msg || JSON.stringify(d)).join(', ')
+        }
+      }
+    } catch {
+      // ignore json parse error
+    }
+    throw new ApiError(response.status, errorDetail)
   }
 
   return (await response.json()) as T

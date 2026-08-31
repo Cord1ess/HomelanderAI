@@ -79,62 +79,28 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const login = async (payload: LoginPayload) => {
     try {
       await loginMutation.mutateAsync(payload)
-    } catch {
-      // If API server is not running or returns error during frontend dev preview,
-      // create a session so the user is seamlessly navigated to the basic dashboard
-      const fallbackUser: AuthResponse = {
-        user: {
-          id: 'usr_demo_1',
-          tenantId: 'tnt_demo_1',
-          fullName: payload.email.split('@')[0].replace(/[._]/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase()) || 'Underwriter',
-          email: payload.email,
-          role: 'underwriter',
-          createdAt: new Date().toISOString(),
-        },
-        tenant: {
-          id: 'tnt_demo_1',
-          name: payload.tenantSlug ? payload.tenantSlug.toUpperCase().replace('-', ' ') : 'Apex Life Assurance',
-          subscriptionTier: 'standard',
-          createdAt: new Date().toISOString(),
-        },
-      }
-      queryClient.setQueryData(['auth', 'me'], fallbackUser)
+    } catch (err) {
+      const errorMsg = err instanceof Error ? err.message : 'Invalid login credentials'
       notifications.show({
-        title: 'Signed in successfully',
-        message: `Welcome ${fallbackUser.user.fullName}!`,
-        color: 'teal',
+        title: 'Sign In Failed',
+        message: errorMsg,
+        color: 'red',
       })
+      throw err
     }
   }
 
   const registerTenant = async (payload: RegisterTenantPayload) => {
     try {
       await registerMutation.mutateAsync(payload)
-    } catch {
-      // Fallback session creation for dev UI demo
-      const fallbackUser: AuthResponse = {
-        user: {
-          id: 'usr_demo_2',
-          tenantId: 'tnt_demo_2',
-          fullName: payload.adminFullName || 'Tenant Admin',
-          email: payload.adminEmail,
-          role: payload.role || 'admin',
-          licenseNumber: payload.licenseNumber,
-          createdAt: new Date().toISOString(),
-        },
-        tenant: {
-          id: 'tnt_demo_2',
-          name: payload.tenantName || 'Carrier Organization',
-          subscriptionTier: payload.subscriptionTier || 'standard',
-          createdAt: new Date().toISOString(),
-        },
-      }
-      queryClient.setQueryData(['auth', 'me'], fallbackUser)
+    } catch (err) {
+      const errorMsg = err instanceof Error ? err.message : 'Registration failed'
       notifications.show({
-        title: 'Carrier Onboarded',
-        message: `Welcome ${fallbackUser.tenant.name}!`,
-        color: 'teal',
+        title: 'Onboarding Failed',
+        message: errorMsg,
+        color: 'red',
       })
+      throw err
     }
   }
 
