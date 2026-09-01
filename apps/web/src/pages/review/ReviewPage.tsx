@@ -50,40 +50,80 @@ const DECISIONS: { value: DecisionType; label: string }[] = [
   { value: 'requested_additional_evidence', label: 'Request more evidence' },
 ]
 
-const FINDINGS_TOP = [
-  { label: 'Opacity', value: 0.92 },
-  { label: 'Effusion', value: 0.61 },
-  { label: 'Nodule', value: 0.47 },
-  { label: 'Cardiomegaly', value: 0.33 },
-  { label: 'Fibrosis', value: 0.21 },
+/**
+ * What the vision arm returns for each of its 18 findings.
+ *
+ * `probability` is the backbone model's raw output. `contribution` is how much
+ * that finding actually moved the TB score, from `details.contributions`.
+ *
+ * The panel ranks by contribution, not probability, because they disagree: the
+ * scorer weights Lung Lesion at +1.509 and Cardiomegaly at +0.018, so a film
+ * with high Cardiomegaly and modest Lung Lesion would put Cardiomegaly at the
+ * top of a probability list while it moved the decision almost not at all —
+ * telling the underwriter the wrong reason for the score.
+ */
+interface Finding {
+  label: string
+  probability: number
+  contribution: number
+}
+
+// Stub — replace with details.findings + details.contributions from the API.
+// All 18 labels, spelled as the model emits them (see tb_xray_model.json).
+const FINDINGS: Finding[] = [
+  { label: 'Lung Lesion', probability: 0.71, contribution: 0.94 },
+  { label: 'Nodule', probability: 0.63, contribution: 0.48 },
+  { label: 'Pneumothorax', probability: 0.29, contribution: 0.31 },
+  { label: 'Infiltration', probability: 0.55, contribution: 0.12 },
+  { label: 'Consolidation', probability: 0.41, contribution: 0.09 },
+  { label: 'Effusion', probability: 0.24, contribution: 0.07 },
+  { label: 'Pleural_Thickening', probability: 0.19, contribution: 0.05 },
+  { label: 'Pneumonia', probability: 0.14, contribution: 0.04 },
+  { label: 'Fracture', probability: 0.08, contribution: 0.03 },
+  { label: 'Hernia', probability: 0.03, contribution: 0.01 },
+  { label: 'Cardiomegaly', probability: 0.44, contribution: 0.0 },
+  { label: 'Mass', probability: 0.12, contribution: -0.01 },
+  { label: 'Emphysema', probability: 0.09, contribution: -0.02 },
+  { label: 'Edema', probability: 0.11, contribution: -0.04 },
+  { label: 'Enlarged Cardiomediastinum', probability: 0.21, contribution: -0.08 },
+  { label: 'Lung Opacity', probability: 0.38, contribution: -0.11 },
+  { label: 'Fibrosis', probability: 0.27, contribution: -0.18 },
+  { label: 'Atelectasis', probability: 0.33, contribution: -0.52 },
 ]
 
-const FINDINGS_REST = [
-  { label: 'Atelectasis', value: 0.14 },
-  { label: 'Pneumothorax', value: 0.11 },
-  { label: 'Consolidation', value: 0.09 },
-  { label: 'Edema', value: 0.07 },
-  { label: 'Emphysema', value: 0.05 },
-  { label: 'Mass', value: 0.04 },
-  { label: 'Pleural thickening', value: 0.03 },
-  { label: 'Hernia', value: 0.02 },
-]
+const TOP_N = 5
 
-function FindingBar({ label, value }: { label: string; value: number }) {
+/** `Pleural_Thickening` is the model's own spelling; show it readably. */
+function prettyLabel(label: string): string {
+  return label.replace(/_/g, ' ')
+}
+
+function FindingBar({ finding, scale }: { finding: Finding; scale: number }) {
+  const toward = finding.contribution >= 0
+  const width = scale > 0 ? (Math.abs(finding.contribution) / scale) * 100 : 0
+
   return (
     <div>
-      <Group justify="space-between" mb={4}>
-        <Text size="xs">{label}</Text>
-        <Text size="xs" ff="monospace" c="dimmed">
-          {(value * 100).toFixed(0)}%
-        </Text>
+      <Group justify="space-between" mb={4} wrap="nowrap">
+        <Text size="xs">{prettyLabel(finding.label)}</Text>
+        <Group gap="xs" wrap="nowrap">
+          <Text size="xs" ff="monospace" c="dimmed">
+            p={finding.probability.toFixed(2)}
+          </Text>
+          <Text size="xs" ff="monospace" c={toward ? 'clinical.4' : 'dimmed'}>
+            {finding.contribution >= 0 ? '+' : ''}
+            {finding.contribution.toFixed(2)}
+          </Text>
+        </Group>
       </Group>
       <Box h={6} w="100%" style={{ backgroundColor: 'var(--mantine-color-dark-5)', borderRadius: 3 }}>
         <Box
           h="100%"
           style={{
-            width: `${Math.min(value * 100, 100)}%`,
-            backgroundColor: 'var(--mantine-color-clinical-5)',
+            width: `${Math.min(width, 100)}%`,
+            backgroundColor: toward
+              ? 'var(--mantine-color-clinical-5)'
+              : 'var(--mantine-color-dark-3)',
             borderRadius: 3,
           }}
         />
@@ -101,11 +141,19 @@ export function ReviewPage() {
   const [decidedAt, setDecidedAt] = useState<string | null>(null)
 
   // Scaffolding — replace with data from the API.
-  const tier: Tier = 'low'
+  const tier: Tier = 'moderate'
+  const scorer = 'logistic_regression_on_txrv_findings v1.0.0 trained on shenzhen'
+  const validation = 'Internal 5-fold cross-validation; NOT externally validated'
+  const cvAuc = 0.8766
+  const evaluatedAt = '2 days ago, 14:02'
   const heatmapAvailable = false
   const decided = decidedAt !== null
 
-  const findings = showAll ? [...FINDINGS_TOP, ...FINDINGS_REST] : FINDINGS_TOP
+  // Ranked by absolute contribution: the findings that moved the score most,
+  // in either direction.
+  const ranked = [...FINDINGS].sort((a, b) => Math.abs(b.contribution) - Math.abs(a.contribution))
+  const findings = showAll ? ranked : ranked.slice(0, TOP_N)
+  const scale = Math.max(...ranked.map((f) => Math.abs(f.contribution)), 0.01)
   const decisionLabel = DECISIONS.find((d) => d.value === decision)?.label ?? ''
 
   const submit = () => {
@@ -149,7 +197,7 @@ export function ReviewPage() {
             <div className="hl-kv" style={{ alignItems: 'flex-end' }}>
               <span className="hl-kv-label">CRS</span>
               <span className="hl-kv-value" style={{ fontSize: '1.1rem' }}>
-                3.2
+                51.4
               </span>
             </div>
             <TierBadge tier={tier} />
@@ -198,15 +246,15 @@ export function ReviewPage() {
           <Paper p="sm" bd="1px solid var(--mantine-color-default-border)">
             <Group justify="space-between" mb="sm">
               <Text fw={600} size="sm">
-                Findings
+                What moved the score
               </Text>
               <Text size="xs" c="dimmed">
-                {showAll ? FINDINGS_TOP.length + FINDINGS_REST.length : FINDINGS_TOP.length} shown
+                {findings.length} of {FINDINGS.length} shown
               </Text>
             </Group>
             <Stack gap="sm">
               {findings.map((f) => (
-                <FindingBar key={f.label} label={f.label} value={f.value} />
+                <FindingBar key={f.label} finding={f} scale={scale} />
               ))}
             </Stack>
             <Button
@@ -217,7 +265,7 @@ export function ReviewPage() {
               rightSection={<IconChevronDown size={14} />}
               onClick={() => setShowAll((v) => !v)}
             >
-              {showAll ? 'Show top 5' : `Show all ${FINDINGS_TOP.length + FINDINGS_REST.length}`}
+              {showAll ? `Show top ${TOP_N}` : `Show all ${FINDINGS.length}`}
             </Button>
           </Paper>
 
@@ -233,9 +281,20 @@ export function ReviewPage() {
             </Stack>
           </Paper>
 
-          <Text size="xs" c="dimmed">
-            Model: torxray-v1 · v1.0.3 · evaluated 2 days ago, 14:02
-          </Text>
+          {/*
+            From details.scorer / details.validation / details.cv_auc. The
+            validation string is not decoration: the model has only ever been
+            tested on one hospital, and that caveat has to travel with the score
+            rather than live in a document.
+          */}
+          <Stack gap={2}>
+            <Text size="xs" c="dimmed">
+              {scorer} · evaluated {evaluatedAt}
+            </Text>
+            <Text size="xs" c="yellow.7">
+              {validation} (AUC {cvAuc.toFixed(3)})
+            </Text>
+          </Stack>
         </Stack>
       </SimpleGrid>
 
@@ -292,7 +351,16 @@ export function ReviewPage() {
                 There is no reject button. Escalation to a human underwriter is
                 the path.
               </Text>
-              <Button size="xs" disabled={!decision} onClick={submit} loading={submitting}>
+              <Button
+                size="xs"
+                disabled={
+                  !decision ||
+                  // An adjusted approval without a rate is not a decision.
+                  (decision === 'approved_with_adjustment' && (premium ?? 0) <= 0)
+                }
+                onClick={submit}
+                loading={submitting}
+              >
                 Submit decision
               </Button>
             </Group>

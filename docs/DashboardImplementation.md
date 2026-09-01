@@ -31,9 +31,14 @@ Requiring sign-in is deliberate: the console shows health/treatment data.
 
 ## API connection
 
-The web client is generated against the backend (see DASHBOARD.md):
-`npm run gen:api` (run with the API running) regenerates the typed client used
-by the dashboard.
+`src/api/client.ts` is **hand-written** — there is no generated client yet. It
+exposes `getHealth()` plus the auth calls, and every other page still runs on
+stub data.
+
+Once the API has real endpoints, `npm run gen:api` (with the API running) will
+emit typed definitions from its OpenAPI schema; replace the hand-written
+interfaces with those imports at that point. Until then, treat the types here as
+a contract to keep in sync by hand.
 
 Define a tenant resolver against the RLS model (DATABASE.md) — every row read or
 written is tenant-scoped, so the client should never guess ids across tenants.

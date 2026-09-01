@@ -37,7 +37,7 @@ const FEATURES = [
   {
     icon: IconStethoscope,
     title: 'TB chest X-ray screening',
-    body: 'The vision arm screens chest radiographs for tuberculosis while the other model arms weigh the declared history.',
+    body: 'The vision arm screens chest radiographs for tuberculosis, and the declared medical history is weighed against it to reach a score.',
   },
   {
     icon: IconEye,
@@ -286,6 +286,18 @@ export function HomePage() {
               © {new Date().getFullYear()} HomelanderAI
             </Text>
           </Group>
+
+          {/*
+            This page is public and describes AI screening of medical images.
+            The same disclaimer is carried by README.md and SPEC.md §10; it
+            belongs where a prospective reader actually sees it.
+          */}
+          <Text size="xs" mt="md" c="var(--neo-ink)" opacity={0.7} maw={720}>
+            Research software. Not a medical device, not clinically validated, and
+            not approved by any regulatory body. Every output is a recommendation
+            for a licensed underwriter to review — the platform does not diagnose
+            and never issues an automated denial.
+          </Text>
         </Container>
       </Box>
     </Box>

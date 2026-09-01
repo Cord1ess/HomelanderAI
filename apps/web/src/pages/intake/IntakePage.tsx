@@ -95,20 +95,40 @@ interface ModelDef {
   fields: SimpleField[]
 }
 
-const SYMPTOMS = [
-  'Cough lasting more than 2 weeks',
-  'Unexplained weight loss',
-  'Night sweats',
-  'Coughing up blood',
-  'Fever',
+/**
+ * Declared-health options.
+ *
+ * `key` is what the scoring engine matches on and MUST NOT be edited casually —
+ * the authoritative list is SYMPTOM_KEYS and RULES in
+ * `apps/api/app/scoring.py`, mirrored in docs/TB.md. A key that does not match
+ * fails silently: the rule simply never fires and the applicant is scored on
+ * imaging alone. `label` is display text and is safe to reword.
+ */
+interface Option {
+  key: string
+  label: string
+}
+
+const SYMPTOMS: Option[] = [
+  { key: 'cough_over_2_weeks', label: 'Cough lasting more than 2 weeks' },
+  { key: 'weight_loss', label: 'Unexplained weight loss' },
+  { key: 'night_sweats', label: 'Night sweats' },
+  { key: 'haemoptysis', label: 'Coughing up blood' },
+  { key: 'fever', label: 'Fever' },
 ]
 
-const HISTORY_ONCE = [
-  'Diabetes',
-  'HIV positive',
-  'Someone in the household has had TB',
-  'Took a course of antibiotics without improvement',
-  'Current or former smoker',
+const HISTORY_ONCE: Option[] = [
+  { key: 'diabetes', label: 'Diabetes' },
+  { key: 'hiv', label: 'HIV positive' },
+  { key: 'household_tb_contact', label: 'Someone in the household has had TB' },
+  { key: 'antibiotics_no_improvement', label: 'Took a course of antibiotics without improvement' },
+  { key: 'smoker', label: 'Current or former smoker' },
+]
+
+const CARDIO: Option[] = [
+  { key: 'hypertension', label: 'Hypertension' },
+  { key: 'high_cholesterol', label: 'High cholesterol' },
+  { key: 'family_heart_disease', label: 'Family history of heart disease' },
 ]
 
 const SKIN_TYPES = ['I', 'II', 'III', 'IV', 'V', 'VI']
@@ -259,6 +279,52 @@ function formatSize(b: number) {
   if (b < 1024) return `${b} B`
   if (b < 1024 * 1024) return `${(b / 1024).toFixed(0)} KB`
   return `${(b / (1024 * 1024)).toFixed(1)} MB`
+}
+
+/**
+ * Turn the form's per-model state into the `declared_history` shape the API
+ * stores and the scoring engine reads (DATABASE.md §C):
+ *
+ *   { cxr_lung: { symptoms: { cough_over_2_weeks: true, ... },
+ *                 history:  { prior_tb: true, ... } } }
+ *
+ * The form tracks ticked boxes as arrays of keys; the contract is an explicit
+ * true/false per option. Sending the array instead would mean every rule reads
+ * a missing key as false and never fires.
+ */
+function declaredHistory(
+  selectedModels: string[],
+  modelFields: Record<string, ModelValues>,
+): Record<string, Record<string, unknown>> {
+  const out: Record<string, Record<string, unknown>> = {}
+
+  for (const id of selectedModels) {
+    const values = modelFields[id] ?? {}
+    const block: Record<string, unknown> = {}
+
+    if (id === 'cxr_lung') {
+      const flags = (group: Option[], picked: unknown) =>
+        Object.fromEntries(
+          group.map((o) => [o.key, ((picked as string[]) ?? []).includes(o.key)]),
+        )
+
+      block.symptoms = flags(SYMPTOMS, values.symptoms)
+      block.history = {
+        ...flags(HISTORY_ONCE, values.history),
+        prior_tb: values.prior_tb === true,
+        // null (unanswered) is gated at submit, so this is only ever a real answer.
+        prior_tb_treatment_completed: values.prior_tb_treatment_completed === 'yes',
+      }
+      block.cardio = flags(CARDIO, values.cardio)
+    } else {
+      // Every other arm's fields are already scalars keyed by `key`.
+      Object.assign(block, values)
+    }
+
+    out[id] = block
+  }
+
+  return out
 }
 
 function bool(v: Scalar | undefined) {
@@ -420,12 +486,31 @@ export function IntakePage() {
   const handleSubmit = () => {
     if (!canSubmit) return
     setSubmitting(true)
-    // TODO: POST /api/applications (multipart, or JSON + uploads) — the
-    // applicant (name, phone, dob, sex, face photo) + coverage + models_requested
-    // + per-model declared_history (DATABASE.md §C); uploads keyed by
-    // model_arm_id. The reference in the confirmation is the one the DATABASE
-    // returns (applicants_ref_seq → external_ref), which may differ from any
-    // client-side preview. Set it from the response before showing the alert.
+
+    // The body the API will receive. Built here rather than at the fetch call
+    // so the shape is exercised by the form today and cannot drift.
+    const body = {
+      applicant: {
+        name: form.values.name.trim(),
+        phone: form.values.phone.trim(),
+        date_of_birth: form.values.dob || null,
+        sex: form.values.sex,
+      },
+      coverage: {
+        coverage_type: form.values.coverageType,
+        coverage_amount: form.values.coverageAmount,
+        policy_term: form.values.policyTerm,
+      },
+      models_requested: form.values.selectedModels,
+      declared_history: declaredHistory(form.values.selectedModels, form.values.modelFields),
+    }
+
+    // TODO: POST /api/applications as multipart — `body` as JSON alongside the
+    // face photo and each model's uploads keyed by model_arm_id. The reference
+    // shown in the confirmation must come from the response
+    // (applicants_ref_seq → external_ref), not from any client-side preview.
+    console.debug('intake payload', body)
+
     window.setTimeout(() => {
       setSubmitting(false)
       setSubmitted(true)
@@ -922,10 +1007,10 @@ function CxrPanel({
         <Stack gap="xs">
           {SYMPTOMS.map((s) => (
             <Checkbox
-              key={s}
-              label={s}
-              checked={sym.includes(s)}
-              onChange={() => toggleSet(modelId, 'symptoms', s)}
+              key={s.key}
+              label={s.label}
+              checked={sym.includes(s.key)}
+              onChange={() => toggleSet(modelId, 'symptoms', s.key)}
             />
           ))}
         </Stack>
@@ -972,10 +1057,10 @@ function CxrPanel({
           )}
           {HISTORY_ONCE.map((h) => (
             <Checkbox
-              key={h}
-              label={h}
-              checked={hist.includes(h)}
-              onChange={() => toggleSet(modelId, 'history', h)}
+              key={h.key}
+              label={h.label}
+              checked={hist.includes(h.key)}
+              onChange={() => toggleSet(modelId, 'history', h.key)}
             />
           ))}
         </Stack>
@@ -987,12 +1072,12 @@ function CxrPanel({
           Cardiovascular
         </Text>
         <Stack gap="xs">
-          {['Hypertension', 'High cholesterol', 'Family history of heart disease'].map((c) => (
+          {CARDIO.map((c) => (
             <Checkbox
-              key={c}
-              label={c}
-              checked={cardio.includes(c)}
-              onChange={() => toggleSet(modelId, 'cardio', c)}
+              key={c.key}
+              label={c.label}
+              checked={cardio.includes(c.key)}
+              onChange={() => toggleSet(modelId, 'cardio', c.key)}
             />
           ))}
         </Stack>

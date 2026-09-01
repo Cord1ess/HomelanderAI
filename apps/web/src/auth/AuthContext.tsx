@@ -26,7 +26,8 @@ import { Navigate, useLocation } from 'react-router-dom'
 
 export interface SessionUser {
   email: string
-  role: 'operator' | 'underwriter'
+  // Mirrors the user_role enum in db/schema.sql.
+  role: 'underwriter' | 'senior_underwriter' | 'admin'
   tenant: string
 }
 

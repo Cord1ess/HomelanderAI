@@ -1,17 +1,18 @@
 import { Badge } from '@mantine/core'
 
-type Tier = 'low' | 'moderate' | 'elevated' | 'insufficient'
+// Mirrors the risk_tier enum in db/schema.sql.
+type Tier = 'low' | 'moderate' | 'elevated' | 'insufficient_evidence'
 
 const TIER_META: Record<Tier, { label: string; color: string }> = {
   low: { label: 'Low', color: 'teal' },
   moderate: { label: 'Moderate', color: 'yellow' },
   elevated: { label: 'Elevated', color: 'red' },
-  insufficient: { label: 'Insufficient', color: 'gray' },
+  insufficient_evidence: { label: 'Insufficient', color: 'gray' },
 }
 
 /**
  * Risk tier chip, matching the spec colour map:
- * low teal · moderate yellow · elevated red · insufficient gray.
+ * low teal · moderate yellow · elevated red · insufficient_evidence gray.
  */
 export function TierBadge({ tier }: { tier: Tier }) {
   const meta = TIER_META[tier]

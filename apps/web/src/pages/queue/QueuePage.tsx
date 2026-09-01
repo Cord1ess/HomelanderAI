@@ -19,7 +19,7 @@ import { useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 
 import { AppButton } from '../../components/AppButton'
-import { TierBadge } from '../../components/TierBadge'
+import { TierBadge, type Tier } from '../../components/TierBadge'
 
 /**
  * Queue (home) — all applications for the current tenant, newest first.
@@ -47,26 +47,27 @@ const STATUS_META: Record<ApplicationStatus, { label: string; color: string }> =
   decided: { label: 'Decided', color: 'gray' },
 }
 
-type Tier = 'low' | 'moderate' | 'elevated' | 'insufficient'
-
 interface Row {
   id: string
   ref: string
   name: string
-  submittedIn: string
+  submittedAt: string
   status: ApplicationStatus
   crs: number | null
   tier: Tier | null
 }
 
+// Stub data. CRS is 0-100 with tier cut-points at 30 and 65 (app/scoring.py),
+// so these values and their tiers must stay consistent — a mismatch here teaches
+// the wrong mental model to anyone building against it.
 const ROWS: Row[] = [
-  { id: 'a1', ref: 'APP-2026-0091', name: 'A. Rahman', submittedIn: '2 m ago', status: 'scored', crs: 2.1, tier: 'low' },
-  { id: 'a2', ref: 'APP-2026-0092', name: 'M. Hossain', submittedIn: '9 m ago', status: 'processing', crs: null, tier: null },
-  { id: 'a3', ref: 'APP-2026-0093', name: 'S. Khatun', submittedIn: '31 m ago', status: 'scored', crs: 5.8, tier: 'elevated' },
-  { id: 'a4', ref: 'APP-2026-0094', name: 'R. Islam', submittedIn: '1 h ago', status: 'insufficient_evidence', crs: null, tier: 'insufficient' },
-  { id: 'a5', ref: 'APP-2026-0095', name: 'N. Akter', submittedIn: '2 h ago', status: 'scored', crs: 3.4, tier: 'moderate' },
-  { id: 'a6', ref: 'APP-2026-0096', name: 'K. Uddin', submittedIn: '5 h ago', status: 'submitted', crs: null, tier: null },
-  { id: 'a7', ref: 'APP-2026-0097', name: 'J. Choudhury', submittedIn: '1 d ago', status: 'decided', crs: 2.6, tier: 'low' },
+  { id: 'a1', ref: 'HL-000091', name: 'A. Rahman', submittedAt: ago(2), status: 'scored', crs: 18.4, tier: 'low' },
+  { id: 'a2', ref: 'HL-000092', name: 'M. Hossain', submittedAt: ago(9), status: 'processing', crs: null, tier: null },
+  { id: 'a3', ref: 'HL-000093', name: 'S. Khatun', submittedAt: ago(31), status: 'scored', crs: 78.2, tier: 'elevated' },
+  { id: 'a4', ref: 'HL-000094', name: 'R. Islam', submittedAt: ago(60), status: 'insufficient_evidence', crs: null, tier: 'insufficient_evidence' },
+  { id: 'a5', ref: 'HL-000095', name: 'N. Akter', submittedAt: ago(120), status: 'scored', crs: 47.9, tier: 'moderate' },
+  { id: 'a6', ref: 'HL-000096', name: 'K. Uddin', submittedAt: ago(300), status: 'submitted', crs: null, tier: null },
+  { id: 'a7', ref: 'HL-000097', name: 'J. Choudhury', submittedAt: ago(1440), status: 'decided', crs: 22.7, tier: 'low' },
 ]
 
 const FILTERS: ({ value: ApplicationStatus | 'all'; label: string })[] = [
@@ -78,8 +79,20 @@ const FILTERS: ({ value: ApplicationStatus | 'all'; label: string })[] = [
   { value: 'decided', label: 'Decided' },
 ]
 
-function relativeTime(v: string): string {
-  return v
+/** Minutes ago -> ISO, so the stub rows age like real ones. */
+function ago(minutes: number): string {
+  return new Date(Date.now() - minutes * 60_000).toISOString()
+}
+
+function relativeTime(iso: string): string {
+  const seconds = Math.round((Date.now() - new Date(iso).getTime()) / 1000)
+  if (seconds < 60) return 'just now'
+  const minutes = Math.round(seconds / 60)
+  if (minutes < 60) return `${minutes} min ago`
+  const hours = Math.round(minutes / 60)
+  if (hours < 24) return `${hours} h ago`
+  const days = Math.round(hours / 24)
+  return days === 1 ? 'yesterday' : `${days} days ago`
 }
 
 export function QueuePage() {
@@ -185,7 +198,7 @@ export function QueuePage() {
                     </Table.Td>
                     <Table.Td fz="sm">{row.name}</Table.Td>
                     <Table.Td fz="sm" c="dimmed">
-                      {relativeTime(row.submittedIn)}
+                      {relativeTime(row.submittedAt)}
                     </Table.Td>
                     <Table.Td>
                       <Badge color={meta.color} variant="light" size="sm">
