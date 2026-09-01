@@ -30,9 +30,22 @@ class Settings(BaseSettings):
     # fields as JSON, which makes CORS_ORIGINS=http://a,http://b fail confusingly.
     cors_origins: str = "http://localhost:5173,http://127.0.0.1:5173"
 
+    # ── Database ──────────────────────────────────────────────
+    database_url: str = "postgresql+asyncpg://homelander:devpassword@localhost:5432/homelander"
+
+    # ── Auth ──────────────────────────────────────────────────
+    jwt_secret: str = "dev-only-do-not-use-in-any-real-deployment"
+    jwt_algorithm: str = "HS256"
+    access_token_ttl_minutes: int = 30
+
     @property
     def cors_origin_list(self) -> list[str]:
         return [origin.strip() for origin in self.cors_origins.split(",") if origin.strip()]
+
+    @property
+    def is_development(self) -> bool:
+        return self.environment == "development"
+
 
 
 @lru_cache
