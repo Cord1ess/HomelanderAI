@@ -9,6 +9,7 @@ import {
   Loader,
   NumberInput,
   Paper,
+  Radio,
   Select,
   SimpleGrid,
   Stack,
@@ -385,8 +386,25 @@ export function IntakePage() {
 
   const modelHasUpload = (m: ModelDef) => (modelFiles[m.id] ?? []).length > 0
 
+  /**
+   * "Previously treated for TB" ticked but the follow-up left blank would be
+   * sent as null and read downstream as "did not complete" — silently scoring
+   * the applicant 25 points higher than an answered "yes" would. Require it.
+   */
+  const tbFollowUpAnswered = (() => {
+    if (!form.values.selectedModels.includes('cxr_lung')) return true
+    const values = form.values.modelFields.cxr_lung
+    if (!bool(values?.prior_tb)) return true
+    return (
+      values?.prior_tb_treatment_completed === 'yes' ||
+      values?.prior_tb_treatment_completed === 'no'
+    )
+  })()
+
   const modelsSectionComplete =
-    selected.length > 0 && selected.every((m) => m.upload === null || modelHasUpload(m))
+    selected.length > 0 &&
+    selected.every((m) => m.upload === null || modelHasUpload(m)) &&
+    tbFollowUpAnswered
 
   const sections = [
     Boolean(form.values.name.trim()) &&
@@ -922,17 +940,34 @@ function CxrPanel({
           <Checkbox
             label="Previously treated for TB"
             checked={bool(values.prior_tb)}
-            onChange={(e) => setField(modelId, 'prior_tb', e.currentTarget.checked)}
+            onChange={(e) => {
+              setField(modelId, 'prior_tb', e.currentTarget.checked)
+              // Clear the follow-up when the parent is un-ticked, so a stale
+              // answer cannot be submitted for someone with no TB history.
+              if (!e.currentTarget.checked) {
+                setField(modelId, 'prior_tb_treatment_completed', null)
+              }
+            }}
           />
           {bool(values.prior_tb) && (
             <Box pl="lg">
-              <Checkbox
+              {/*
+                Yes/No rather than a checkbox. An unticked box cannot say whether
+                the course was not completed or the question was never asked, and
+                the two mean different things: a completed course lowers the score
+                by 25, an incomplete one does not. Unanswered is sent as null and
+                gated at submit rather than guessed.
+              */}
+              <Radio.Group
                 label="Completed the full course of treatment"
-                checked={bool(values.prior_tb_treatment_completed)}
-                onChange={(e) =>
-                  setField(modelId, 'prior_tb_treatment_completed', e.currentTarget.checked)
-                }
-              />
+                value={(values.prior_tb_treatment_completed as string) ?? ''}
+                onChange={(v) => setField(modelId, 'prior_tb_treatment_completed', v)}
+              >
+                <Group gap="lg" mt={6}>
+                  <Radio value="yes" label="Yes" />
+                  <Radio value="no" label="No" />
+                </Group>
+              </Radio.Group>
             </Box>
           )}
           {HISTORY_ONCE.map((h) => (
