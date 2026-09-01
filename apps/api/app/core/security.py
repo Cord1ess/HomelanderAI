@@ -29,9 +29,17 @@ def verify_password(password: str, password_hash: str) -> bool:
 
 
 def create_access_token(
-    subject: str, tenant_id: str, role: str, expires_delta: timedelta | None = None
+    subject: str,
+    tenant_id: str,
+    role: str,
+    expires_delta: timedelta | None = None,
+    fallback: bool = False,
 ) -> str:
-    """Create signed JWT access token."""
+    """Create signed JWT access token.
+
+    `fallback` marks a session created by the emergency sign-in, which has no
+    row in the database. `/me` reads the claim so it knows not to look one up.
+    """
     now = datetime.now(UTC)
     if expires_delta:
         expire = now + expires_delta
@@ -45,6 +53,8 @@ def create_access_token(
         "iat": now,
         "exp": expire,
     }
+    if fallback:
+        payload["fallback"] = True
 
     return jwt.encode(
         payload, settings.jwt_secret, algorithm=settings.jwt_algorithm

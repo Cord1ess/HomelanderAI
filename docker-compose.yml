@@ -20,15 +20,15 @@ services:
     container_name: homelander-postgres
     restart: unless-stopped
     environment:
-      POSTGRES_USER: ${POSTGRES_USER:-homelander}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-devpassword}
-      POSTGRES_DB: ${POSTGRES_DB:-homelander}
+      POSTGRES_USER: ${DB_USER:-homelander}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-devpassword}
+      POSTGRES_DB: ${DB_NAME:-homelander}
     ports:
-      - "${POSTGRES_PORT:-5432}:5432"
+      - "${DB_PORT:-5432}:5432"
     volumes:
       - postgres-data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-homelander} -d ${POSTGRES_DB:-homelander}"]
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-homelander} -d ${DB_NAME:-homelander}"]
       interval: 10s
       timeout: 5s
       retries: 5

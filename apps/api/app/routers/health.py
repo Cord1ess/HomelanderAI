@@ -38,6 +38,54 @@ class HealthResponse(BaseModel):
     }
 
 
+class DatabaseHealth(BaseModel):
+    connected: bool
+    target: str = Field(description="host:port/database being dialled, password removed.")
+    detail: str | None = Field(default=None, description="Why the connection failed.")
+    admin_login_enabled: bool = Field(
+        description="Whether the built-in admin sign-in works while the database is down."
+    )
+
+
+def _safe_target(url: str) -> str:
+    """host:port/database, with the credentials stripped so this is safe to show."""
+    tail = url.rsplit("@", 1)[-1]
+    return tail or "unknown"
+
+
+@router.get(
+    "/health/database",
+    response_model=DatabaseHealth,
+    summary="Can the API reach the database?",
+)
+async def health_database() -> DatabaseHealth:
+    """Always answers 200, even when the database is unreachable — the point is
+    to report the state, not to fail. Use it when the database lives on another
+    machine and you need to know whether this one can see it."""
+    from sqlalchemy import text
+
+    from app.db.session import engine
+
+    target = _safe_target(settings.database_url)
+
+    try:
+        async with engine.connect() as connection:
+            await connection.execute(text("SELECT 1"))
+    except Exception as exc:
+        return DatabaseHealth(
+            connected=False,
+            target=target,
+            detail=f"{type(exc).__name__}: {exc}"[:300],
+            admin_login_enabled=settings.admin_login_enabled,
+        )
+
+    return DatabaseHealth(
+        connected=True,
+        target=target,
+        admin_login_enabled=settings.admin_login_enabled,
+    )
+
+
 @router.get("/health", response_model=HealthResponse, summary="Liveness probe")
 async def health() -> HealthResponse:
     return HealthResponse(

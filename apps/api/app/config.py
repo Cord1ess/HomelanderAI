@@ -31,12 +31,29 @@ class Settings(BaseSettings):
     cors_origins: str = "http://localhost:5173,http://127.0.0.1:5173"
 
     # ── Database ──────────────────────────────────────────────
-    database_url: str = "postgresql+asyncpg://homelander:devpassword@localhost:5432/homelander"
+    # To use a database on another machine, change DB_HOST to that machine's IP.
+    # That is the only line you need to touch.
+    db_host: str = "localhost"
+    db_port: int = 5432
+    db_user: str = "homelander"
+    db_password: str = "devpassword"
+    db_name: str = "homelander"
 
     # ── Auth ──────────────────────────────────────────────────
     jwt_secret: str = "dev-only-do-not-use-in-any-real-deployment"
     jwt_algorithm: str = "HS256"
     access_token_ttl_minutes: int = 30
+
+    # ── Built-in admin sign-in ────────────────────────────────
+    # Username `admin`, password `admin123`. Works with no database at all, so
+    # a demo survives the database machine being unreachable.
+    #
+    # Ready to use in development with no setup. It is ignored entirely outside
+    # development, and clearing ADMIN_PASSWORD switches it off.
+    admin_username: str = "admin"
+    admin_password: str = "admin123"
+    admin_display_name: str = "Administrator"
+    admin_company_name: str = "Demo Insurance Co."
 
     @property
     def cors_origin_list(self) -> list[str]:
@@ -45,6 +62,23 @@ class Settings(BaseSettings):
     @property
     def is_development(self) -> bool:
         return self.environment == "development"
+
+    @property
+    def database_url(self) -> str:
+        """Assembled from the parts above so only DB_HOST has to change."""
+        return (
+            f"postgresql+asyncpg://{self.db_user}:{self.db_password}"
+            f"@{self.db_host}:{self.db_port}/{self.db_name}"
+        )
+
+    @property
+    def admin_login_enabled(self) -> bool:
+        """Development only, and only while a password is set.
+
+        The environment check is what stops this following the code into a real
+        deployment; clearing the password is how you switch it off by hand.
+        """
+        return self.is_development and bool(self.admin_password)
 
 
 
