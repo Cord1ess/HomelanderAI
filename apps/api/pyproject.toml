@@ -10,19 +10,33 @@ requires-python = ">=3.12,<3.13"
 # We do not pre-declare dependencies for planned work — add each one when the
 # import that needs it is written:
 #
-#     uv add sqlalchemy       # then commit pyproject.toml *and* uv.lock together
+#     uv add <package>        # then commit pyproject.toml *and* uv.lock together
 #
-# Likely next: sqlalchemy, alembic, psycopg (Postgres), pyjwt + argon2-cffi
-# (auth), python-multipart (uploads) — all blocked on the schema changes in
-# docs/DATABASE.md. See docs/DESIGN_POLICY.md §4 and §8.
+# Still to come: python-multipart, once the intake endpoint accepts uploads.
+# See docs/DESIGN_POLICY.md §4 and §8.
 # ─────────────────────────────────────────────────────────────────────────────
 dependencies = [
+    # Web layer
     "fastapi>=0.115",
     "uvicorn[standard]>=0.32",
     "pydantic>=2.9",
     "pydantic-settings>=2.6",
-    "psycopg2-binary>=2.9.12",
+
+    # Persistence. asyncpg drives the app; Alembic runs sync through
+    # psycopg2 (see alembic/env.py), so both drivers are needed.
+    "sqlalchemy[asyncio]>=2.0.36",
+    "alembic>=1.14",
     "asyncpg>=0.31.0",
+    "psycopg2-binary>=2.9.12",
+
+    # Auth
+    "pyjwt[crypto]>=2.10",
+    "argon2-cffi>=23.1",
+
+    # Evidence intake and the vision arm's preprocessing
+    "numpy>=1.26",
+    "pydicom>=3.0",
+    "pillow>=11.0",
 ]
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -92,6 +106,11 @@ package = false                     # application, not a distributable library
 [tool.ruff]
 line-length = 100
 target-version = "py312"
+
+# Alembic writes these; the column definitions are long by nature and
+# reformatting them makes migrations harder to compare against the schema.
+# alembic/env.py is hand-written and stays linted.
+exclude = ["alembic/versions"]
 
 [tool.ruff.lint]
 select = [

@@ -12,7 +12,7 @@ import '@mantine/dropzone/styles.css'
 import './index.css'
 
 import { App } from './App'
-import { AuthProvider } from './auth/AuthContext'
+import { AuthProvider } from './context/AuthContext'
 import { theme } from './theme'
 
 const queryClient = new QueryClient({

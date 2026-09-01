@@ -102,7 +102,7 @@ export function HomePage() {
             <Box className="neo-press">
               <Button
                 component={Link}
-                to="/login"
+                to="/auth"
                 size="sm"
                 radius={0}
                 style={{
@@ -154,7 +154,7 @@ export function HomePage() {
                 <Box className="neo-press">
                   <Button
                     component={Link}
-                    to="/login"
+                    to="/auth"
                     size="lg"
                     radius={0}
                     color="clinical"

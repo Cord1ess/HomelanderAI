@@ -28,7 +28,7 @@ import type { JSX } from 'react'
 import { NavLink as RouterLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
 
 import { BrandIcon } from '../../components/BrandIcon'
-import { useAuth } from '../../auth/AuthContext'
+import { useAuth } from '../../context/AuthContext'
 
 /**
  * ERP-style shell for the authenticated dashboard.
@@ -214,7 +214,7 @@ function NavItem({
 
 function UserMenu() {
   const { colorScheme, toggleColorScheme } = useMantineColorScheme()
-  const { user, signOut } = useAuth()
+  const { user, logout } = useAuth()
   const navigate = useNavigate()
 
   return (
@@ -249,7 +249,7 @@ function UserMenu() {
           color="red"
           leftSection={<IconLogout size={14} />}
           onClick={() => {
-            signOut()
+            void logout()
             navigate('/')
           }}
         >
