@@ -24,6 +24,9 @@ export type Decision = Schemas['DecisionSchema']
 export type DecisionType = Schemas['UnderwriterDecisionType']
 export type AuditTrail = Schemas['AuditTrailSchema']
 export type AppNotification = Schemas['NotificationSchema']
+export type Plan = Schemas['PlanSchema']
+export type ModelInfo = Schemas['ModelSchema']
+export type Pricing = Schemas['PricingSchema']
 export type SubmitResponse = Schemas['SubmitResponseSchema']
 
 // Relative, so the Vite dev proxy handles it and the production build works
@@ -118,6 +121,24 @@ export function getQueue(params: { status?: string; q?: string } = {}) {
 }
 
 export const getApplication = (id: string) => request<ApplicationDetail>(`/applications/${id}`)
+
+/**
+ * Which models the intake form may offer, and which of them actually run.
+ *
+ * `available` is derived on the server from the arm registry, so the form can
+ * never present a model that would silently produce no score.
+ */
+export const getModels = () => request<ModelInfo[]>('/models')
+
+/**
+ * The plan for every tier, priced for a given sum assured.
+ *
+ * The rates and the tier cut-points both come from the API — the dashboard must
+ * not keep its own copy, or the two drift and a screen quotes a premium against
+ * the wrong band.
+ */
+export const getPricing = (coverage?: number | null) =>
+  request<Pricing>(`/pricing${coverage ? `?coverage=${coverage}` : ''}`)
 
 export interface IntakePayload {
   applicant: {

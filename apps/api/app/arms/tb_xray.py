@@ -61,13 +61,21 @@ WEIGHTS = "densenet121-res224-all"
 # say which one produced it.
 PREPROCESSING_VERSION = "xrv-normalize-centercrop-224"
 
+# The trained scorer, read once. Small enough (about 1.5 KB) that loading it at
+# import costs nothing, and it is needed immediately to describe the arm.
+_SPEC: dict = json.loads(MODEL_PATH.read_text())
+
 # The backbone weights are pinned by name and fetched by torchxrayvision, so
 # what identifies *our* scorer is the logistic-regression spec. Hashing the file
 # means a retrained model can never be mistaken for this one in the audit trail.
 WEIGHT_HASH = (
     f"{WEIGHTS}+logreg:sha256:"
-    + hashlib.sha256(Path(__file__).with_name("tb_xray_model.json").read_bytes()).hexdigest()[:32]
+    + hashlib.sha256(MODEL_PATH.read_bytes()).hexdigest()[:32]
 )
+
+# How this model was tested. Carried on the arm so it reaches the intake form
+# and the review screen without either of them hard-coding it.
+VALIDATION: str = _SPEC["validation"]
 
 # Findings that raise TB suspicion on a plain film. The model returns all 18;
 # these are the ones the composite is built from.
@@ -105,21 +113,15 @@ def _get_model():
     return _model
 
 
-_model_spec: dict | None = None
-
-
 def _get_spec() -> dict:
-    """The trained logistic regression, loaded once.
+    """The trained logistic regression.
 
     Plain JSON rather than a pickle: 18 weights, an intercept and the scaler's
     mean/scale are small enough to read and review, and JSON does not break
     across scikit-learn versions. Scoring is a dot product, so scikit-learn is
     not needed at runtime — only numpy.
     """
-    global _model_spec
-    if _model_spec is None:
-        _model_spec = json.loads(MODEL_PATH.read_text())
-    return _model_spec
+    return _SPEC
 
 
 def predict(found: dict[str, float]) -> tuple[float, dict[str, float]]:
@@ -238,7 +240,7 @@ def run(image_bytes: bytes) -> ArmResult:
 
     artifacts = {}
     try:
-        overlay = _gradcam(model, tensor, contributions, pil)
+        overlay = _gradcam(model, tensor, contributions)
         if overlay:
             artifacts["gradcam"] = overlay
     except Exception:
@@ -265,7 +267,7 @@ def run(image_bytes: bytes) -> ArmResult:
     )
 
 
-def _gradcam(model, tensor, contributions: dict[str, float], original) -> bytes | None:
+def _gradcam(model, tensor, contributions: dict[str, float]) -> bytes | None:
     """Heatmap over the finding that contributed most to the TB score.
 
     Targeting the top *contributor* rather than the highest raw probability
@@ -273,7 +275,6 @@ def _gradcam(model, tensor, contributions: dict[str, float], original) -> bytes 
     whatever the backbone happened to be most confident about. A finding the
     model weighs at zero is not evidence, however high its probability.
     """
-    import torch
     from PIL import Image
     from pytorch_grad_cam import GradCAM
     from pytorch_grad_cam.utils.model_targets import ClassifierOutputTarget
@@ -287,17 +288,32 @@ def _gradcam(model, tensor, contributions: dict[str, float], original) -> bytes 
 
     index = list(model.pathologies).index(target_name)
 
-    cam = GradCAM(model=model, target_layers=[model.features[-1]])
+    # denseblock4 by name rather than features[-1] by position. Both sit at the
+    # same 7x7 resolution, but the name keeps pointing at the right thing if the
+    # architecture ever gains a layer on the end.
+    target_layer = getattr(model.features, "denseblock4", model.features[-1])
+
+    cam = GradCAM(model=model, target_layers=[target_layer])
     grayscale = cam(
         input_tensor=tensor[None, ...].clone().requires_grad_(True),
         targets=[ClassifierOutputTarget(index)],
+        # The CAM is only 7x7 before it is scaled to 224, so single noisy cells
+        # show up as large blobs. Taking the principal component across channels
+        # suppresses that at no extra inference cost.
+        eigen_smooth=True,
     )[0]
 
     heat = (grayscale - grayscale.min()) / (np.ptp(grayscale) or 1.0)
 
-    # Blend against the same 224x224 view the model saw, so the highlight lines
-    # up with the pixels that produced it.
-    base = np.asarray(original.convert("L").resize((224, 224)), dtype=np.float32) / 255.0
+    # The backdrop is the tensor the model was actually given, mapped back from
+    # [-1024, 1024] to [0, 1].
+    #
+    # It used to be built by resizing the original image to 224x224, which is a
+    # different framing: preprocessing centre-crops to a square *before*
+    # resizing, and these radiographs are not square (aspect 0.84-1.05). So the
+    # highlight was drawn over anatomy several percent away from the pixels that
+    # produced it — on a feature whose entire job is "show me where".
+    base = np.clip((tensor[0].numpy() + 1024.0) / 2048.0, 0.0, 1.0)
     rgb = np.stack([base, base, base], axis=-1)
 
     # Red overlay: raise red where the model looked, damp green and blue.
@@ -307,5 +323,4 @@ def _gradcam(model, tensor, contributions: dict[str, float], original) -> bytes 
 
     buffer = BytesIO()
     Image.fromarray((rgb * 255).astype(np.uint8), mode="RGB").save(buffer, format="PNG")
-    assert torch  # keep the import meaningful to linters
     return buffer.getvalue()

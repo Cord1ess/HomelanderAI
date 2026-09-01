@@ -49,6 +49,9 @@ class Arm:
     # source of truth and a seed file cannot drift out of sync with it.
     preprocessing_version: str
     weight_hash: str
+    # How the arm was tested, in one line. Every screen that shows a score also
+    # shows this, so the caveat cannot be left behind in a document.
+    validation: str
     run: Callable[[bytes], ArmResult]
     available: Callable[[], bool]
 
@@ -75,6 +78,7 @@ ARMS: dict[str, Arm] = {
         intake_id="cxr_lung",
         preprocessing_version=tb_xray.PREPROCESSING_VERSION,
         weight_hash=tb_xray.WEIGHT_HASH,
+        validation=tb_xray.VALIDATION,
         run=tb_xray.run,
         available=tb_xray.available,
     ),

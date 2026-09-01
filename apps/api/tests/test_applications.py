@@ -465,3 +465,140 @@ def test_scoring_notifies_the_carriers_underwriters(carrier):
 
         # Marking read twice is not an error.
         assert client.post(f"/api/notifications/{notes[0]['id']}/read").status_code == 200
+
+
+# ── the model catalogue ──────────────────────────────────────────────────────
+
+
+def test_the_form_is_told_which_models_actually_run(carrier):
+    """The intake form used to offer seven models as though all seven worked.
+
+    `available` is derived from the arm registry rather than a hand-kept list,
+    so the menu cannot advertise a model that would silently produce no score.
+    """
+    account = asyncio.run(carrier())
+    with TestClient(app) as client:
+        sign_in(client, account)
+        models = client.get("/api/models").json()
+
+    by_id = {m["id"]: m for m in models}
+    assert by_id["cxr_lung"]["available"] is True
+    assert by_id["cxr_lung"]["armName"] == "tb_xray"
+    # The caveat travels with the model, not a document.
+    assert "NOT externally validated" in by_id["cxr_lung"]["validation"]
+
+    # Everything else is on the roadmap and says so.
+    planned = [m["id"] for m in models if not m["available"]]
+    assert set(planned) == {"mirai", "ham10000", "eyepacs", "biobert", "xgboost", "neuro"}
+    assert all(by_id[p]["validation"] is None for p in planned)
+
+
+# ── plans ────────────────────────────────────────────────────────────────────
+
+
+def test_the_plan_scales_with_the_cover_requested(carrier):
+    """A tier alone does not price a policy — the amount asked for does.
+
+    Idea.md §5 gives a premium per tier at a reference sum assured; asking for
+    more cover has to move the number, or the field is decoration.
+    """
+    from app import plans
+
+    small = plans.for_tier("low", 1_000_000)
+    large = plans.for_tier("low", 4_000_000)
+
+    # plans.for_tier returns plain snake_case; the camelCase aliasing happens
+    # at the schema boundary, not here.
+    assert small["monthly_premium_bdt"] == 5_000
+    assert large["monthly_premium_bdt"] == 20_000
+
+    # Elevated is a routing decision, not a price. Quoting one would imply an
+    # outcome nobody has decided (SPEC §7: never an automated denial).
+    assert plans.for_tier("elevated", 4_000_000)["monthly_premium_bdt"] is None
+
+    # No cover requested means no premium invented.
+    assert plans.for_tier("moderate", None)["monthly_premium_bdt"] is None
+
+
+def test_a_scored_application_carries_its_plan(carrier):
+    from app.arms import tb_xray
+
+    if not tb_xray.available():
+        pytest.skip("vision extra not installed")
+
+    account = asyncio.run(carrier())
+    with TestClient(app) as client:
+        sign_in(client, account)
+        created = submit(client)
+        detail = client.get(f"/api/applications/{created['id']}").json()
+
+    plan = detail["plan"]
+    assert plan is not None
+    assert plan["tier"] == detail["score"]["tier"]
+    assert plan["humanStep"]
+    assert plan["referenceCoverBdt"] == 1_000_000
+
+
+# ── the identity photo ───────────────────────────────────────────────────────
+
+
+def test_an_application_can_be_submitted_without_an_identity_photo(carrier):
+    """It is biometric data that no model reads, so it must never be required
+    (SPEC §9, PII minimisation)."""
+    from sqlalchemy import select
+
+    from app.db.session import AsyncSessionLocal
+    from app.models import Applicant, Application
+
+    account = asyncio.run(carrier())
+    with TestClient(app) as client:
+        sign_in(client, account)
+        created = submit(client)  # sends no face_photo at all
+        detail = client.get(f"/api/applications/{created['id']}").json()
+
+    # And it is never handed back out: only evidence and heatmaps are servable.
+    assert {f["kind"] for f in detail["files"]} <= {"evidence", "gradcam"}
+
+    async def stored():
+        async with AsyncSessionLocal() as db:
+            application = await db.get(Application, uuid.UUID(created["id"]))
+            applicant = (
+                await db.execute(
+                    select(Applicant).where(Applicant.id == application.applicant_id)
+                )
+            ).scalar_one()
+            return applicant.face_photo_path
+
+    assert asyncio.run(stored()) is None
+
+
+def test_height_and_weight_reach_their_columns(carrier):
+    """The form collects them inside the tabular model's panel, so they arrive
+    nested in declared_history. They are facts about the person, and
+    `applicants` has columns for them that were being left null."""
+    from sqlalchemy import select
+
+    from app.db.session import AsyncSessionLocal
+    from app.models import Applicant, Application
+
+    payload = json.loads(intake_payload())
+    payload["declaredHistory"]["xgboost"] = {"height_cm": 168, "weight_kg": 74.5}
+
+    account = asyncio.run(carrier())
+    with TestClient(app) as client:
+        sign_in(client, account)
+        created = submit(client, json.dumps(payload))
+
+    async def stored():
+        async with AsyncSessionLocal() as db:
+            application = await db.get(Application, uuid.UUID(created["id"]))
+            applicant = (
+                await db.execute(
+                    select(Applicant).where(Applicant.id == application.applicant_id)
+                )
+            ).scalar_one()
+            return applicant.height_cm, applicant.weight_kg
+
+    height, weight = asyncio.run(stored())
+    assert float(height) == 168
+    assert float(weight) == 74.5

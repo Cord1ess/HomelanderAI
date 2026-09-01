@@ -226,3 +226,75 @@ def test_tb_and_normal_both_score_but_separation_is_not_assumed():
     for result in (tb, normal):
         assert result.usable
         assert 0.0 <= result.score <= 100.0
+
+
+# ── the heatmap has to line up with what the model saw ───────────────────────
+
+
+SHENZHEN = Path(__file__).resolve().parents[3] / "data" / "shenzhen"
+
+needs_shenzhen = pytest.mark.skipif(
+    not SHENZHEN.exists(), reason="run scripts/fetch_tb_data.py shenzhen"
+)
+
+
+@needs_vision
+@needs_shenzhen
+def test_the_heatmap_is_drawn_on_the_image_the_model_was_given():
+    """Preprocessing centre-crops to a square before resizing to 224.
+
+    The overlay used to be built by resizing the *original* image to 224x224
+    instead, which is a different framing — and chest radiographs are not
+    square. On the widest image in the set that put the backdrop 35 pixels out
+    of 224 while the CAM itself is only 7x7, so the highlight could sit more
+    than a whole cell away from the finding that produced it. For a feature
+    whose entire purpose is "show me where", that is the one thing it must not
+    do.
+
+    Correlation rather than equality: the red channel carries the heat, so the
+    overlay is never a pixel-perfect copy of the backdrop.
+    """
+    import numpy as np
+
+    # The least square image available — where the two framings differ most.
+    candidates = sorted(SHENZHEN.glob("*.png"))[:60]
+    path = min(candidates, key=lambda p: min(Image.open(p).size) / max(Image.open(p).size))
+
+    original = Image.open(path)
+    original.load()
+    result = tb_xray.run(path.read_bytes())
+
+    assert "gradcam" in result.artifacts, "no heatmap was produced"
+    overlay = np.asarray(Image.open(BytesIO(result.artifacts["gradcam"])), dtype=np.float32) / 255.0
+    assert overlay.shape == (224, 224, 3)
+
+    def correlation(a, b):
+        a = a.ravel() - a.mean()
+        b = b.ravel() - b.mean()
+        return float((a @ b) / (np.linalg.norm(a) * np.linalg.norm(b)))
+
+    # Green is the backdrop damped by the heat, so it tracks the backdrop.
+    green = overlay[..., 1]
+    model_input = np.clip((tb_xray._preprocess(original)[0].numpy() + 1024.0) / 2048.0, 0, 1)
+    plain_resize = np.asarray(original.convert("L").resize((224, 224)), dtype=np.float32) / 255.0
+
+    assert correlation(green, model_input) > correlation(green, plain_resize), (
+        "the heatmap backdrop matches a plain resize better than the model's own "
+        "input — the centre-crop alignment has regressed"
+    )
+
+
+@needs_vision
+@needs_shenzhen
+def test_the_heatmap_actually_highlights_something():
+    """A uniform overlay would pass an alignment check and tell nobody
+    anything."""
+    import numpy as np
+
+    path = sorted(SHENZHEN.glob("*_1.png"))[0]
+    result = tb_xray.run(path.read_bytes())
+
+    overlay = np.asarray(Image.open(BytesIO(result.artifacts["gradcam"])), dtype=np.float32) / 255.0
+    heat = overlay[..., 0] - overlay[..., 2]  # red lifted, blue damped
+
+    assert heat.max() - heat.min() > 0.1, "the heatmap is flat"

@@ -1,6 +1,7 @@
 import {
   ActionIcon,
   Alert,
+  Badge,
   Box,
   Button,
   Checkbox,
@@ -20,10 +21,11 @@ import {
 import { Dropzone } from '@mantine/dropzone'
 import { useForm } from '@mantine/form'
 import { IconAlertCircle, IconCircleCheck, IconFileUpload, IconX } from '@tabler/icons-react'
+import { useQuery } from '@tanstack/react-query'
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 
-import { submitApplication, type SubmitResponse } from '../../api/client'
+import { getModels, submitApplication, type SubmitResponse } from '../../api/client'
 import { Section } from './components'
 
 /**
@@ -351,6 +353,17 @@ export function IntakePage() {
     },
   })
 
+  // Which models actually run is a fact about the backend. The form used to
+  // offer all seven as though they worked; only the chest X-ray does, and an
+  // operator attaching a mammogram got no score and no explanation.
+  const { data: catalogue = [] } = useQuery({
+    queryKey: ['models'],
+    queryFn: getModels,
+    staleTime: 5 * 60 * 1000,
+  })
+  const availability = new Map(catalogue.map((m) => [m.id, m]))
+  const isAvailable = (id: string) => availability.get(id)?.available ?? false
+
   const [modelFiles, setModelFiles] = useState<Record<string, EvidenceFile[]>>({})
   const [facePhoto, setFacePhoto] = useState<File | null>(null)
   const [facePreview, setFacePreview] = useState<string | null>(null)
@@ -380,6 +393,9 @@ export function IntakePage() {
   }
 
   const toggleModel = (id: string) => {
+    // A model that cannot score is not selectable. Letting someone attach a
+    // mammogram that will never be read wastes their time and the client's.
+    if (!isAvailable(id)) return
     const has = form.values.selectedModels.includes(id)
     form.setFieldValue(
       'selectedModels',
@@ -464,9 +480,10 @@ export function IntakePage() {
     tbFollowUpAnswered
 
   const sections = [
-    Boolean(form.values.name.trim()) &&
-      Boolean(form.values.phone.trim()) &&
-      Boolean(facePhoto),
+    // The identity photo is deliberately not required. It is biometric data
+    // that no model reads, so demanding it would collect the most sensitive
+    // thing on the form for no benefit (SPEC §9, PII minimisation).
+    Boolean(form.values.name.trim()) && Boolean(form.values.phone.trim()),
     Boolean(form.values.coverageType) && (form.values.coverageAmount ?? 0) > 0,
     modelsSectionComplete,
   ]
@@ -569,11 +586,10 @@ export function IntakePage() {
         <Text size="lg" fw={600}>
           Review a new client
         </Text>
-        <Text size="sm" c="dimmed">
-          Fill this out while the client is in front of you. Enter the client’s
-          name and phone, add their face photo, pick the models that apply, and
-          attach each one’s report in its panel. The reference is generated for
-          you. One page, one submit.
+        <Text size="sm" c="dimmed" maw={680}>
+          Fill this in with the client in front of you. One page, one submit —
+          nothing is lost if you jump around or the client corrects themselves.
+          The reference number is assigned by the system when you submit.
         </Text>
       </div>
 
@@ -652,35 +668,67 @@ export function IntakePage() {
       {/* ── Section 3 · Models ─────────────────────────────────── */}
       <Section n="3" title="Models" complete={sections[2]}>
         <Text size="sm" c="dimmed">
-          Click all that apply. Each model’s panel shows which report to upload
-          and which questions it needs answered.
+          Pick what you want screened. Each model you select opens a panel below
+          asking for its report and its questions.
         </Text>
 
         <Group align="flex-start" wrap="nowrap" gap="lg">
-          {/* Vertical menu */}
-          <Stack gap={4} w={260} style={{ flexShrink: 0 }}>
+          {/* Vertical menu. Availability comes from the API, not this file. */}
+          <Stack gap={6} w={280} style={{ flexShrink: 0 }}>
             {MODELS.map((m) => {
               const on = form.values.selectedModels.includes(m.id)
+              const info = availability.get(m.id)
+              const ready = info?.available ?? false
               return (
                 <Paper
                   key={m.id}
                   p="xs"
-                  bd={on ? '1px solid var(--mantine-color-clinical-6)' : undefined}
-                  withBorder={!on}
-                  bg={on ? 'var(--mantine-color-clinical-0)' : 'transparent'}
-                  style={{ cursor: 'pointer' }}
+                  withBorder
+                  bd={
+                    on
+                      ? '1px solid var(--mantine-color-clinical-6)'
+                      : '1px solid var(--mantine-color-default-border)'
+                  }
+                  style={{
+                    cursor: ready ? 'pointer' : 'not-allowed',
+                    opacity: ready ? 1 : 0.55,
+                  }}
                   onClick={() => toggleModel(m.id)}
+                  aria-disabled={!ready}
                 >
-                  <Checkbox
-                    label={m.label}
-                    description={m.modality}
-                    checked={on}
-                    readOnly
-                    styles={{ label: { fontWeight: 600 } }}
-                  />
+                  <Group gap="xs" wrap="nowrap" align="flex-start">
+                    <Checkbox
+                      checked={on}
+                      disabled={!ready}
+                      readOnly
+                      mt={2}
+                      aria-label={m.label}
+                    />
+                    <Stack gap={2} style={{ flex: 1, minWidth: 0 }}>
+                      <Group gap={6} wrap="nowrap" justify="space-between">
+                        <Text size="sm" fw={600}>
+                          {info?.label ?? m.label}
+                        </Text>
+                        {!ready && (
+                          <Badge size="xs" color="gray" variant="outline">
+                            Not built yet
+                          </Badge>
+                        )}
+                      </Group>
+                      {/* What it answers, not what file it eats — that is the
+                          question an operator is actually asking. */}
+                      <Text size="xs" c="dimmed">
+                        {info?.screensFor ?? m.modality}
+                      </Text>
+                    </Stack>
+                  </Group>
                 </Paper>
               )
             })}
+            <Text size="xs" c="dimmed" mt={4}>
+              Greyed-out models are on the roadmap but produce no score yet, so
+              they cannot be selected.
+            </Text>
           </Stack>
 
           {/* Pop-out panels for selected models */}
@@ -692,13 +740,24 @@ export function IntakePage() {
             )}
             {selected.map((m) => (
               <Paper key={m.id} bd="1px solid var(--mantine-color-default-border)" p="md">
-                <Text fw={600} size="sm" mb="sm">
-                  {m.label}
-                  <Text span c="dimmed" fw={400}>
-                    {' '}
-                    · {m.modality}
+                <Group justify="space-between" align="flex-start" mb={4}>
+                  <Text fw={600} size="sm">
+                    {availability.get(m.id)?.label ?? m.label}
+                    <Text span c="dimmed" fw={400}>
+                      {' '}
+                      · screens for {availability.get(m.id)?.screensFor ?? m.modality}
+                    </Text>
                   </Text>
-                </Text>
+                  <Badge size="xs" color="teal" variant="light">
+                    {availability.get(m.id)?.armVersion ?? 'ready'}
+                  </Badge>
+                </Group>
+                {/* The caveat travels with the model, not a document. */}
+                {availability.get(m.id)?.validation && (
+                  <Text size="xs" c="yellow.7" mb="sm">
+                    {availability.get(m.id)?.validation}
+                  </Text>
+                )}
 
                 {m.upload ? (
                   <PanelUpload
@@ -749,10 +808,10 @@ export function IntakePage() {
       )}
 
       <Group justify="space-between" align="flex-start">
-        <Text size="xs" c="dimmed" maw={420}>
-          Disabled until the client’s name, phone and face photo are set, coverage type and
-          amount are filled, at least one model is selected, and every required
-          report is attached in its model’s panel.
+        <Text size="xs" c="dimmed" maw={460}>
+          Needs a name and phone, a coverage type and amount, and at least one
+          model with its report attached. Scoring starts as soon as you submit
+          and takes a few seconds — the queue updates itself.
         </Text>
         <Button size="sm" disabled={!canSubmit} loading={submitting} onClick={handleSubmit}>
           Submit application
@@ -785,15 +844,18 @@ function FacePhotoUpload({
 }) {
   return (
     <Paper bd="1px solid var(--mantine-color-default-border)" p="md" mt="md">
-      <Text fw={600} size="sm" mb="sm">
-        Face photo{' '}
-        <Text span c="red">
-          *
+      <Group gap="xs" mb={4}>
+        <Text fw={600} size="sm">
+          Identity photo
         </Text>
-      </Text>
+        <Badge size="xs" color="gray" variant="outline">
+          Optional
+        </Badge>
+      </Group>
       <Text size="xs" c="dimmed" mb="sm">
-        For identification only, No model
-        runs on this photo.
+        For your own records only. No model reads it, and it is never shown next
+        to the risk score — a face beside a score can only bias the decision.
+        Skip it if you do not need it.
       </Text>
 
       {file && preview ? (

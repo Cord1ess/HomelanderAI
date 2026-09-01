@@ -21,6 +21,7 @@ import {
   IconFilePlus,
   IconLayoutDashboard,
   IconLogout,
+  IconReceipt,
   IconMoon,
   IconSun,
   IconUser,
@@ -166,6 +167,7 @@ const NAV: { to: string; label: string; icon: () => JSX.Element }[] = [
   { to: '/queue', label: 'Queue', icon: () => <IconLayoutDashboard size={18} /> },
   { to: '/applications/new', label: 'New application', icon: () => <IconFilePlus size={18} /> },
   { to: '/notifications', label: 'Notifications', icon: () => <IconBell size={18} /> },
+  { to: '/pricing', label: 'Pricing', icon: () => <IconReceipt size={18} /> },
 ]
 
 function routeFor(path: string) {
@@ -173,6 +175,7 @@ function routeFor(path: string) {
   if (path.startsWith('/applications/new')) return { title: 'New application' }
   if (path.startsWith('/applications/')) return { title: 'Underwriting review' }
   if (path.startsWith('/notifications')) return { title: 'Notifications' }
+  if (path.startsWith('/pricing')) return { title: 'Pricing structure' }
   return { title: 'HomelanderAI' }
 }
 

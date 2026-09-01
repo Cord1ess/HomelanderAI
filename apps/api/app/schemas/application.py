@@ -56,6 +56,9 @@ class QueueItemSchema(BaseSchema):
     status: ApplicationStatus
     crs: float | None = None
     tier: str | None = None
+    coverage_amount: Decimal | None = None
+    # Which models the operator asked for, so the queue shows what is pending.
+    models_requested: list[str] = Field(default_factory=list)
 
 
 class QueueSchema(BaseSchema):
@@ -106,6 +109,57 @@ class ModelInfoSchema(BaseSchema):
     cv_auc: float | None = None
 
 
+class PlanSchema(BaseSchema):
+    """The policy recommendation for a tier, priced for this application.
+
+    Illustrative, not actuarial: Idea.md gives a premium per tier but no rate
+    card, so `baseMonthlyBdt` is the premium at `referenceCoverBdt` and
+    `monthlyPremiumBdt` scales it to the cover actually requested. The screen
+    says so wherever it shows a number.
+    """
+
+    tier: str
+    name: str
+    recommendation: str
+    human_step: str
+    base_monthly_bdt: float | None = None
+    reference_cover_bdt: float
+    monthly_premium_bdt: float | None = None
+    wellness_discount_eligible: bool = False
+
+
+class PricingSchema(BaseSchema):
+    """The full plan table, with each tier's score band attached.
+
+    One response so the pricing screen cannot show a premium against the wrong
+    band: the cut-points come from `scoring.Thresholds`, the rates from
+    `plans.PLANS`, and neither is retyped in the dashboard.
+    """
+
+    plans: list["PlanSchema"]
+    low_max: float
+    moderate_max: float
+    # Echoed back so the screen can say what the premiums were worked out for.
+    coverage_amount: float | None = None
+
+
+class ModelSchema(BaseSchema):
+    """One entry in the intake form's model menu.
+
+    `available` is derived from the arm registry, so the form can never offer a
+    model that will not actually run.
+    """
+
+    id: str
+    label: str
+    evidence: str
+    screens_for: str
+    available: bool
+    arm_name: str | None = None
+    arm_version: str | None = None
+    validation: str | None = None
+
+
 class FileSchema(BaseSchema):
     id: UUID
     kind: str  # "evidence" | "gradcam"
@@ -133,6 +187,8 @@ class ApplicationDetailSchema(BaseSchema):
     declared_history: dict = Field(default_factory=dict)
 
     score: ScoreSchema | None = None
+    # What the tier means for the policy, priced against the cover requested.
+    plan: PlanSchema | None = None
     adjustments: list[AdjustmentSchema] = Field(default_factory=list)
     findings: list[FindingSchema] = Field(default_factory=list)
     model_info: ModelInfoSchema | None = None

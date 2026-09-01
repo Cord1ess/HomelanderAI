@@ -38,6 +38,15 @@ class Settings(BaseSettings):
     db_user: str = "homelander"
     db_password: str = "devpassword"
     db_name: str = "homelander"
+    # How long to wait for the database to answer before giving up.
+    #
+    # A firewalled machine does not refuse the connection, it drops the packet,
+    # so without a timeout the client waits on the operating system's default —
+    # measured at 21 seconds on this network. An underwriter watching a spinner
+    # for 21 seconds concludes the application is broken, which is a worse
+    # outcome than a fast, clear failure. On a LAN a real connection takes
+    # milliseconds.
+    db_connect_timeout_seconds: int = 5
 
     # ── Evidence storage ──────────────────────────────────────
     # Uploaded evidence is written to ./data at the repo root, not to an object

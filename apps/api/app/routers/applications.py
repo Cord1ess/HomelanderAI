@@ -14,6 +14,7 @@ import asyncio
 import json
 import logging
 from datetime import UTC, date, datetime
+from decimal import Decimal, InvalidOperation
 from uuid import UUID
 
 from fastapi import (
@@ -34,7 +35,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app import audit as audit_chain
-from app import persistence, storage
+from app import catalogue, persistence, plans, storage
 from app.arms import arm_for_intake
 from app.db.session import AsyncSessionLocal, get_db
 from app.deps import Principal, current_principal
@@ -71,11 +72,15 @@ from app.schemas.application import (
     FindingSchema,
     IntakeIn,
     ModelInfoSchema,
+    ModelSchema,
+    PlanSchema,
+    PricingSchema,
     QueueItemSchema,
     QueueSchema,
     ScoreSchema,
     SubmitResponseSchema,
 )
+from app.scoring import Thresholds
 
 router = APIRouter(tags=["Applications"])
 
@@ -88,6 +93,50 @@ SCORING_ARM = "cxr_lung"
 
 # Face photos are identity, not evidence, and no model reads them.
 MAX_FACE_BYTES = 10 * 1024 * 1024
+
+
+@router.get(
+    "/pricing",
+    response_model=PricingSchema,
+    summary="The plan for each risk tier, priced for a given cover",
+)
+async def get_pricing(
+    coverage: float | None = Query(
+        default=None, ge=0, description="Sum assured in BDT; premiums scale from it"
+    ),
+    _: Principal = Depends(current_principal),
+) -> PricingSchema:
+    """What each tier means for the policy.
+
+    Premiums are worked out here rather than in the dashboard so one change to
+    `plans.py` moves every screen at once.
+    """
+    thresholds = Thresholds()
+    return PricingSchema(
+        plans=[
+            PlanSchema.model_validate(plans.for_tier(tier, coverage))
+            for tier in ("low", "moderate", "elevated", "insufficient_evidence")
+        ],
+        low_max=thresholds.low_max,
+        moderate_max=thresholds.moderate_max,
+        coverage_amount=coverage,
+    )
+
+
+@router.get(
+    "/models",
+    response_model=list[ModelSchema],
+    summary="Which models the intake form may offer, and which actually run",
+)
+async def list_models(
+    _: Principal = Depends(current_principal),
+) -> list[ModelSchema]:
+    """The form used to offer seven models as though all seven worked. One does.
+
+    `available` comes from the arm registry rather than a hand-kept list, so the
+    menu cannot claim a model that would silently produce nothing.
+    """
+    return [ModelSchema.model_validate(entry) for entry in catalogue.as_dicts()]
 
 
 # ── intake ───────────────────────────────────────────────────────────────────
@@ -154,6 +203,9 @@ async def submit_application(
     db.add(application)
     await db.flush()
 
+    # Optional. It is the most sensitive thing the form can collect — biometric,
+    # and no model reads it — so it is never required and never shown beside a
+    # risk score, where a face could only bias the decision (SPEC §10).
     if face_photo is not None and face_photo.filename:
         raw = await face_photo.read()
         if len(raw) > MAX_FACE_BYTES:
@@ -162,9 +214,22 @@ async def submit_application(
                 detail="The face photo is larger than 10 MB.",
             )
         if raw:
+            try:
+                # Re-encoded rather than stored as uploaded: that is what
+                # actually strips EXIF, which on a phone photo carries the
+                # device and often the GPS coordinates it was taken at.
+                photo = process_upload(raw, face_photo.filename)
+            except IntakeError as exc:
+                raise HTTPException(
+                    status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                    detail=f"The identity photo could not be read: {exc}",
+                ) from exc
+
             applicant.face_photo_path = storage.write(
-                principal.tenant_id, application.id, f"face-{applicant.id}.bin", raw
+                principal.tenant_id, application.id, f"face-{applicant.id}.png", photo.data
             )
+
+    _apply_measurements(applicant, intake.declared_history)
 
     stored, rejected = await _store_evidence(db, principal, application, files, file_arms)
 
@@ -199,6 +264,26 @@ async def submit_application(
         reference=applicant.external_ref,
         status=application.status,
     )
+
+
+def _apply_measurements(applicant: Applicant, declared: dict) -> None:
+    """Copy height and weight onto the applicant.
+
+    The form collects them inside the tabular model's panel, so they arrive
+    nested in `declared_history`. `applicants` has columns for both and they
+    were being left null — the data was in the database but not where anything
+    would look for it, and BMI is a demographic fact about the person, not an
+    answer to one model's questionnaire.
+    """
+    measurements = (declared or {}).get("xgboost") or {}
+    for field in ("height_cm", "weight_kg"):
+        value = measurements.get(field)
+        if value is None:
+            continue
+        try:
+            setattr(applicant, field, Decimal(str(value)))
+        except (InvalidOperation, ValueError):
+            log.warning("Ignoring unreadable %s: %r", field, value)
 
 
 async def _actor_id(db: AsyncSession, principal: Principal) -> UUID | None:
@@ -479,6 +564,8 @@ async def list_applications(
             status=application.status,
             crs=float(score.crs_value) if score else None,
             tier=score.tier.value if score else None,
+            coverage_amount=application.coverage_amount,
+            models_requested=application.models_requested or [],
         )
         for application, applicant, score in rows.all()
     ]
@@ -596,6 +683,16 @@ async def get_application(
         ),
         models_requested=application.models_requested or [],
         declared_history=application.declared_history or {},
+        plan=(
+            PlanSchema.model_validate(
+                plans.for_tier(
+                    score_row.tier.value if score_row else application.status.value,
+                    float(application.coverage_amount) if application.coverage_amount else None,
+                )
+            )
+            if (score_row or application.status == ApplicationStatus.INSUFFICIENT_EVIDENCE)
+            else None
+        ),
         score=(
             ScoreSchema(
                 crs=float(score_row.crs_value),

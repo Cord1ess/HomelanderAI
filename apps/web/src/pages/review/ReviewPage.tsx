@@ -36,6 +36,7 @@ import {
   type ApplicationDetail,
   type DecisionType,
   type Finding,
+  type Plan,
 } from '../../api/client'
 import { TierBadge, type Tier } from '../../components/TierBadge'
 
@@ -402,6 +403,9 @@ function Review({ data, state }: { data: ApplicationDetail; state: ReviewState }
         </Stack>
       </SimpleGrid>
 
+      {/* ── What this means for the policy ──────────────────── */}
+      {data.plan && <PlanPanel plan={data.plan} coverage={data.coverage} />}
+
       {/* ── Decision ────────────────────────────────────────── */}
       <Paper p="md" bd="1px solid var(--mantine-color-default-border)">
         <Text fw={600} size="sm" mb="sm">
@@ -435,7 +439,15 @@ function Review({ data, state }: { data: ApplicationDetail; state: ReviewState }
                   variant={state.decision === d.value ? 'filled' : 'light'}
                   color={state.decision === d.value ? 'clinical' : 'gray'}
                   justify="space-between"
-                  onClick={() => state.setDecision(d.value)}
+                  onClick={() => {
+                    state.setDecision(d.value)
+                    // Start from the plan's figure rather than an empty box, so
+                    // the rate is anchored to the tier and the cover requested.
+                    // The underwriter still sets the final number.
+                    if (d.value === 'approved_with_adjustment' && state.premium == null) {
+                      state.setPremium(data.plan?.monthlyPremiumBdt ?? undefined)
+                    }
+                  }}
                 >
                   {d.label}
                 </Button>
@@ -445,8 +457,15 @@ function Review({ data, state }: { data: ApplicationDetail; state: ReviewState }
             {state.decision === 'approved_with_adjustment' && (
               <NumberInput
                 mt="md"
-                label="Final premium (BDT)"
-                placeholder="1,000,000"
+                label="Final monthly premium (BDT)"
+                description={
+                  data.plan?.monthlyPremiumBdt != null
+                    ? `Plan suggests ৳${Math.round(
+                        data.plan.monthlyPremiumBdt,
+                      ).toLocaleString('en-IN')} for the cover requested. Adjust as you see fit.`
+                    : 'Set the rate you are approving at.'
+                }
+                placeholder="7,500"
                 thousandSeparator=","
                 min={0}
                 value={state.premium}
@@ -479,6 +498,102 @@ function Review({ data, state }: { data: ApplicationDetail; state: ReviewState }
 
       <AuditTrail applicationId={data.id} />
     </Stack>
+  )
+}
+
+const bdt = (n: number) => `৳${Math.round(n).toLocaleString('en-IN')}`
+
+/**
+ * What the tier means for the policy, priced against the cover the applicant
+ * asked for.
+ *
+ * The premiums come from Idea.md §5, which gives a monthly figure per tier but
+ * no rate card. The API treats those figures as the premium at a reference sum
+ * assured and scales linearly, so asking for twice the cover doubles the
+ * premium. That assumption is printed here rather than buried, because an
+ * underwriter reading a number needs to know it is an illustration and not a
+ * quote.
+ */
+function PlanPanel({
+  plan,
+  coverage,
+}: {
+  plan: Plan
+  coverage: ApplicationDetail['coverage']
+}) {
+  const requested = coverage.coverageAmount ? Number(coverage.coverageAmount) : null
+
+  return (
+    <Paper p="md" bd="1px solid var(--mantine-color-default-border)">
+      <Group justify="space-between" align="flex-start" mb="sm">
+        <div>
+          <Text fw={600} size="sm">
+            Recommended plan
+          </Text>
+          <Text size="xs" c="dimmed">
+            What this risk tier means for the policy
+          </Text>
+        </div>
+        <Badge variant="light" color="clinical" size="lg">
+          {plan.name}
+        </Badge>
+      </Group>
+
+      <SimpleGrid cols={{ base: 1, sm: 3 }} spacing="md">
+        <Field label="Cover requested">
+          {requested ? bdt(requested) : '—'}
+          {coverage.coverageType && (
+            <Text span size="xs" c="dimmed">
+              {' '}
+              · {coverage.coverageType}
+              {coverage.policyTerm ? `, ${coverage.policyTerm} yr` : ''}
+            </Text>
+          )}
+        </Field>
+
+        <Field label="Indicative monthly premium">
+          {plan.monthlyPremiumBdt != null ? (
+            bdt(plan.monthlyPremiumBdt)
+          ) : (
+            <Text span c="dimmed">
+              Not quoted at this tier
+            </Text>
+          )}
+        </Field>
+
+        <Field label="Human step required">
+          <Text span size="sm">
+            {plan.humanStep}
+          </Text>
+        </Field>
+      </SimpleGrid>
+
+      <Text size="sm" mt="md">
+        {plan.recommendation}.
+        {plan.wellnessDiscountEligible && ' Eligible for a wellness-plan discount.'}
+      </Text>
+
+      <Text size="xs" c="dimmed" mt="xs">
+        {plan.baseMonthlyBdt != null
+          ? `Illustrative only: ${bdt(plan.baseMonthlyBdt)}/month at ${bdt(
+              plan.referenceCoverBdt,
+            )} of cover, scaled to the amount requested. Not an actuarial quote — you set the final rate.`
+          : 'No rate is quoted at this tier. A senior underwriter decides what, if anything, is offered.'}
+      </Text>
+    </Paper>
+  )
+}
+
+function Field({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div>
+      <Text size="xs" c="dimmed" tt="uppercase" fw={600} lts={0.4}>
+        {label}
+      </Text>
+      <Text size="sm" fw={600} mt={2}>
+        {children}
+      </Text>
+    </div>
   )
 }
 

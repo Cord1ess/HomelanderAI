@@ -30,6 +30,9 @@ engine = create_async_engine(
     echo=settings.is_development,
     future=True,
     poolclass=NullPool,
+    # asyncpg's own connect timeout. See settings.db_connect_timeout_seconds —
+    # this is what turns a 21-second hang into a 5-second error.
+    connect_args={"timeout": settings.db_connect_timeout_seconds},
 )
 
 AsyncSessionLocal = async_sessionmaker(

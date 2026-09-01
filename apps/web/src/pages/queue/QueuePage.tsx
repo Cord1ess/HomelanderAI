@@ -150,6 +150,7 @@ export function QueuePage() {
               <Table.Tr>
                 <Table.Th>Reference</Table.Th>
                 <Table.Th>Applicant</Table.Th>
+                <Table.Th>Cover</Table.Th>
                 <Table.Th>Submitted</Table.Th>
                 <Table.Th>Status</Table.Th>
                 <Table.Th>Risk score</Table.Th>
@@ -161,7 +162,7 @@ export function QueuePage() {
               {isPending &&
                 [0, 1, 2].map((i) => (
                   <Table.Tr key={`skeleton-${i}`}>
-                    <Table.Td colSpan={7}>
+                    <Table.Td colSpan={8}>
                       <Skeleton height={18} />
                     </Table.Td>
                   </Table.Tr>
@@ -171,7 +172,7 @@ export function QueuePage() {
 
               {!isPending && rows.length === 0 && !error && (
                 <Table.Tr>
-                  <Table.Td colSpan={7}>
+                  <Table.Td colSpan={8}>
                     <Text ta="center" c="dimmed" py="lg" size="sm">
                       {total === 0
                         ? 'No applications yet. Start by reviewing a new client.'
@@ -203,6 +204,10 @@ function Row({ row }: { row: QueueItem }) {
         </Text>
       </Table.Td>
       <Table.Td fz="sm">{row.applicantName ?? '—'}</Table.Td>
+      <Table.Td fz="sm" ff="monospace">
+        {/* How much is at stake, so triage is not done on risk alone. */}
+        {row.coverageAmount ? `৳${Math.round(Number(row.coverageAmount)).toLocaleString('en-IN')}` : '—'}
+      </Table.Td>
       <Table.Td fz="sm" c="dimmed">
         {relativeTime(row.submittedAt)}
       </Table.Td>

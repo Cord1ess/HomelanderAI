@@ -123,6 +123,52 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/pricing": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The plan for each risk tier, priced for a given cover
+         * @description What each tier means for the policy.
+         *
+         *     Premiums are worked out here rather than in the dashboard so one change to
+         *     `plans.py` moves every screen at once.
+         */
+        get: operations["get_pricing_api_pricing_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/models": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Which models the intake form may offer, and which actually run
+         * @description The form used to offer seven models as though all seven worked. One does.
+         *
+         *     `available` comes from the arm registry rather than a hand-kept list, so the
+         *     menu cannot claim a model that would silently produce nothing.
+         */
+        get: operations["list_models_api_models_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/applications": {
         parameters: {
             query?: never;
@@ -323,6 +369,7 @@ export interface components {
                 [key: string]: unknown;
             };
             score?: components["schemas"]["ScoreSchema"] | null;
+            plan?: components["schemas"]["PlanSchema"] | null;
             /** Adjustments */
             adjustments?: components["schemas"]["AdjustmentSchema"][];
             /** Findings */
@@ -533,6 +580,31 @@ export interface components {
             /** Cvauc */
             cvAuc?: number | null;
         };
+        /**
+         * ModelSchema
+         * @description One entry in the intake form's model menu.
+         *
+         *     `available` is derived from the arm registry, so the form can never offer a
+         *     model that will not actually run.
+         */
+        ModelSchema: {
+            /** Id */
+            id: string;
+            /** Label */
+            label: string;
+            /** Evidence */
+            evidence: string;
+            /** Screensfor */
+            screensFor: string;
+            /** Available */
+            available: boolean;
+            /** Armname */
+            armName?: string | null;
+            /** Armversion */
+            armVersion?: string | null;
+            /** Validation */
+            validation?: string | null;
+        };
         /** NotificationSchema */
         NotificationSchema: {
             /**
@@ -556,6 +628,54 @@ export interface components {
             /** Readat */
             readAt?: string | null;
         };
+        /**
+         * PlanSchema
+         * @description The policy recommendation for a tier, priced for this application.
+         *
+         *     Illustrative, not actuarial: Idea.md gives a premium per tier but no rate
+         *     card, so `baseMonthlyBdt` is the premium at `referenceCoverBdt` and
+         *     `monthlyPremiumBdt` scales it to the cover actually requested. The screen
+         *     says so wherever it shows a number.
+         */
+        PlanSchema: {
+            /** Tier */
+            tier: string;
+            /** Name */
+            name: string;
+            /** Recommendation */
+            recommendation: string;
+            /** Humanstep */
+            humanStep: string;
+            /** Basemonthlybdt */
+            baseMonthlyBdt?: number | null;
+            /** Referencecoverbdt */
+            referenceCoverBdt: number;
+            /** Monthlypremiumbdt */
+            monthlyPremiumBdt?: number | null;
+            /**
+             * Wellnessdiscounteligible
+             * @default false
+             */
+            wellnessDiscountEligible: boolean;
+        };
+        /**
+         * PricingSchema
+         * @description The full plan table, with each tier's score band attached.
+         *
+         *     One response so the pricing screen cannot show a premium against the wrong
+         *     band: the cut-points come from `scoring.Thresholds`, the rates from
+         *     `plans.PLANS`, and neither is retyped in the dashboard.
+         */
+        PricingSchema: {
+            /** Plans */
+            plans: components["schemas"]["PlanSchema"][];
+            /** Lowmax */
+            lowMax: number;
+            /** Moderatemax */
+            moderateMax: number;
+            /** Coverageamount */
+            coverageAmount?: number | null;
+        };
         /** QueueItemSchema */
         QueueItemSchema: {
             /**
@@ -577,6 +697,10 @@ export interface components {
             crs?: number | null;
             /** Tier */
             tier?: string | null;
+            /** Coverageamount */
+            coverageAmount?: string | null;
+            /** Modelsrequested */
+            modelsRequested?: string[];
         };
         /** QueueSchema */
         QueueSchema: {
@@ -897,6 +1021,71 @@ export interface operations {
                     "application/json": {
                         [key: string]: string;
                     };
+                };
+            };
+        };
+    };
+    get_pricing_api_pricing_get: {
+        parameters: {
+            query?: {
+                /** @description Sum assured in BDT; premiums scale from it */
+                coverage?: number | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: {
+                session_token?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PricingSchema"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_models_api_models_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: {
+                session_token?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ModelSchema"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };
