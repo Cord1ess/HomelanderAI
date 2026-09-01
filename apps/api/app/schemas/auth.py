@@ -53,11 +53,14 @@ class RegisterTenantSchema(BaseSchema):
 
 
 class UserLoginSchema(BaseSchema):
-    """Payload for authenticating existing carrier users."""
+    """Sign-in details.
+
+    No company field: email is unique system-wide, so it identifies the account
+    on its own.
+    """
 
     email: str
     password: str
-    tenant_slug: str | None = None
 
 
 class AuthResponseSchema(BaseSchema):

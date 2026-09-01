@@ -9,7 +9,7 @@ import {
   TextInput,
 } from '@mantine/core'
 import { isEmail, useForm } from '@mantine/form'
-import { IconAlertCircle, IconBuilding, IconLock, IconMail } from '@tabler/icons-react'
+import { IconAlertCircle, IconLock, IconMail } from '@tabler/icons-react'
 import { useState } from 'react'
 import { useAuth } from '../../context/AuthContext'
 import type { LoginPayload } from '../../types/auth'
@@ -27,10 +27,9 @@ export function LoginForm({ onSwitchToRegister }: LoginFormProps) {
     initialValues: {
       email: '',
       password: '',
-      tenantSlug: '',
     },
     validate: {
-      email: isEmail('Please enter a valid work email address'),
+      email: isEmail('Enter a valid email address'),
       password: (val) => (val.length < 1 ? 'Password is required' : null),
     },
   })
@@ -52,14 +51,14 @@ export function LoginForm({ onSwitchToRegister }: LoginFormProps) {
     <form onSubmit={form.onSubmit(handleSubmit)}>
       <Stack gap="md">
         {error && (
-          <Alert color="red" variant="light" icon={<IconAlertCircle size={16} />} title="Sign In Error">
+          <Alert color="red" variant="light" icon={<IconAlertCircle size={16} />} title="Could not sign in">
             {error}
           </Alert>
         )}
 
         <TextInput
           required
-          label="Work Email"
+          label="Email"
           placeholder="underwriter@carrier.com"
           leftSection={<IconMail size={16} />}
           {...form.getInputProps('email')}
@@ -73,14 +72,6 @@ export function LoginForm({ onSwitchToRegister }: LoginFormProps) {
           {...form.getInputProps('password')}
         />
 
-        <TextInput
-          label="Carrier Organization Slug"
-          placeholder="e.g. met-life (optional)"
-          leftSection={<IconBuilding size={16} />}
-          description="Specify if your account is bound to a specific carrier domain"
-          {...form.getInputProps('tenantSlug')}
-        />
-
         <Group justify="space-between" mt="xs">
           <Anchor component="button" type="button" size="xs" c="dimmed">
             Forgot password?
@@ -88,14 +79,14 @@ export function LoginForm({ onSwitchToRegister }: LoginFormProps) {
         </Group>
 
         <Button type="submit" loading={submitting} color="clinical" fullWidth radius="md" mt="sm">
-          Sign In to Portal
+          Sign in
         </Button>
 
         {onSwitchToRegister && (
           <Text size="xs" ta="center" c="dimmed" mt="xs">
             Need to register a new carrier?{' '}
             <Anchor component="button" type="button" size="xs" onClick={onSwitchToRegister} fw={600}>
-              Onboard Carrier Organization
+              Create a company account
             </Anchor>
           </Text>
         )}

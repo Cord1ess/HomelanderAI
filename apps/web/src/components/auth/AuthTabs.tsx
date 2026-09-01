@@ -13,12 +13,12 @@ export function AuthTabs() {
         <Tabs.List grow mb="lg">
           <Tabs.Tab value="login" leftSection={<IconLogin size={16} />}>
             <Text fw={600} size="sm">
-              Carrier Sign In
+              Sign in
             </Text>
           </Tabs.Tab>
           <Tabs.Tab value="register" leftSection={<IconBuildingStore size={16} />}>
             <Text fw={600} size="sm">
-              Onboard Carrier
+              Create account
             </Text>
           </Tabs.Tab>
         </Tabs.List>

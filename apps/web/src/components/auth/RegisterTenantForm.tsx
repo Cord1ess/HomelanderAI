@@ -42,7 +42,7 @@ export function RegisterTenantForm({ onSwitchToLogin }: RegisterTenantFormProps)
       role: 'admin',
     },
     validate: {
-      tenantName: (val) => (val.trim().length < 2 ? 'Carrier name must be at least 2 characters' : null),
+      tenantName: (val) => (val.trim().length < 2 ? 'Enter your company name' : null),
       adminFullName: (val) => (val.trim().length < 2 ? 'Full name is required' : null),
       adminEmail: isEmail('Please enter a valid work email address'),
       adminPassword: (val) => (val.length < 8 ? 'Password must be at least 8 characters' : null),
@@ -79,7 +79,7 @@ export function RegisterTenantForm({ onSwitchToLogin }: RegisterTenantFormProps)
           <Grid.Col span={{ base: 12, sm: 7 }}>
             <TextInput
               required
-              label="Carrier / Organization Name"
+              label="Company name"
               placeholder="e.g. Apex Life Assurance"
               leftSection={<IconBuilding size={16} />}
               {...form.getInputProps('tenantName')}
@@ -88,11 +88,11 @@ export function RegisterTenantForm({ onSwitchToLogin }: RegisterTenantFormProps)
           <Grid.Col span={{ base: 12, sm: 5 }}>
             <Select
               required
-              label="Subscription Tier"
+              label="Plan"
               data={[
-                { value: 'pilot', label: 'Pilot / Sandbox' },
-                { value: 'standard', label: 'Standard Carrier' },
-                { value: 'enterprise', label: 'Enterprise Multimodal' },
+                { value: 'pilot', label: 'Trial' },
+                { value: 'standard', label: 'Standard' },
+                { value: 'enterprise', label: 'Enterprise' },
               ]}
               {...form.getInputProps('subscriptionTier')}
             />
@@ -107,7 +107,7 @@ export function RegisterTenantForm({ onSwitchToLogin }: RegisterTenantFormProps)
           <Grid.Col span={{ base: 12, sm: 6 }}>
             <TextInput
               required
-              label="Admin Full Name"
+              label="Your full name"
               placeholder="Dr. Sarah Jenkins"
               leftSection={<IconUser size={16} />}
               {...form.getInputProps('adminFullName')}
@@ -117,7 +117,7 @@ export function RegisterTenantForm({ onSwitchToLogin }: RegisterTenantFormProps)
           <Grid.Col span={{ base: 12, sm: 6 }}>
             <TextInput
               required
-              label="Work Email"
+              label="Email"
               placeholder="sarah.jenkins@apexlife.com"
               leftSection={<IconMail size={16} />}
               {...form.getInputProps('adminEmail')}
@@ -138,7 +138,7 @@ export function RegisterTenantForm({ onSwitchToLogin }: RegisterTenantFormProps)
 
           <Grid.Col span={{ base: 12, sm: 6 }}>
             <TextInput
-              label="Underwriter License #"
+              label="Underwriter licence number (optional)"
               placeholder="e.g. FALU-98214 (optional)"
               leftSection={<IconBadge size={16} />}
               {...form.getInputProps('licenseNumber')}
@@ -147,18 +147,18 @@ export function RegisterTenantForm({ onSwitchToLogin }: RegisterTenantFormProps)
         </Grid>
 
         <Select
-          label="Initial System Role"
+          label="Your role"
           data={[
-            { value: 'admin', label: 'Tenant Admin (Full System & User Management)' },
-            { value: 'senior_underwriter', label: 'Senior Underwriter (Decision Sign-off & Audit)' },
-            { value: 'underwriter', label: 'Medical Underwriter (Case Review)' },
+            { value: 'admin', label: 'Administrator — manages people and settings' },
+            { value: 'senior_underwriter', label: 'Senior underwriter — signs off decisions' },
+            { value: 'underwriter', label: 'Underwriter — reviews applications' },
           ]}
           value={form.values.role}
           onChange={(val) => form.setFieldValue('role', (val as UserRole) || 'admin')}
         />
 
         <Button type="submit" loading={submitting} color="clinical" fullWidth radius="md" mt="md">
-          Register Carrier & Access Portal
+          Create account
         </Button>
 
         {onSwitchToLogin && (

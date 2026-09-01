@@ -20,7 +20,6 @@ export interface Tenant {
 export interface LoginPayload {
   email: string
   password: string
-  tenantSlug?: string
 }
 
 export interface RegisterTenantPayload {

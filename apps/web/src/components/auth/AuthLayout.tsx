@@ -64,7 +64,7 @@ export function AuthLayout({ children }: AuthLayoutProps) {
                 </Title>
 
                 <Text c="dimmed" size="sm" mt="xs" style={{ maxWidth: 420 }}>
-                  Multimodal AI ensemble decision-support for life and health insurance carriers.
+                  Helps insurance underwriters review medical evidence and decide on applications.
                 </Text>
               </Stack>
 

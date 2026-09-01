@@ -4,6 +4,8 @@ Handles tenant registration, login credentials, httpOnly session cookies,
 and current user session verification.
 """
 
+from datetime import UTC, datetime
+
 from fastapi import APIRouter, Cookie, Depends, HTTPException, Response, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -121,6 +123,14 @@ async def login(
             detail="Invalid email address or password.",
         )
 
+    # Accounts are switched off rather than deleted, so this check is what
+    # actually stops a retired user signing in.
+    if not user.is_active:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="This account has been deactivated. Contact your administrator.",
+        )
+
     # Fetch Tenant
     tenant_result = await db.execute(
         select(Tenant).where(Tenant.id == user.tenant_id)
@@ -131,6 +141,10 @@ async def login(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Carrier organization tenant not found.",
         )
+
+    user.last_login_at = datetime.now(UTC)
+    await db.commit()
+    await db.refresh(user)
 
     # Set JWT Session Cookie
     token = create_access_token(
@@ -171,10 +185,10 @@ async def get_me(
     result = await db.execute(select(User).where(User.id == user_id))
     user = result.scalar_one_or_none()
 
-    if not user:
+    if not user or not user.is_active:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="User associated with session not found.",
+            detail="User associated with session not found or no longer active.",
         )
 
     tenant_result = await db.execute(

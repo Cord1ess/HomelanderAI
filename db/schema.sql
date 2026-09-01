@@ -67,14 +67,17 @@ CREATE TABLE users (
     tenant_id        UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
     full_name        VARCHAR(255) NOT NULL,
     email            VARCHAR(255) NOT NULL,
-    password_hash    VARCHAR(255) NOT NULL,
+    password_hash    VARCHAR(255) NOT NULL,   -- Argon2id only
     role             user_role NOT NULL,
     license_number   VARCHAR(100),
-    password_hash    VARCHAR(255) NOT NULL,   -- Argon2id only
     is_active        BOOLEAN NOT NULL DEFAULT TRUE,
     last_login_at    TIMESTAMPTZ,
     created_at       TIMESTAMPTZ NOT NULL DEFAULT now(),
-    CONSTRAINT uq_users_tenant_email UNIQUE (tenant_id, email)
+
+    -- Email is unique across the whole system, not per company.
+    -- Sign-in asks only for an email and password, so the same address in two
+    -- companies would make it impossible to tell which account is meant.
+    CONSTRAINT uq_users_email UNIQUE (email)
 );
 
 CREATE INDEX idx_users_tenant_id ON users(tenant_id);
@@ -362,8 +365,20 @@ CREATE INDEX idx_notification_preferences_user_id ON notification_preferences(us
 -- as a plain (non-superuser) role for this to have any effect.
 -- ============================================================================
 
-CREATE ROLE app_user LOGIN PASSWORD 'CHANGE_ME_BEFORE_DEPLOY';
-GRANT CONNECT ON DATABASE current_database() TO app_user;
+-- Guarded so this file can be run more than once.
+DO $$
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'app_user') THEN
+        CREATE ROLE app_user LOGIN PASSWORD 'CHANGE_ME_BEFORE_DEPLOY';
+    END IF;
+END $$;
+
+-- GRANT ... ON DATABASE needs the database name spelled out, so build the
+-- statement at run time rather than calling current_database() inline.
+DO $$
+BEGIN
+    EXECUTE format('GRANT CONNECT ON DATABASE %I TO app_user', current_database());
+END $$;
 GRANT USAGE ON SCHEMA public TO app_user;
 GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO app_user;
 REVOKE UPDATE, DELETE ON audit_log FROM app_user;  -- append-only: belt and braces

@@ -5,7 +5,7 @@ import uuid
 from datetime import datetime
 from typing import TYPE_CHECKING
 
-from sqlalchemy import DateTime, Enum, ForeignKey, String, UniqueConstraint, func
+from sqlalchemy import Boolean, DateTime, Enum, ForeignKey, String, UniqueConstraint, func
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -27,9 +27,10 @@ class User(Base):
     """System user belonging to a carrier tenant."""
 
     __tablename__ = "users"
-    __table_args__ = (
-        UniqueConstraint("tenant_id", "email", name="uq_users_tenant_email"),
-    )
+    # Email is unique system-wide, not per company: sign-in asks only for an
+    # email and password, so the same address in two companies would make the
+    # account ambiguous.
+    __table_args__ = (UniqueConstraint("email", name="uq_users_email"),)
 
     id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
@@ -54,6 +55,14 @@ class User(Base):
         default=UserRole.UNDERWRITER,
     )
     license_number: Mapped[str | None] = mapped_column(String(100), nullable=True)
+
+    # Users are never deleted — their past decisions must stay attributable —
+    # so switching this off is how an account is retired.
+    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="true")
+    last_login_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )

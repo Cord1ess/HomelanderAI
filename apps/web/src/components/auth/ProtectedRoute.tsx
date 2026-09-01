@@ -20,7 +20,7 @@ export function ProtectedRoute({ children, allowedRoles }: ProtectedRouteProps) 
           <Stack align="center" gap="sm">
             <Loader color="clinical" size="lg" type="dots" />
             <Text size="sm" c="dimmed" ff="monospace">
-              Verifying carrier session…
+              Checking your sign-in…
             </Text>
           </Stack>
         </Center>
@@ -37,13 +37,13 @@ export function ProtectedRoute({ children, allowedRoles }: ProtectedRouteProps) 
       <Center mih="100vh" p="md">
         <Alert
           color="red"
-          title="Access Restricted"
+          title="You do not have access"
           icon={<IconAlertTriangle size={20} />}
           style={{ maxWidth: 450 }}
         >
           <Text size="sm">
-            Your system role (<strong>{user.role}</strong>) does not have authorization to view this
-            resource. Contact your Carrier Tenant Admin for permissions.
+            Your account is set up as <strong>{user.role}</strong>, which cannot open
+            this page. Ask an administrator at your company if you need access.
           </Text>
         </Alert>
       </Center>

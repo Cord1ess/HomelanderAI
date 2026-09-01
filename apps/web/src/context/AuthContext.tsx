@@ -52,8 +52,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     onSuccess: (res) => {
       queryClient.setQueryData(['auth', 'me'], res)
       notifications.show({
-        title: 'Carrier Onboarded',
-        message: `Welcome ${res.tenant.name}! Account created for ${res.user.fullName}.`,
+        title: 'Account created',
+        message: `${res.tenant.name} is set up. You are signed in as ${res.user.fullName}.`,
         color: 'teal',
       })
     },
@@ -66,7 +66,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       queryClient.setQueryData(['auth', 'me'], null)
       notifications.show({
         title: 'Signed out',
-        message: 'You have been logged out safely.',
+        message: 'You have been signed out.',
         color: 'blue',
       })
     },
@@ -96,7 +96,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     } catch (err) {
       const errorMsg = err instanceof Error ? err.message : 'Registration failed'
       notifications.show({
-        title: 'Onboarding Failed',
+        title: 'Could not create the account',
         message: errorMsg,
         color: 'red',
       })
