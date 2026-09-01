@@ -38,6 +38,13 @@ class Arm:
     name: str
     version: str
     arm_type: str  # matches the model_arm_type enum in the database
+    # Which panel on the intake form feeds this arm. The form and the model use
+    # different names on purpose — `cxr_lung` is the evidence the operator
+    # attaches, `tb_xray` is the model that reads it, and one chest X-ray could
+    # feed several models later. Keeping the link here means the two names can
+    # never drift apart silently, which is exactly what happened when the router
+    # matched a form id against this dict's keys and quietly found nothing.
+    intake_id: str
     # Everything the model_arms row needs, so the registry in code is the one
     # source of truth and a seed file cannot drift out of sync with it.
     preprocessing_version: str
@@ -50,11 +57,22 @@ class Arm:
 # ArmResult`, and by this point ArmResult is defined, so there is no cycle.
 from app.arms import tb_xray  # noqa: E402
 
+
+def arm_for_intake(intake_id: str) -> Arm | None:
+    """The arm fed by one intake-form panel, or None if nothing reads it.
+
+    Most panels on the form have no model behind them yet; that is not an error,
+    the evidence is simply stored and not scored.
+    """
+    return next((a for a in ARMS.values() if a.intake_id == intake_id), None)
+
+
 ARMS: dict[str, Arm] = {
     tb_xray.NAME: Arm(
         name=tb_xray.NAME,
         version=tb_xray.VERSION,
         arm_type="vision",
+        intake_id="cxr_lung",
         preprocessing_version=tb_xray.PREPROCESSING_VERSION,
         weight_hash=tb_xray.WEIGHT_HASH,
         run=tb_xray.run,

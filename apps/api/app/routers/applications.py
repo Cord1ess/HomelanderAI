@@ -35,7 +35,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app import audit as audit_chain
 from app import persistence, storage
-from app.arms import ARMS
+from app.arms import arm_for_intake
 from app.db.session import AsyncSessionLocal, get_db
 from app.deps import Principal, current_principal
 from app.intake import IntakeError, process_upload
@@ -252,10 +252,12 @@ async def _store_evidence(
             processed.data,
         )
 
-        arm_name = file_arms[index] if index < len(file_arms) else None
-        arm_row = None
-        if arm_name and arm_name in ARMS:
-            arm_row = await persistence.register_arm(db, ARMS[arm_name])
+        # `file_arms[i]` is the form's panel id (e.g. "cxr_lung"), not the arm's
+        # registry key. Matching it against ARMS directly always missed, which
+        # left every evidence row with a null model_arm_id.
+        intake_id = file_arms[index] if index < len(file_arms) else None
+        arm = arm_for_intake(intake_id) if intake_id else None
+        arm_row = await persistence.register_arm(db, arm) if arm else None
 
         db.add(
             EvidenceFile(
@@ -264,7 +266,7 @@ async def _store_evidence(
                 file_type=(
                     EvidenceFileType.DICOM
                     if processed.source_format == "dicom"
-                    else EvidenceFileType.QUESTIONNAIRE
+                    else EvidenceFileType.IMAGE
                 ),
                 storage_path=path,
                 original_filename=upload.filename,

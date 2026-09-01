@@ -22,6 +22,8 @@ class ApplicationStatus(enum.StrEnum):
 
 class EvidenceFileType(enum.StrEnum):
     DICOM = "dicom"
+    # A radiograph uploaded as PNG or JPEG. Most are.
+    IMAGE = "image"
     LAB_REPORT = "lab_report"
     CLINICAL_NOTE = "clinical_note"
     QUESTIONNAIRE = "questionnaire"

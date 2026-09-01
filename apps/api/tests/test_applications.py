@@ -158,6 +158,50 @@ def test_an_application_with_no_readable_evidence_is_not_left_pending(carrier):
         assert detail["errors"] == [] or any("not a readable image" in e for e in detail["errors"])
 
 
+def test_uploaded_evidence_is_linked_to_the_model_that_reads_it(carrier):
+    """The form sends its own panel id (`cxr_lung`); the arm registry is keyed by
+    the model name (`tb_xray`). Matching one against the other left every
+    evidence row with a null `model_arm_id` — the link DATABASE.md §C exists to
+    provide — while scoring carried on working, so nothing looked wrong."""
+    from sqlalchemy import select
+
+    from app.db.session import AsyncSessionLocal
+    from app.models import EvidenceFile, EvidenceFileType, ModelArm
+
+    account = asyncio.run(carrier())
+    with TestClient(app) as client:
+        sign_in(client, account)
+        created = submit(client)
+
+    async def stored_row():
+        async with AsyncSessionLocal() as db:
+            row = (
+                await db.execute(
+                    select(EvidenceFile).where(EvidenceFile.application_id == created["id"])
+                )
+            ).scalar_one()
+            arm = await db.get(ModelArm, row.model_arm_id) if row.model_arm_id else None
+            return row.file_type, row.model_arm_id, (arm.name if arm else None)
+
+    file_type, arm_id, arm_name = asyncio.run(stored_row())
+
+    assert arm_id is not None, "the X-ray was never linked to the arm that reads it"
+    assert arm_name == "tb_xray"
+    # A PNG radiograph is an image. It used to be filed as 'questionnaire',
+    # because the enum had no honest value for it.
+    assert file_type == EvidenceFileType.IMAGE
+
+
+def test_the_scoring_arm_constant_matches_the_registry():
+    """`SCORING_ARM` decides which block of declared_history reaches the rules.
+    If it stops matching the arm's intake id, every rule silently stops firing
+    and applicants are scored on imaging alone."""
+    from app.arms import arm_for_intake
+    from app.routers.applications import SCORING_ARM
+
+    assert arm_for_intake(SCORING_ARM) is not None
+
+
 def test_malformed_payload_is_rejected_clearly(carrier):
     account = asyncio.run(carrier())
     with TestClient(app) as client:
