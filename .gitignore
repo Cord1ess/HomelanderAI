@@ -22,6 +22,7 @@ dist/
 dist-ssr/
 *.tsbuildinfo
 *.local
+Reference/
 
 # ─── Logs ─────────────────────────────────────────────────
 logs/

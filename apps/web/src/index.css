@@ -3,6 +3,13 @@ html {
   background-color: #16181c;
 }
 
+/* The ERP shell's header is 44px; make the main surface fill the viewport so
+   short pages (e.g. New application) don't expose a bare dark strip below. */
+main {
+  min-height: calc(100vh - 44px);
+  background-color: var(--mantine-color-body);
+}
+
 body {
   margin: 0;
   -webkit-font-smoothing: antialiased;
@@ -42,3 +49,253 @@ body {
   font-size: 0.6875rem;
   font-weight: 600;
 }
+
+/* Thin scrollbars for dense panels. */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(120, 130, 145, 0.45) transparent;
+}
+
+/* App shell — dense fixed sidebar. */
+.hl-shell-nav {
+  display: flex;
+  flex-direction: column;
+}
+
+.hl-nav-link {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.5rem 0.65rem;
+  margin: 0.0625rem 0.4rem;
+  border-radius: 0.375rem;
+  font-size: 0.8rem;
+  font-weight: 500;
+  color: var(--mantine-color-dimmed);
+  text-decoration: none;
+  transition: background-color 0.12s ease, color 0.12s ease;
+}
+
+.hl-nav-link:hover {
+  background-color: var(--mantine-color-default-hover);
+  color: var(--mantine-color-text);
+}
+
+.hl-nav-link[data-active='true'] {
+  background-color: var(--mantine-color-clinical-light);
+  color: var(--mantine-color-clinical-light-color);
+}
+
+.hl-shell-header {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  height: 44px;
+  padding: 0 0.9rem;
+  background-color: var(--mantine-color-dark-8);
+  border-bottom: 1px solid var(--mantine-color-default-border);
+}
+
+/* Key/value stat block. */
+.hl-kv {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+
+.hl-kv-label {
+  font-size: 0.65rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--mantine-color-dimmed);
+}
+
+.hl-kv-value {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--mantine-color-text);
+}
+
+/* Utility grid/flex helpers. */
+.hl-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.hl-card-pad {
+  padding: 0.85rem 1rem;
+}
+
+/* Monospace numeric cells. */
+.hl-mono {
+  font-family: var(--mantine-font-family-monospace);
+  font-size: 0.75rem;
+}
+
+/* Text ellipsis for table cells. */
+.hl-ellipsis {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ── Home / login landing ─────────────────────────────────────────── */
+
+/* Gentle float for the hero brand mark. */
+@keyframes hl-float {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-8px);
+  }
+}
+
+.home-float {
+  animation: hl-float 6s ease-in-out infinite;
+}
+
+/* Entrance reveal — fade + rise. */
+@keyframes hl-rise {
+  from {
+    opacity: 0;
+    transform: translateY(14px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.home-rise {
+  opacity: 0;
+  animation: hl-rise 0.7s ease forwards;
+}
+
+.home-rise-1 {
+  animation-delay: 0.05s;
+}
+.home-rise-2 {
+  animation-delay: 0.15s;
+}
+.home-rise-3 {
+  animation-delay: 0.25s;
+}
+.home-rise-4 {
+  animation-delay: 0.35s;
+}
+.home-rise-5 {
+  animation-delay: 0.45s;
+}
+
+/* ── Neo-brutalist public pages ────────────────────────────────────── */
+
+:root {
+  --neo-bg: #f3f0e7;
+  --neo-card: #fffdf7;
+  --neo-ink: #101010;
+  --neo-line: #101010;
+  --neo-shadow: #101010;
+  --neo-accent: #2f7f7b;
+  --neo-accent-ink: #ffffff;
+}
+
+.neo-shell {
+  min-height: 100vh;
+  background: var(--neo-bg);
+  color: var(--neo-ink);
+}
+
+/* Chunky bordered cards — flat, hard offset shadow, no blur. */
+.neo-card {
+  background: var(--neo-card);
+  border: 3px solid var(--neo-line);
+  box-shadow: 6px 6px 0 var(--neo-shadow);
+}
+
+.neo-card--teal {
+  background: var(--neo-accent);
+  color: var(--neo-accent-ink);
+}
+
+.neo-card--yellow {
+  background: #ffe135;
+}
+
+/* Circular brand mark — the logo plate is already light; give it a hard,
+   neo-brutalist ring + offset shadow instead of the old soft glow. */
+.neo-brand-chip {
+  border-radius: 999px;
+  background: #fff;
+  border: 3px solid var(--neo-line);
+  box-shadow: 5px 5px 0 var(--neo-accent);
+  overflow: hidden;
+}
+
+/* Chunky inline chip / tag. */
+.neo-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.3rem 0.75rem;
+  border: 2px solid var(--neo-line);
+  background: var(--neo-card);
+  box-shadow: 3px 3px 0 var(--neo-shadow);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  font-size: 0.7rem;
+}
+
+/* Hard shadow press-down for interactive elements. */
+.neo-press {
+  transition: transform 0.06s ease, box-shadow 0.06s ease;
+}
+
+.neo-press:hover {
+  transform: translate(-2px, -2px);
+  box-shadow: 8px 8px 0 var(--neo-shadow);
+}
+
+.neo-press:active {
+  transform: translate(2px, 2px);
+  box-shadow: 2px 2px 0 var(--neo-shadow);
+}
+
+/* Hover lift for feature cards. */
+.neo-lift {
+  transition: transform 0.12s ease, box-shadow 0.12s ease;
+}
+
+.neo-lift:hover {
+  transform: translate(-3px, -3px);
+  box-shadow: 10px 10px 0 var(--neo-ink);
+}
+
+/* Neo headline display type. */
+.neo-display {
+  font-weight: 800;
+  letter-spacing: -0.03em;
+  line-height: 1.02;
+}
+
+.neo-underline {
+  text-decoration: underline;
+  text-decoration-thickness: 6px;
+  text-decoration-color: var(--neo-accent);
+  text-underline-offset: 6px;
+}
+
+/* Marquee / ticker strip inside a bordered, hard-shadow band. */
+.neo-ticker {
+  border-top: 3px solid var(--neo-line);
+  border-bottom: 3px solid var(--neo-line);
+  background: var(--neo-accent);
+  color: var(--neo-accent-ink);
+}
+

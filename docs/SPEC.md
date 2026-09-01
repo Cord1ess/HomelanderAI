@@ -41,6 +41,48 @@ Keep the *speed* claim — Tier 1 becomes "cleared for fast-track, one-click und
 
 ---
 
+### The operating flow — LOCKED
+
+How the product is actually used, end to end. Two separate sessions, and the
+client is only present for the first one.
+
+**Session 1 — intake, client in the room, a few minutes**
+
+1. Operator logs into their carrier's dashboard.
+2. Clicks **"Review a new client"**, opening an intake form.
+3. Records who the applicant is and what cover they are asking for, plus
+   declared medical history.
+4. Uploads the medical documents the client brought.
+5. Submits. The application status becomes **evaluation pending**.
+6. Operator tells the client they will hear back in **1–2 business days**.
+   The client leaves.
+
+**Unattended — the platform works alone, hours**
+
+7. Intake pipeline de-identifies the uploads and stores only what is needed
+   (§9).
+8. Model arms run against the evidence and a score is produced.
+9. The result sits and waits for a person.
+
+**Session 2 — review, no client present**
+
+10. An underwriter opens the completed evaluation, reads the score, heatmap and
+    factor breakdown, and records the actual decision.
+11. The applicant is notified.
+
+**The turnaround promise is an architectural fact, not a detail.** 1–2 business
+days means nothing in this system is latency-sensitive. No streaming, no
+progress bars, no fast-inference requirement — a CPU model taking three minutes
+is entirely acceptable. This is the justification for background jobs over a
+broker (§12), and it is why the live-streaming design in the Nirnoy reference is
+explicitly *not* copied.
+
+It also means **the operator and the underwriter are different moments, and may
+be different people.** Intake is a data-entry surface; review is a
+decision-support surface. Do not merge them into one screen.
+
+---
+
 ## 2. Problem Statement — LOCKED
 
 **Early-Claim Asymmetry.** Applicants may carry early-stage, asymptomatic pathology that passes questionnaires and basic nurse screening. If underwritten at baseline rates, a few months of premium can be followed by a catastrophic critical-illness claim. The asymmetry between premium collected and claim paid is the loss the platform exists to reduce.
@@ -81,7 +123,10 @@ These four came through from `Idea.md` and are the architectural backbone. Every
 
 - Tenant + user management, API keys, role-based access (Underwriter / Senior Underwriter / Tenant Admin).
 - Evidence package upload: DICOM and standard images, clinical text, structured JSON/CSV.
-- Async inference orchestration over **three** model arms (§6).
+- Async inference orchestration over the model arms (§6). **Phase 1 ships one
+  arm only: chest radiograph screening for tuberculosis**, carried over from the
+  Nirnoy reference project. The NLP and tabular arms follow once that path is
+  proven end to end.
 - Score fusion with calibration, and the tier recommendation.
 - Underwriter review workspace: image + heatmap viewer, attribution panel, decision capture.
 - Hash-chained audit log with an export view.
@@ -123,6 +168,84 @@ The negation layer is not optional. *"No family history of BRCA1 mutation"* and 
 
 **Arm C — Structured / actuarial (tabular).**
 **LOCKED** — XGBoost is the right call. The gap `Idea.md` does not address is *what label you train on*, since you have no real underwriting outcomes. **Use NHANES plus the CDC/NCHS Linked Mortality Files**: public, free, demographics + exam + lab features with real mortality follow-up. That gives you a legitimately trained mortality-risk model instead of a model fitted to invented labels, and it is defensible in a thesis in a way synthetic labels never are.
+
+### Phase 1 is TB, and there is a catch — READ THIS
+
+Phase 1 reuses the Nirnoy reference project's chest X-ray path for tuberculosis
+screening. The reusable engineering is real, but one assumption does not hold:
+
+**TorchXRayVision has no tuberculosis label.** It was never trained to detect
+TB. It reports 18 general findings — consolidation, nodule, fibrosis, effusion
+and so on. Nirnoy's own `check_labelled.py` builds a hand-weighted "TB
+suggestive" composite out of those findings, and their README reports the
+result honestly: on a labelled TB/Normal set the composite achieved
+**−0.051 separation — the wrong direction.** Histogram equalisation and CLAHE
+both failed to rescue it. The two classes came from different sources, so this
+is textbook cross-dataset domain shift, exactly the risk named in §10.
+
+Nirnoy still works because a language model reasons over *findings plus patient
+history* rather than trusting the classifier. Their pipeline never claims the
+vision model detects TB.
+
+So Phase 1 has to pick one of three routes:
+
+| Route | What it means | Cost |
+|---|---|---|
+| **A — Fine-tune a real TB classifier** | Train on a labelled TB/Normal chest X-ray set. Produces a genuine, calibratable TB probability and a Grad-CAM that points somewhere meaningful. | Most work; also the most defensible, and gives a real evaluation chapter |
+| **B — Findings as features** | Keep TorchXRayVision as-is; feed its 18 findings plus declared history into the fusion layer as evidence, and never label the output "TB". | Least work; honest, but weak on its own given the validation result |
+| **C — Adopt Nirnoy's LLM synthesis** | Port the reasoning step. Strong with free-text history. | Needs an API key and internet, or a multi-GB local model. Non-deterministic and uncalibratable — see §15 |
+
+**Recommendation: A, with B as the fallback path when the classifier abstains.**
+Route A is what turns "we reused a reference project" into "we trained and
+evaluated a model", which is the difference the thesis needs. Whichever is
+chosen, **the honest framing stays: an abnormal film is grounds for
+escalation, never a diagnosis.**
+
+For underwriting the question is not "does this person have TB" — it is
+**"is there an undisclosed condition that changes the risk"**, and that is a
+screening question a human then resolves.
+
+#### Resolved — Route B, and the diagnosis above was half wrong
+
+Measured on our own code, September 2026:
+
+| Scoring | Data | AUC |
+|---|---|---|
+| Hand-weighted composite | Kaggle samples (source-confounded) | 0.450 |
+| Hand-weighted composite | Shenzhen (single source) | **0.772** |
+| Logistic regression on the same 18 findings | Shenzhen, 5-fold CV | **0.877 ± 0.037** |
+
+**The model was never the main problem — the data was.** Identical code scores
+0.450 on the confounded sample set and 0.772 on clean single-source films. Row 1
+was measuring the scanner; rows 2 and 3 measure lungs.
+
+This also corrects the assessment above: Route B was rated *"honest but weak on
+its own"*, and that judgement was formed on the confounded data. With learned
+rather than hand-picked weights it reaches 0.877, inside the published range for
+this task. **No fine-tuning was needed**, so Route A stays on the shelf and
+Route C's API dependency is avoided entirely.
+
+Worth noting the expert feature list was part of the problem. `TB_SUGGESTIVE`
+was chosen by hand and included Fibrosis and Consolidation; the learned model
+puts its largest weights on Lung Lesion, Pneumothorax and Nodule, and pushes
+Fibrosis and Atelectasis *negative*. Expert intuition cost roughly 0.105 AUC.
+
+**Two caveats that must travel with the number:**
+
+- **It is internal.** Five-fold cross-validation on one hospital. Montgomery
+  remains undownloadable, so there is no external number yet. Published TB work
+  routinely drops sharply on external data — one study went 85% to 65%. Treat
+  0.877 as an upper bound.
+- **Two learned weights are clinically odd.** Fracture pushes *toward* TB and
+  Fibrosis pushes *away*, and neither matches clinical reasoning — upper-lobe
+  fibrosis is classically post-TB. That suggests the model is partly using
+  correlations that are real in Shenzhen but may not transfer. It is a reason to
+  get the external test set, and an honest limitation for the write-up.
+
+The trained weights live in `apps/api/app/arms/tb_xray_model.json` as plain
+JSON — 18 coefficients, an intercept and the scaler's mean/scale. Reviewable in
+a diff, and scoring is one dot product, so scikit-learn is not needed at
+runtime.
 
 ### Deferred arms
 
@@ -199,7 +322,86 @@ This becomes real once §7's learned fusion layer exists: SHAP over Model L is m
 
 ## 9. Data Strategy
 
+### TB training data — which datasets, and why not Kaggle
+
+**Use Shenzhen and Montgomery. Do not train on the Kaggle TB database.**
+
+The Kaggle "Tuberculosis (TB) Chest X-ray Database" is the obvious choice and
+the wrong one. Its own documentation says it was assembled from three sources:
+
+| Source | TB | Normal |
+|---|---|---|
+| NLM | 336 | 324 |
+| Belarus | 169 | 137 |
+| RSNA | 195 | **3,039** |
+
+87% of its Normal images come from RSNA while its TB images mostly do not, so
+"TB vs Normal" is partly "which hospital's scanner". We measured the fingerprint
+on the 20 samples shipped with the reference project: TB images stored as
+grayscale at mean brightness 141, Normal images stored as RGB at mean 123 with
+50% more contrast spread. The classes differ in *file encoding* before anyone
+looks at a lung.
+
+A model trained on that will report 95-99% accuracy and be measuring the
+scanner. That is worse than a model that obviously fails, because it passes a
+demo and collapses on real data. The literature calls this shortcut learning and
+names brightness and contrast as the usual culprits.
+
+There is also a leakage trap: Kaggle's "NLM" portion appears to *be* Shenzhen
+(both are exactly 336 TB images), so training on Shenzhen and testing on Kaggle
+would be testing on the training set.
+
+**What we use instead**
+
+| Dataset | Size | Role |
+|---|---|---|
+| Shenzhen | 662 (336 TB / 326 normal) | Training. One hospital, near-balanced, so no source shortcut exists |
+| Montgomery | 138 (58 TB / 80 normal) | External test. Different country, equipment and decade |
+
+`scripts/fetch_tb_data.py` downloads both. Shenzhen comes from a Hugging Face
+mirror as individual PNGs fetched in parallel — the original NLM host serves at
+~0.16 MB/s, a 13-hour download, and aggressively rate-limits. **Montgomery is
+only on that slow host and is currently not obtainable**; until it lands,
+validation numbers are internal (cross-validated on Shenzhen), and must be
+labelled as such rather than passed off as external.
+
+Never report a Kaggle accuracy figure as the headline. If a number above ~95%
+appears, treat it as evidence of a shortcut, not success.
+
+### Intake and PII minimisation — LOCKED
+
+Evidence arrives as files a client handed over in person. Before anything is
+stored, the intake step strips identifiers:
+
+- **A DICOM file is pixels plus a header**, and the header is the risk — it
+  routinely carries patient name, date of birth, patient ID, referring
+  physician and institution. Strip those tags on the way in with `pydicom`.
+  Keep the pixel data and the small set of clinically useful tags (modality,
+  body part, view position, acquisition date).
+- **Store only the de-identified copy.** The original is never written to disk.
+- **The database holds the carrier's own reference**, never a name lifted from
+  a file header. The schema already enforces this: `applicants` has
+  `external_ref`, `date_of_birth` and `sex`, and deliberately **no name
+  column**.
+- Clinical notes get the same treatment — strip obvious identifiers before the
+  text reaches the NLP arm.
+
+This is roughly thirty lines of code. **Do not build a "PII framework" around
+it** ([DESIGN_POLICY.md](DESIGN_POLICY.md) §2). It is one function in the
+intake path, and it is a strong, concrete point for the compliance chapter
+(§10).
+
 You will not have real carrier applicant files, and you must not seek them.
+
+> **REVERSAL (2026-09-01) — by request of the product owner.** The intake form
+> now collects the applicant's **name and phone number** (operator-entered for
+> the carrier's use) and a **DB-generated reference** (`HL-<seq>`, from
+> `applicants_ref_seq`). This overrides the earlier "no name column" rule above,
+> but **only** for operator-entered applicant contact data. Evidence handling is
+> unchanged: DICOM header tags and clinical-note identifiers are **still**
+> stripped on ingest per the bullets above. The `applicants` contract is now
+> `external_ref` (auto), `name`, `phone`, `date_of_birth`, `sex` — see
+> [DATABASE.md §C](DATABASE.md).
 
 **Build a synthetic applicant generator in week 1–2.** It stitches a public image, a template-generated clinical note, and a sampled demographic/lab row into a plausible applicant package with a known ground-truth label. This unblocks the entire team before a single model works: backend gets fixtures, frontend gets realistic data, ML gets an integration target, and your demo is reproducible on any machine.
 
