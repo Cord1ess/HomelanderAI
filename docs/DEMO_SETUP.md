@@ -12,14 +12,44 @@ database at all, so a network problem on the day does not cost you the demo.
 
 ### 1. Start PostgreSQL
 
-From the repository, with Docker Desktop running:
+Either way works — pick one.
+
+**With Docker**, from the repository:
 
 ```bash
 npm run infra:up
+```
+
+**Without Docker** (Windows, no admin prompt beyond the installer):
+
+```powershell
+winget install --id PostgreSQL.PostgreSQL.17 --source winget --silent `
+  --custom "--superpassword devpassword"
+```
+
+Then create the role and database the app expects. `psql` lives in
+`C:\Program Files\PostgreSQL\17\bin`:
+
+```powershell
+$env:PGPASSWORD = "devpassword"
+& "$env:ProgramFiles\PostgreSQL\17\bin\psql.exe" -U postgres -h 127.0.0.1 `
+  -c "CREATE ROLE homelander LOGIN SUPERUSER PASSWORD 'devpassword';"
+& "$env:ProgramFiles\PostgreSQL\17\bin\psql.exe" -U postgres -h 127.0.0.1 `
+  -c "CREATE DATABASE homelander OWNER homelander;"
+```
+
+**Then, either way**, create the tables and load the sample accounts:
+
+```bash
 cd apps/api && uv run alembic upgrade head
 ```
 
-Then load the sample accounts:
+```powershell
+& "$env:ProgramFiles\PostgreSQL\17\bin\psql.exe" -U homelander -h 127.0.0.1 `
+  -d homelander -f db/seed.sql
+```
+
+With Docker, the seed line is instead:
 
 ```bash
 docker exec -i homelander-postgres psql -U homelander -d homelander < db/seed.sql
@@ -132,11 +162,16 @@ PostgreSQL's own configuration.
 
 Accounts from `db/seed.sql`:
 
-| Email | Role |
-|---|---|
-| `admin@dev.local` | Administrator |
-| `senior@dev.local` | Senior underwriter |
-| `underwriter@dev.local` | Underwriter |
+| Email | Password | Role |
+|---|---|---|
+| `admin@dev.local` | `devpassword123` | Administrator |
+| `senior@dev.local` | `devpassword123` | Senior underwriter |
+| `underwriter@dev.local` | `devpassword123` | Underwriter |
+| `admin` | `admin123` | Administrator, "Demo Insurance Co." |
+
+The last row is the built-in admin. It is seeded as a real account too, so with
+the database up it behaves like any other user — it can submit applications and
+its actions are named in the audit trail.
 
 ---
 
@@ -162,10 +197,12 @@ Two things keep it contained:
 
 Every use writes a warning to the API log.
 
-**What it cannot do:** anything that reads or writes the database. The queue,
-the intake form and the review screen all need real data. This exists so you can
-show the application running and sign-in working, not so you can run the whole
-product without a database.
+**What it cannot do while the database is unreachable:** anything that reads or
+writes data. The queue, the intake form and the review screen all need the
+database. Signing in this way when the database is *down* shows the application
+running and nothing more.
+
+With the database up, this account is seeded (`db/seed.sql`) and works fully.
 
 ---
 

@@ -3,45 +3,53 @@ import {
   Badge,
   Box,
   Button,
+  Center,
   Divider,
   Group,
+  Image,
+  Loader,
   NumberInput,
   Paper,
   SimpleGrid,
   Stack,
   Switch,
+  Table,
   Text,
 } from '@mantine/core'
-import { IconChevronDown, IconCircleCheck } from '@tabler/icons-react'
+import { notifications } from '@mantine/notifications'
+import {
+  IconAlertTriangle,
+  IconChevronDown,
+  IconCircleCheck,
+  IconShieldCheck,
+  IconShieldX,
+} from '@tabler/icons-react'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useState } from 'react'
+import { useParams } from 'react-router-dom'
 
 import {
-  TierBadge,
-  type Tier,
-} from '../../components/TierBadge'
+  fileUrl,
+  getApplication,
+  getAuditTrail,
+  recordDecision,
+  type ApplicationDetail,
+  type DecisionType,
+  type Finding,
+} from '../../api/client'
+import { TierBadge, type Tier } from '../../components/TierBadge'
 
 /**
- * Review workspace — the underwriter, alone, 1–2 days later.
+ * Review workspace — the underwriter, alone, a day or two later.
  *
  * Answers one question: should I trust this recommendation, and what do I
  * decide? Evidence on the left, reasoning and decision on the right.
  *
  * Decision invariants:
  *  · NO reject button — escalation is the path.
- *  · Decision is write-once: the panel becomes read-only after submission.
+ *  · Decisions are write-once; the panel becomes read-only once one exists.
  *  · `approved_with_adjustment` reveals a final-premium input.
- *
- * TODO: fetch `GET /api/applications/:id` (score, findings, explanation
- * artifacts, model runs), `GET /api/files/:id` for the X-ray + heatmap, and
- * `POST /api/applications/:id/decision`. Handle "not scored yet", "scoring
- * failed", "no heatmap", and "already decided" states.
  */
-
-type DecisionType =
-  | 'confirmed_fast_track'
-  | 'approved_with_adjustment'
-  | 'escalated_senior_review'
-  | 'requested_additional_evidence'
 
 const DECISIONS: { value: DecisionType; label: string }[] = [
   { value: 'confirmed_fast_track', label: 'Confirm fast-track' },
@@ -50,52 +58,20 @@ const DECISIONS: { value: DecisionType; label: string }[] = [
   { value: 'requested_additional_evidence', label: 'Request more evidence' },
 ]
 
-/**
- * What the vision arm returns for each of its 18 findings.
- *
- * `probability` is the backbone model's raw output. `contribution` is how much
- * that finding actually moved the TB score, from `details.contributions`.
- *
- * The panel ranks by contribution, not probability, because they disagree: the
- * scorer weights Lung Lesion at +1.509 and Cardiomegaly at +0.018, so a film
- * with high Cardiomegaly and modest Lung Lesion would put Cardiomegaly at the
- * top of a probability list while it moved the decision almost not at all —
- * telling the underwriter the wrong reason for the score.
- */
-interface Finding {
-  label: string
-  probability: number
-  contribution: number
-}
-
-// Stub — replace with details.findings + details.contributions from the API.
-// All 18 labels, spelled as the model emits them (see tb_xray_model.json).
-const FINDINGS: Finding[] = [
-  { label: 'Lung Lesion', probability: 0.71, contribution: 0.94 },
-  { label: 'Nodule', probability: 0.63, contribution: 0.48 },
-  { label: 'Pneumothorax', probability: 0.29, contribution: 0.31 },
-  { label: 'Infiltration', probability: 0.55, contribution: 0.12 },
-  { label: 'Consolidation', probability: 0.41, contribution: 0.09 },
-  { label: 'Effusion', probability: 0.24, contribution: 0.07 },
-  { label: 'Pleural_Thickening', probability: 0.19, contribution: 0.05 },
-  { label: 'Pneumonia', probability: 0.14, contribution: 0.04 },
-  { label: 'Fracture', probability: 0.08, contribution: 0.03 },
-  { label: 'Hernia', probability: 0.03, contribution: 0.01 },
-  { label: 'Cardiomegaly', probability: 0.44, contribution: 0.0 },
-  { label: 'Mass', probability: 0.12, contribution: -0.01 },
-  { label: 'Emphysema', probability: 0.09, contribution: -0.02 },
-  { label: 'Edema', probability: 0.11, contribution: -0.04 },
-  { label: 'Enlarged Cardiomediastinum', probability: 0.21, contribution: -0.08 },
-  { label: 'Lung Opacity', probability: 0.38, contribution: -0.11 },
-  { label: 'Fibrosis', probability: 0.27, contribution: -0.18 },
-  { label: 'Atelectasis', probability: 0.33, contribution: -0.52 },
-]
-
 const TOP_N = 5
 
 /** `Pleural_Thickening` is the model's own spelling; show it readably. */
-function prettyLabel(label: string): string {
-  return label.replace(/_/g, ' ')
+const prettyLabel = (label: string) => label.replace(/_/g, ' ')
+
+function relativeTime(iso: string | null | undefined): string {
+  if (!iso) return '—'
+  const minutes = Math.round((Date.now() - new Date(iso).getTime()) / 60_000)
+  if (minutes < 1) return 'just now'
+  if (minutes < 60) return `${minutes} min ago`
+  const hours = Math.round(minutes / 60)
+  if (hours < 24) return `${hours} h ago`
+  const days = Math.round(hours / 24)
+  return days === 1 ? 'yesterday' : `${days} days ago`
 }
 
 function FindingBar({ finding, scale }: { finding: Finding; scale: number }) {
@@ -116,7 +92,11 @@ function FindingBar({ finding, scale }: { finding: Finding; scale: number }) {
           </Text>
         </Group>
       </Group>
-      <Box h={6} w="100%" style={{ backgroundColor: 'var(--mantine-color-dark-5)', borderRadius: 3 }}>
+      <Box
+        h={6}
+        w="100%"
+        style={{ backgroundColor: 'var(--mantine-color-dark-5)', borderRadius: 3 }}
+      >
         <Box
           h="100%"
           style={{
@@ -133,38 +113,99 @@ function FindingBar({ finding, scale }: { finding: Finding; scale: number }) {
 }
 
 export function ReviewPage() {
+  const { id = '' } = useParams()
+  const queryClient = useQueryClient()
+
   const [showHeatmap, setShowHeatmap] = useState(false)
   const [showAll, setShowAll] = useState(false)
   const [decision, setDecision] = useState<DecisionType | null>(null)
   const [premium, setPremium] = useState<number | undefined>(undefined)
-  const [submitting, setSubmitting] = useState(false)
-  const [decidedAt, setDecidedAt] = useState<string | null>(null)
 
-  // Scaffolding — replace with data from the API.
-  const tier: Tier = 'moderate'
-  const scorer = 'logistic_regression_on_txrv_findings v1.0.0 trained on shenzhen'
-  const validation = 'Internal 5-fold cross-validation; NOT externally validated'
-  const cvAuc = 0.8766
-  const evaluatedAt = '2 days ago, 14:02'
-  const heatmapAvailable = false
-  const decided = decidedAt !== null
+  const { data, isPending, error } = useQuery({
+    queryKey: ['application', id],
+    queryFn: () => getApplication(id),
+    enabled: Boolean(id),
+    // An application still being scored settles within seconds.
+    refetchInterval: (query) => {
+      const status = query.state.data?.status
+      return status === 'submitted' || status === 'processing' ? 3_000 : false
+    },
+  })
 
-  // Ranked by absolute contribution: the findings that moved the score most,
-  // in either direction.
-  const ranked = [...FINDINGS].sort((a, b) => Math.abs(b.contribution) - Math.abs(a.contribution))
-  const findings = showAll ? ranked : ranked.slice(0, TOP_N)
-  const scale = Math.max(...ranked.map((f) => Math.abs(f.contribution)), 0.01)
-  const decisionLabel = DECISIONS.find((d) => d.value === decision)?.label ?? ''
+  const submit = useMutation({
+    mutationFn: () =>
+      recordDecision(id, {
+        decision: decision as DecisionType,
+        finalPremium: decision === 'approved_with_adjustment' ? premium : null,
+      }),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['application', id] })
+      void queryClient.invalidateQueries({ queryKey: ['applications'] })
+      void queryClient.invalidateQueries({ queryKey: ['audit', id] })
+      notifications.show({ title: 'Decision recorded', message: 'It cannot be changed.', color: 'teal' })
+    },
+    onError: (err) => {
+      notifications.show({
+        title: 'Could not record the decision',
+        message: err instanceof Error ? err.message : 'Unknown error',
+        color: 'red',
+      })
+    },
+  })
 
-  const submit = () => {
-    if (!decision) return
-    setSubmitting(true)
-    // TODO: POST /api/applications/:id/decision (write-once server-side).
-    window.setTimeout(() => {
-      setSubmitting(false)
-      setDecidedAt('just now')
-    }, 900)
+  if (isPending) {
+    return (
+      <Center mih={300}>
+        <Loader color="clinical" type="dots" />
+      </Center>
+    )
   }
+
+  if (error || !data) {
+    return (
+      <Alert color="red" variant="light" icon={<IconAlertTriangle size={18} />} title="Could not open this application">
+        {error instanceof Error ? error.message : 'Unknown error'}
+      </Alert>
+    )
+  }
+
+  return <Review data={data} state={{ showHeatmap, setShowHeatmap, showAll, setShowAll, decision, setDecision, premium, setPremium, submit }} />
+}
+
+interface ReviewState {
+  showHeatmap: boolean
+  setShowHeatmap: (v: boolean) => void
+  showAll: boolean
+  setShowAll: (v: boolean) => void
+  decision: DecisionType | null
+  setDecision: (v: DecisionType) => void
+  premium: number | undefined
+  setPremium: (v: number | undefined) => void
+  submit: { mutate: () => void; isPending: boolean }
+}
+
+function Review({ data, state }: { data: ApplicationDetail; state: ReviewState }) {
+  const findings = data.findings ?? []
+  const adjustments = data.adjustments ?? []
+  const files = data.files ?? []
+  const errors = data.errors ?? []
+
+  const evidence = files.find((f) => f.kind === 'evidence')
+  const heatmap = files.find((f) => f.kind === 'gradcam')
+  const heatmapAvailable = Boolean(heatmap)
+
+  // Ranked by absolute contribution: the findings that moved the score most, in
+  // either direction. Not by probability — the two disagree, and contribution
+  // is the one that explains the number.
+  const ranked = [...findings].sort(
+    (a, b) => Math.abs(b.contribution) - Math.abs(a.contribution),
+  )
+  const shown = state.showAll ? ranked : ranked.slice(0, TOP_N)
+  const scale = Math.max(...ranked.map((f) => Math.abs(f.contribution)), 0.01)
+
+  const decided = Boolean(data.decision)
+  const scored = data.status === 'scored' || data.status === 'decided'
+  const pending = data.status === 'submitted' || data.status === 'processing'
 
   return (
     <Stack gap="md">
@@ -174,36 +215,58 @@ export function ReviewPage() {
           <Group gap="md">
             <div className="hl-kv">
               <span className="hl-kv-label">Reference</span>
-              <span className="hl-kv-value hl-mono">ABC-12345</span>
+              <span className="hl-kv-value hl-mono">{data.reference}</span>
             </div>
             <Divider orientation="vertical" />
             <div className="hl-kv">
               <span className="hl-kv-label">Status</span>
-              <Badge color="teal" variant="light" size="sm">
-                Ready for review
-              </Badge>
+              <StatusBadge status={data.status} />
             </div>
             <Divider orientation="vertical" />
             <div className="hl-kv">
               <span className="hl-kv-label">Applicant</span>
-              <span className="hl-kv-value">A. Rahman</span>
+              <span className="hl-kv-value">{data.applicant.name || '—'}</span>
             </div>
             <div className="hl-kv">
               <span className="hl-kv-label">Submitted</span>
-              <span className="hl-kv-value">2 days ago</span>
+              <span className="hl-kv-value">{relativeTime(data.submittedAt)}</span>
             </div>
           </Group>
-          <Group gap="sm">
-            <div className="hl-kv" style={{ alignItems: 'flex-end' }}>
-              <span className="hl-kv-label">CRS</span>
-              <span className="hl-kv-value" style={{ fontSize: '1.1rem' }}>
-                51.4
-              </span>
-            </div>
-            <TierBadge tier={tier} />
-          </Group>
+          {data.score && (
+            <Group gap="sm">
+              <div className="hl-kv" style={{ alignItems: 'flex-end' }}>
+                <span className="hl-kv-label">Risk score</span>
+                <span className="hl-kv-value" style={{ fontSize: '1.1rem' }}>
+                  {data.score.crs.toFixed(1)}
+                </span>
+              </div>
+              <TierBadge tier={data.score.tier as Tier} />
+            </Group>
+          )}
         </Group>
       </Paper>
+
+      {pending && (
+        <Alert color="blue" variant="light" title="Still being evaluated">
+          The model is reading the evidence now. This screen updates on its own.
+        </Alert>
+      )}
+
+      {data.status === 'insufficient_evidence' && (
+        <Alert color="yellow" variant="light" icon={<IconAlertTriangle size={18} />} title="Could not be scored">
+          <Stack gap={4}>
+            <Text size="sm">
+              There was not enough usable evidence to produce a score. Nothing here is a
+              judgement about the applicant — request more evidence to continue.
+            </Text>
+            {errors.map((message) => (
+              <Text key={message} size="xs" c="dimmed" ff="monospace">
+                {message}
+              </Text>
+            ))}
+          </Stack>
+        </Alert>
+      )}
 
       <SimpleGrid cols={{ base: 1, lg: 2 }} spacing="md">
         {/* ── Left · the image ──────────────────────────────── */}
@@ -213,10 +276,10 @@ export function ReviewPage() {
               Chest X-ray
             </Text>
             <Switch
-              label="Grad-CAM overlay"
+              label="Heatmap overlay"
               size="xs"
-              checked={showHeatmap}
-              onChange={() => setShowHeatmap((v) => !v)}
+              checked={state.showHeatmap && heatmapAvailable}
+              onChange={() => state.setShowHeatmap(!state.showHeatmap)}
               disabled={!heatmapAvailable}
             />
           </Group>
@@ -228,17 +291,27 @@ export function ReviewPage() {
               placeItems: 'center',
               backgroundColor: 'var(--mantine-color-dark-6)',
               borderRadius: 'var(--mantine-radius-sm)',
+              overflow: 'hidden',
             }}
           >
-            <Text c="dimmed" size="sm">
-              X-ray placeholder
-            </Text>
+            {evidence || heatmap ? (
+              <Image
+                src={fileUrl(state.showHeatmap && heatmap ? heatmap.id : (evidence ?? heatmap)!.id)}
+                alt={state.showHeatmap ? 'Chest X-ray with model heatmap' : 'Chest X-ray'}
+                h={340}
+                fit="contain"
+              />
+            ) : (
+              <Text c="dimmed" size="sm">
+                No image was stored for this application.
+              </Text>
+            )}
           </Box>
-          {!heatmapAvailable && (
-            <Text size="xs" c="dimmed" mt="sm">
-              No heatmap produced for this image.
-            </Text>
-          )}
+          <Text size="xs" c="dimmed" mt="sm">
+            {heatmapAvailable
+              ? 'The overlay marks the region that moved the score most — not a diagnosis.'
+              : 'No heatmap was produced for this image.'}
+          </Text>
         </Paper>
 
         {/* ── Right · why this score ────────────────────────── */}
@@ -249,117 +322,153 @@ export function ReviewPage() {
                 What moved the score
               </Text>
               <Text size="xs" c="dimmed">
-                {findings.length} of {FINDINGS.length} shown
+                {shown.length} of {findings.length} shown
               </Text>
             </Group>
-            <Stack gap="sm">
-              {findings.map((f) => (
-                <FindingBar key={f.label} finding={f} scale={scale} />
-              ))}
-            </Stack>
-            <Button
-              variant="subtle"
-              size="xs"
-              mt="sm"
-              fullWidth
-              rightSection={<IconChevronDown size={14} />}
-              onClick={() => setShowAll((v) => !v)}
-            >
-              {showAll ? `Show top ${TOP_N}` : `Show all ${FINDINGS.length}`}
-            </Button>
+
+            {findings.length === 0 ? (
+              <Text size="sm" c="dimmed">
+                The model produced no findings for this application.
+              </Text>
+            ) : (
+              <>
+                <Stack gap="sm">
+                  {shown.map((f) => (
+                    <FindingBar key={f.label} finding={f} scale={scale} />
+                  ))}
+                </Stack>
+                <Button
+                  variant="subtle"
+                  size="xs"
+                  mt="sm"
+                  fullWidth
+                  rightSection={<IconChevronDown size={14} />}
+                  onClick={() => state.setShowAll(!state.showAll)}
+                >
+                  {state.showAll ? `Show top ${TOP_N}` : `Show all ${findings.length}`}
+                </Button>
+              </>
+            )}
           </Paper>
 
           <Paper p="sm" bd="1px solid var(--mantine-color-default-border)">
             <Text fw={600} size="sm" mb="sm">
               What the declared history changed
             </Text>
-            <Stack gap={4}>
+            {adjustments.length === 0 ? (
               <Text size="sm" c="dimmed">
-                Previously treated TB, course completed, no current symptoms →
-                lowered
+                Nothing declared changed the score. It is the imaging result alone.
               </Text>
-            </Stack>
+            ) : (
+              <Stack gap={6}>
+                {adjustments.map((a) => (
+                  <Group key={a.key} gap="sm" wrap="nowrap" align="flex-start">
+                    <Badge
+                      size="sm"
+                      variant="light"
+                      color={a.points >= 0 ? 'orange' : 'teal'}
+                      ff="monospace"
+                    >
+                      {a.points >= 0 ? '+' : ''}
+                      {a.points}
+                    </Badge>
+                    <Text size="sm" c="dimmed" style={{ flex: 1 }}>
+                      {a.reason}
+                    </Text>
+                  </Group>
+                ))}
+              </Stack>
+            )}
           </Paper>
 
           {/*
-            From details.scorer / details.validation / details.cv_auc. The
-            validation string is not decoration: the model has only ever been
-            tested on one hospital, and that caveat has to travel with the score
-            rather than live in a document.
+            The validation string is not decoration: the model has only ever
+            been tested on one hospital, and that caveat has to travel with the
+            score rather than live in a document.
           */}
-          <Stack gap={2}>
-            <Text size="xs" c="dimmed">
-              {scorer} · evaluated {evaluatedAt}
-            </Text>
-            <Text size="xs" c="yellow.7">
-              {validation} (AUC {cvAuc.toFixed(3)})
-            </Text>
-          </Stack>
+          {data.modelInfo && (
+            <Stack gap={2}>
+              <Text size="xs" c="dimmed">
+                {data.modelInfo.scorer} · evaluated {relativeTime(data.evaluatedAt)}
+              </Text>
+              {data.modelInfo.validation && (
+                <Text size="xs" c="yellow.7">
+                  {data.modelInfo.validation}
+                  {data.modelInfo.cvAuc != null && ` (AUC ${data.modelInfo.cvAuc.toFixed(3)})`}
+                </Text>
+              )}
+            </Stack>
+          )}
         </Stack>
       </SimpleGrid>
 
       {/* ── Decision ────────────────────────────────────────── */}
       <Paper p="md" bd="1px solid var(--mantine-color-default-border)">
-        <Group justify="space-between" mb="sm">
-          <Text fw={600} size="sm">
-            Decision
-          </Text>
-        </Group>
+        <Text fw={600} size="sm" mb="sm">
+          Decision
+        </Text>
 
         {decided ? (
-          <Alert
-            icon={<IconCircleCheck size={18} />}
-            color="teal"
-            variant="light"
-            title="Decision recorded"
-          >
+          <Alert icon={<IconCircleCheck size={18} />} color="teal" variant="light" title="Decision recorded">
             <Text size="sm">
-              You marked this as <strong>{decisionLabel}</strong> {decidedAt}.
+              <strong>
+                {DECISIONS.find((d) => d.value === data.decision?.decision)?.label ??
+                  data.decision?.decision}
+              </strong>{' '}
+              by {data.decision?.underwriterName ?? 'an underwriter'},{' '}
+              {relativeTime(data.decision?.decidedAt)}.
+              {data.decision?.finalPremium != null &&
+                ` Final premium ${Number(data.decision.finalPremium).toLocaleString()}.`}{' '}
               Decisions are write-once and can no longer be edited.
             </Text>
           </Alert>
+        ) : !scored && data.status !== 'insufficient_evidence' ? (
+          <Text size="sm" c="dimmed">
+            A decision can be recorded once the evaluation finishes.
+          </Text>
         ) : (
           <>
             <SimpleGrid cols={{ base: 1, sm: 2 }} spacing="sm">
               {DECISIONS.map((d) => (
                 <Button
                   key={d.value}
-                  variant={decision === d.value ? 'filled' : 'light'}
-                  color={decision === d.value ? 'clinical' : 'gray'}
+                  variant={state.decision === d.value ? 'filled' : 'light'}
+                  color={state.decision === d.value ? 'clinical' : 'gray'}
                   justify="space-between"
-                  onClick={() => setDecision(d.value)}
+                  onClick={() => state.setDecision(d.value)}
                 >
                   {d.label}
                 </Button>
               ))}
             </SimpleGrid>
 
-            {decision === 'approved_with_adjustment' && (
+            {state.decision === 'approved_with_adjustment' && (
               <NumberInput
                 mt="md"
                 label="Final premium (BDT)"
                 placeholder="1,000,000"
                 thousandSeparator=","
                 min={0}
-                value={premium}
-                onChange={(v) => setPremium(typeof v === 'number' ? v : Number(v) || undefined)}
+                value={state.premium}
+                onChange={(v) =>
+                  state.setPremium(typeof v === 'number' ? v : Number(v) || undefined)
+                }
               />
             )}
 
             <Group justify="space-between" mt="md">
               <Text size="xs" c="dimmed">
-                There is no reject button. Escalation to a human underwriter is
-                the path.
+                There is no reject button. Escalation to a human underwriter is the path.
               </Text>
               <Button
                 size="xs"
                 disabled={
-                  !decision ||
+                  !state.decision ||
                   // An adjusted approval without a rate is not a decision.
-                  (decision === 'approved_with_adjustment' && (premium ?? 0) <= 0)
+                  (state.decision === 'approved_with_adjustment' && (state.premium ?? 0) <= 0)
                 }
-                onClick={submit}
-                loading={submitting}
+                onClick={() => state.submit.mutate()}
+                loading={state.submit.isPending}
               >
                 Submit decision
               </Button>
@@ -368,20 +477,85 @@ export function ReviewPage() {
         )}
       </Paper>
 
-      {/* ── Audit trail ─────────────────────────────────────── */}
-      <details>
-        <summary>
-          <Text component="span" size="sm" c="dimmed">
-            Audit trail
-          </Text>
-        </summary>
-        <Paper bd="1px solid var(--mantine-color-default-border)" p="sm" mt="sm">
-          <Text size="sm" c="dimmed">
-            TODO: collapsed, expandable table of timestamp / event / actor from
-            `GET /api/applications/:id/audit`.
-          </Text>
-        </Paper>
-      </details>
+      <AuditTrail applicationId={data.id} />
     </Stack>
+  )
+}
+
+function StatusBadge({ status }: { status: ApplicationDetail['status'] }) {
+  const meta: Record<string, { label: string; color: string }> = {
+    submitted: { label: 'Evaluation pending', color: 'gray' },
+    processing: { label: 'Evaluating', color: 'blue' },
+    scored: { label: 'Ready for review', color: 'teal' },
+    insufficient_evidence: { label: 'More evidence needed', color: 'yellow' },
+    decided: { label: 'Decided', color: 'gray' },
+  }
+  const m = meta[status] ?? { label: status, color: 'gray' }
+  return (
+    <Badge color={m.color} variant="light" size="sm">
+      {m.label}
+    </Badge>
+  )
+}
+
+function AuditTrail({ applicationId }: { applicationId: string }) {
+  const { data } = useQuery({
+    queryKey: ['audit', applicationId],
+    queryFn: () => getAuditTrail(applicationId),
+  })
+
+  return (
+    <details>
+      <summary>
+        <Text component="span" size="sm" c="dimmed">
+          Audit trail{data ? ` (${data.entries.length})` : ''}
+        </Text>
+      </summary>
+      <Paper bd="1px solid var(--mantine-color-default-border)" p="sm" mt="sm">
+        {!data ? (
+          <Text size="sm" c="dimmed">
+            Loading…
+          </Text>
+        ) : (
+          <Stack gap="sm">
+            {/* The chain is re-verified on every read. An audit trail nobody
+                checks is decoration. */}
+            <Group gap="xs">
+              {data.intact ? (
+                <IconShieldCheck size={16} color="var(--mantine-color-teal-5)" />
+              ) : (
+                <IconShieldX size={16} color="var(--mantine-color-red-5)" />
+              )}
+              <Text size="xs" c={data.intact ? 'teal' : 'red'}>
+                {data.intact
+                  ? 'Hash chain verified — no entry has been altered.'
+                  : `Chain broken: ${data.brokenAt}`}
+              </Text>
+            </Group>
+
+            <Table.ScrollContainer minWidth={520}>
+              <Table fz="xs">
+                <Table.Thead>
+                  <Table.Tr>
+                    <Table.Th>When</Table.Th>
+                    <Table.Th>Event</Table.Th>
+                    <Table.Th>Who</Table.Th>
+                  </Table.Tr>
+                </Table.Thead>
+                <Table.Tbody>
+                  {data.entries.map((e) => (
+                    <Table.Tr key={e.id}>
+                      <Table.Td c="dimmed">{new Date(e.createdAt).toLocaleString()}</Table.Td>
+                      <Table.Td ff="monospace">{e.eventType}</Table.Td>
+                      <Table.Td>{e.actorName ?? 'system'}</Table.Td>
+                    </Table.Tr>
+                  ))}
+                </Table.Tbody>
+              </Table>
+            </Table.ScrollContainer>
+          </Stack>
+        )}
+      </Paper>
+    </details>
   )
 }

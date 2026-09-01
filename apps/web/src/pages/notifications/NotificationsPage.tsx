@@ -1,55 +1,49 @@
-import {
-  Badge,
-  Group,
-  Paper,
-  SegmentedControl,
-  Stack,
-  Text,
-} from '@mantine/core'
-import { IconAt } from '@tabler/icons-react'
+import { Alert, Badge, Group, Paper, SegmentedControl, Skeleton, Stack, Text } from '@mantine/core'
+import { IconAlertTriangle, IconAt } from '@tabler/icons-react'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
+
+import { getNotifications, markNotificationRead } from '../../api/client'
 
 /**
  * Notifications — in-app only in Phase 1. No email, no SMS.
  *
  * These go to staff, not applicants. A bell in the header carries the unread
- * count; an item links to its application and marks it read on click.
- *
- * Rows below are STUB data so the list renders; TODO: `GET /api/notifications`.
- * Mark-read is local state until the read endpoint exists.
+ * count; an item links to its application and marks itself read on click.
  */
 
-interface Notification {
-  id: string
-  message: string
-  ref: string
-  when: string
-  unread: boolean
-  kind: 'review' | 'system'
+function relativeTime(iso: string): string {
+  const minutes = Math.round((Date.now() - new Date(iso).getTime()) / 60_000)
+  if (minutes < 1) return 'just now'
+  if (minutes < 60) return `${minutes} m ago`
+  const hours = Math.round(minutes / 60)
+  if (hours < 24) return `${hours} h ago`
+  const days = Math.round(hours / 24)
+  return days === 1 ? '1 d ago' : `${days} d ago`
 }
 
-const ITEMS: Notification[] = [
-  { id: 'n1', message: 'Scoring complete — ready for review', ref: 'APP-2026-0091', when: '2 m ago', unread: true, kind: 'review' },
-  { id: 'n2', message: 'More evidence requested for this application', ref: 'APP-2026-0094', when: '31 m ago', unread: true, kind: 'review' },
-  { id: 'n3', message: 'New application submitted', ref: 'APP-2026-0096', when: '5 h ago', unread: true, kind: 'system' },
-  { id: 'n4', message: 'Scoring complete — ready for review', ref: 'APP-2026-0093', when: '1 d ago', unread: false, kind: 'review' },
-  { id: 'n5', message: 'Decision recorded by another underwriter', ref: 'APP-2026-0097', when: '2 d ago', unread: false, kind: 'system' },
-]
+/** Anything that puts an application in front of an underwriter. */
+const REVIEW_KINDS = new Set(['processing_complete', 'tier_escalation', 'evidence_requested'])
 
 export function NotificationsPage() {
   const [filter, setFilter] = useState<'all' | 'unread'>('all')
-  const [items, setItems] = useState<Notification[]>(ITEMS)
+  const queryClient = useQueryClient()
 
-  const unreadCount = items.filter((n) => n.unread).length
+  const { data, isPending, error } = useQuery({
+    queryKey: ['notifications'],
+    queryFn: getNotifications,
+    refetchInterval: 30_000,
+  })
 
-  const visible = useMemo(
-    () => (filter === 'unread' ? items.filter((n) => n.unread) : items),
-    [filter, items],
-  )
+  const markRead = useMutation({
+    mutationFn: markNotificationRead,
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['notifications'] }),
+  })
 
-  const markRead = (id: string) =>
-    setItems((prev) => prev.map((n) => (n.id === id ? { ...n, unread: false } : n)))
+  const items = useMemo(() => data ?? [], [data])
+  const unreadCount = items.filter((n) => !n.readAt).length
+  const visible = filter === 'unread' ? items.filter((n) => !n.readAt) : items
 
   return (
     <Stack gap="md">
@@ -59,9 +53,7 @@ export function NotificationsPage() {
             Notifications
           </Text>
           <Text size="xs" c="dimmed">
-            {unreadCount > 0
-              ? `${unreadCount} unread`
-              : 'You are all caught up'}
+            {unreadCount > 0 ? `${unreadCount} unread` : 'You are all caught up'}
           </Text>
         </div>
         <SegmentedControl
@@ -75,55 +67,84 @@ export function NotificationsPage() {
         />
       </Group>
 
+      {error && (
+        <Alert
+          color="red"
+          variant="light"
+          icon={<IconAlertTriangle size={16} />}
+          title="Could not load notifications"
+        >
+          {error instanceof Error ? error.message : 'Unknown error'}
+        </Alert>
+      )}
+
       <Paper bd="1px solid var(--mantine-color-default-border)" p={0} style={{ overflow: 'hidden' }}>
         <Stack gap={0}>
-          {visible.map((n) => (
-            <Group
-              key={n.id}
-              px="md"
-              py="sm"
-              gap="sm"
-              wrap="nowrap"
-              style={{
-                borderBottom: '1px solid var(--mantine-color-default-border)',
-                backgroundColor: n.unread
-                  ? 'var(--mantine-color-clinical-0)'
-                  : undefined,
-              }}
-            >
-              <Badge
-                size="xs"
-                variant="filled"
-                color={n.unread ? 'clinical' : 'gray'}
-                circle
-              />
-              <Stack gap={1} style={{ flex: 1 }}>
-                <Text size="sm" fw={n.unread ? 600 : 500}>
-                  <Link
-                    to={`/applications/${n.ref}`}
-                    onClick={() => markRead(n.id)}
-                    style={{ textDecoration: 'none', color: 'inherit' }}
-                  >
+          {isPending && (
+            <Stack gap="xs" p="md">
+              <Skeleton height={16} />
+              <Skeleton height={16} />
+              <Skeleton height={16} />
+            </Stack>
+          )}
+
+          {!isPending &&
+            visible.map((n) => {
+              const unread = !n.readAt
+              const body = (
+                <>
+                  <Text size="sm" fw={unread ? 600 : 500}>
                     {n.message}
-                  </Link>
-                </Text>
-                <Group gap="xs">
-                  <IconAt size={12} />
-                  <Text size="xs" c="dimmed">
-                    {n.ref} · {n.when}
                   </Text>
+                  <Group gap="xs">
+                    <IconAt size={12} />
+                    <Text size="xs" c="dimmed">
+                      {n.reference ?? '—'} · {relativeTime(n.createdAt)}
+                    </Text>
+                  </Group>
+                </>
+              )
+
+              return (
+                <Group
+                  key={n.id}
+                  px="md"
+                  py="sm"
+                  gap="sm"
+                  wrap="nowrap"
+                  style={{
+                    borderBottom: '1px solid var(--mantine-color-default-border)',
+                    backgroundColor: unread ? 'var(--mantine-color-dark-6)' : undefined,
+                  }}
+                >
+                  <Badge size="xs" variant="filled" color={unread ? 'clinical' : 'gray'} circle />
+                  <Stack gap={1} style={{ flex: 1 }}>
+                    {n.applicationId ? (
+                      <Link
+                        to={`/applications/${n.applicationId}`}
+                        onClick={() => {
+                          if (unread) markRead.mutate(n.id)
+                        }}
+                        style={{ textDecoration: 'none', color: 'inherit' }}
+                      >
+                        {body}
+                      </Link>
+                    ) : (
+                      body
+                    )}
+                  </Stack>
+                  {REVIEW_KINDS.has(n.notificationType) && (
+                    <Badge size="xs" variant="outline" color="gray">
+                      Review
+                    </Badge>
+                  )}
                 </Group>
-              </Stack>
-              {n.kind === 'review' && (
-                <Badge size="xs" variant="outline" color="gray">
-                  Review
-                </Badge>
-              )}
-            </Group>
-          ))}
-          {visible.length === 0 && (
+              )
+            })}
+
+          {!isPending && visible.length === 0 && !error && (
             <Text ta="center" c="dimmed" py="lg" size="sm">
-              No {filter === 'unread' ? 'unread' : ''} notifications.
+              No {filter === 'unread' ? 'unread ' : ''}notifications.
             </Text>
           )}
         </Stack>

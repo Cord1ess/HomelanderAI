@@ -13,6 +13,7 @@ import {
   useMantineColorScheme,
 } from '@mantine/core'
 import { useDisclosure } from '@mantine/hooks'
+import { useQuery } from '@tanstack/react-query'
 import {
   IconBell,
   IconChevronsLeft,
@@ -27,6 +28,7 @@ import {
 import type { JSX } from 'react'
 import { NavLink as RouterLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
 
+import { getNotifications } from '../../api/client'
 import { BrandIcon } from '../../components/BrandIcon'
 import { useAuth } from '../../context/AuthContext'
 
@@ -37,8 +39,6 @@ import { useAuth } from '../../context/AuthContext'
  * brand lockup up top, icon nav with tooltips, and a thin header carrying the
  * current screen title, the notifications bell and a user menu.
  *
- * TODO: unread count → `GET /api/notifications`; session → `GET /api/auth/me`;
- * logout → `POST /api/auth/logout`.
  */
 export function AppLayout() {
   const [navOpened, { toggle: toggleNav }] = useDisclosure(true)
@@ -46,7 +46,15 @@ export function AppLayout() {
   const location = useLocation()
 
   const title = routeFor(location.pathname)?.title
-  const unread = 3
+
+  // Shares its cache key with the notifications screen, so opening one and
+  // marking something read updates the badge without a second request.
+  const { data: notifications } = useQuery({
+    queryKey: ['notifications'],
+    queryFn: getNotifications,
+    refetchInterval: 30_000,
+  })
+  const unread = (notifications ?? []).filter((n) => !n.readAt).length
 
   return (
     <AppShell

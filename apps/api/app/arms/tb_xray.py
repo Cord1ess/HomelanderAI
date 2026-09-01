@@ -40,6 +40,7 @@ torch is an optional dependency (`uv sync --extra vision`). Without it,
 nobody working on the dashboard or database needs a multi-GB download.
 """
 
+import hashlib
 import json
 from io import BytesIO
 from pathlib import Path
@@ -54,6 +55,19 @@ VERSION = "1.0.0-txrv-logreg"
 MODEL_PATH = Path(__file__).with_name("tb_xray_model.json")
 
 WEIGHTS = "densenet121-res224-all"
+
+# Versioned separately from the weights: the same weights with different
+# preprocessing are a different model in practice, and every stored score has to
+# say which one produced it.
+PREPROCESSING_VERSION = "xrv-normalize-centercrop-224"
+
+# The backbone weights are pinned by name and fetched by torchxrayvision, so
+# what identifies *our* scorer is the logistic-regression spec. Hashing the file
+# means a retrained model can never be mistaken for this one in the audit trail.
+WEIGHT_HASH = (
+    f"{WEIGHTS}+logreg:sha256:"
+    + hashlib.sha256(Path(__file__).with_name("tb_xray_model.json").read_bytes()).hexdigest()[:32]
+)
 
 # Findings that raise TB suspicion on a plain film. The model returns all 18;
 # these are the ones the composite is built from.

@@ -12,7 +12,6 @@ requires-python = ">=3.12,<3.13"
 #
 #     uv add <package>        # then commit pyproject.toml *and* uv.lock together
 #
-# Still to come: python-multipart, once the intake endpoint accepts uploads.
 # See docs/DESIGN_POLICY.md §4 and §8.
 # ─────────────────────────────────────────────────────────────────────────────
 dependencies = [
@@ -21,22 +20,20 @@ dependencies = [
     "uvicorn[standard]>=0.32",
     "pydantic>=2.9",
     "pydantic-settings>=2.6",
-
     # Persistence. asyncpg drives the app; Alembic runs sync through
     # psycopg2 (see alembic/env.py), so both drivers are needed.
     "sqlalchemy[asyncio]>=2.0.36",
     "alembic>=1.14",
     "asyncpg>=0.31.0",
     "psycopg2-binary>=2.9.12",
-
     # Auth
     "pyjwt[crypto]>=2.10",
     "argon2-cffi>=23.1",
-
     # Evidence intake and the vision arm's preprocessing
     "numpy>=1.26",
     "pydicom>=3.0",
     "pillow>=11.0",
+    "python-multipart>=0.0.32",
 ]
 
 # ─────────────────────────────────────────────────────────────────────────────

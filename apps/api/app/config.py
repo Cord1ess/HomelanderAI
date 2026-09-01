@@ -39,6 +39,13 @@ class Settings(BaseSettings):
     db_password: str = "devpassword"
     db_name: str = "homelander"
 
+    # ── Evidence storage ──────────────────────────────────────
+    # Uploaded evidence is written to ./data at the repo root, not to an object
+    # store. One machine, a few MB per application, and the files must not
+    # leave it — a bucket would be infrastructure we do not need
+    # (docs/DESIGN_POLICY.md §9). Already gitignored.
+    data_dir: Path = _REPO_ROOT / "data"
+
     # ── Auth ──────────────────────────────────────────────────
     jwt_secret: str = "dev-only-do-not-use-in-any-real-deployment"
     jwt_algorithm: str = "HS256"

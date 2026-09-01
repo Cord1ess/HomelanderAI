@@ -44,8 +44,15 @@ mlruns/
 mlartifacts/
 .ipynb_checkpoints/
 
-# ─── Generated API types (regenerate with npm run gen:api) ─
-apps/web/src/api/schema.d.ts
+# ─── Generated API types ──────────────────────────────────
+# apps/web/src/api/schema.d.ts is generated (npm run gen:api) but IS committed.
+# It used to be ignored, which was fine while nothing imported it. Now the API
+# client's types come from it, so ignoring it would mean a fresh clone does not
+# typecheck until someone starts the API and regenerates — and anyone working on
+# the dashboard alone has no reason to run the API at all.
+#
+# Committing it also makes a contract change visible in the diff, which is
+# exactly where two people building opposite halves should see it.
 
 # ─── Editors / OS ─────────────────────────────────────────
 .vscode/*

@@ -1,6 +1,6 @@
 -- ============================================================================
 -- HomelanderAI Database Schema — v2
--- PostgreSQL 16
+-- PostgreSQL 16+ (developed and tested against 17)
 -- Academic capstone project — not for production use with real applicant data
 --
 -- v2 changes (per DATABASE.md): auth columns, tenant_id + RLS on every
@@ -147,6 +147,9 @@ CREATE TABLE applications (
     status                 application_status NOT NULL DEFAULT 'submitted',
     coverage_type          VARCHAR(50),
     coverage_amount        NUMERIC(12,2),
+    policy_term            VARCHAR(20),
+    -- Which arms to run, e.g. ["cxr_lung"]. Adding an arm needs no migration.
+    models_requested       JSONB NOT NULL DEFAULT '[]'::jsonb,
     declared_history       JSONB NOT NULL DEFAULT '{}'::jsonb,
     evaluated_at           TIMESTAMPTZ,
     processing_started_at  TIMESTAMPTZ,
@@ -156,28 +159,6 @@ CREATE TABLE applications (
 CREATE INDEX idx_applications_tenant_id ON applications(tenant_id);
 CREATE INDEX idx_applications_applicant_id ON applications(applicant_id);
 CREATE INDEX idx_applications_status ON applications(status);
-
--- ============================================================================
--- EVIDENCE_FILES  [v2: + tenant_id, file metadata, content_hash, deidentified_at]
--- ============================================================================
-
-CREATE TABLE evidence_files (
-    id                  UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    tenant_id           UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
-    application_id      UUID NOT NULL REFERENCES applications(id) ON DELETE CASCADE,
-    file_type           evidence_file_type NOT NULL,
-    storage_path        VARCHAR(500) NOT NULL,   -- relative path under ./data
-    original_filename   VARCHAR(255),
-    mime_type           VARCHAR(100),
-    size_bytes          BIGINT,
-    content_hash        VARCHAR(64),             -- sha256 of stored (de-identified) file
-    deidentified_at     TIMESTAMPTZ,              -- NULL = not DICOM, or not yet processed
-    uploaded_at         TIMESTAMPTZ NOT NULL DEFAULT now()
-);
-
-CREATE INDEX idx_evidence_files_tenant_id ON evidence_files(tenant_id);
-CREATE INDEX idx_evidence_files_application_id ON evidence_files(application_id);
-CREATE INDEX idx_evidence_files_model_arm_id ON evidence_files(model_arm_id);
 
 -- ============================================================================
 -- MODEL_ARMS  [v2: + preprocessing_version. Not tenant-scoped: shared registry]
@@ -194,6 +175,31 @@ CREATE TABLE model_arms (
     created_at             TIMESTAMPTZ NOT NULL DEFAULT now(),
     CONSTRAINT uq_model_arms_name_version UNIQUE (name, version)
 );
+
+-- ============================================================================
+-- EVIDENCE_FILES  [v2: + tenant_id, file metadata, content_hash, deidentified_at]
+-- ============================================================================
+
+CREATE TABLE evidence_files (
+    id                  UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    tenant_id           UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+    application_id      UUID NOT NULL REFERENCES applications(id) ON DELETE CASCADE,
+    file_type           evidence_file_type NOT NULL,
+    storage_path        VARCHAR(500) NOT NULL,   -- relative path under ./data
+    original_filename   VARCHAR(255),
+    mime_type           VARCHAR(100),
+    size_bytes          BIGINT,
+    content_hash        VARCHAR(64),             -- sha256 of stored (de-identified) file
+    deidentified_at     TIMESTAMPTZ,              -- NULL = not DICOM, or not yet processed
+    -- Which arm this file is for. Nullable: a generic report attached to the
+    -- application belongs to no single arm (DATABASE.md §C).
+    model_arm_id        UUID REFERENCES model_arms(id) ON DELETE SET NULL,
+    uploaded_at         TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX idx_evidence_files_tenant_id ON evidence_files(tenant_id);
+CREATE INDEX idx_evidence_files_application_id ON evidence_files(application_id);
+CREATE INDEX idx_evidence_files_model_arm_id ON evidence_files(model_arm_id);
 
 -- ============================================================================
 -- MODEL_RUNS  [v2: + tenant_id, error_message]
@@ -263,6 +269,11 @@ CREATE TABLE composite_scores (
     tier              risk_tier NOT NULL,
     method            VARCHAR(100) NOT NULL DEFAULT 'expert_weights_v1',
     tier_thresholds   JSONB NOT NULL DEFAULT '{}'::jsonb,  -- cut-points at scoring time
+    -- Which declared-history rules fired, with their points and the wording
+    -- shown to the underwriter. Stored rather than recomputed: the rules will
+    -- be re-tuned, and a past decision has to stay explainable in the terms it
+    -- was actually made in.
+    adjustments       JSONB NOT NULL DEFAULT '[]'::jsonb,
     computed_at       TIMESTAMPTZ NOT NULL DEFAULT now(),
     CONSTRAINT chk_composite_scores_range CHECK (crs_value >= 0 AND crs_value <= 100),
     CONSTRAINT uq_composite_scores_application_version UNIQUE (application_id, version)

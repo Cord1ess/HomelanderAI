@@ -38,6 +38,10 @@ class Arm:
     name: str
     version: str
     arm_type: str  # matches the model_arm_type enum in the database
+    # Everything the model_arms row needs, so the registry in code is the one
+    # source of truth and a seed file cannot drift out of sync with it.
+    preprocessing_version: str
+    weight_hash: str
     run: Callable[[bytes], ArmResult]
     available: Callable[[], bool]
 
@@ -51,6 +55,8 @@ ARMS: dict[str, Arm] = {
         name=tb_xray.NAME,
         version=tb_xray.VERSION,
         arm_type="vision",
+        preprocessing_version=tb_xray.PREPROCESSING_VERSION,
+        weight_hash=tb_xray.WEIGHT_HASH,
         run=tb_xray.run,
         available=tb_xray.available,
     ),

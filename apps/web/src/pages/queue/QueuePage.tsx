@@ -1,43 +1,33 @@
 import {
   ActionIcon,
+  Alert,
   Badge,
   Box,
   Group,
   SegmentedControl,
+  Skeleton,
   Stack,
   Table,
   Text,
   TextInput,
   Tooltip,
 } from '@mantine/core'
-import {
-  IconRefresh,
-  IconSearch,
-  IconVersions,
-} from '@tabler/icons-react'
-import { useMemo, useState } from 'react'
+import { IconAlertTriangle, IconRefresh, IconSearch, IconVersions } from '@tabler/icons-react'
+import { keepPreviousData, useQuery } from '@tanstack/react-query'
+import { useState } from 'react'
 import { Link } from 'react-router-dom'
 
+import { getQueue, type ApplicationStatus, type QueueItem } from '../../api/client'
 import { AppButton } from '../../components/AppButton'
 import { TierBadge, type Tier } from '../../components/TierBadge'
 
 /**
- * Queue (home) — all applications for the current tenant, newest first.
+ * Queue (home) — every application for the signed-in carrier, newest first.
  *
- * Dense underwriting console: a status filter, a free-text search box, a count
- * breakdown, and a table of refs with tier + status chips.
- *
- * TODO: fetch `GET /api/applications?status=&q=&limit=&offset=` and poll with
- * `refetchInterval: 30_000`. Rows below are STUB data so the console renders;
- * replace with the query result.
+ * Polls every 30 seconds because scoring runs in the background: an application
+ * submitted a moment ago arrives here as "Evaluating" and becomes "Ready for
+ * review" without anybody reloading the page.
  */
-
-type ApplicationStatus =
-  | 'submitted'
-  | 'processing'
-  | 'scored'
-  | 'insufficient_evidence'
-  | 'decided'
 
 const STATUS_META: Record<ApplicationStatus, { label: string; color: string }> = {
   submitted: { label: 'Evaluation pending', color: 'gray' },
@@ -47,30 +37,7 @@ const STATUS_META: Record<ApplicationStatus, { label: string; color: string }> =
   decided: { label: 'Decided', color: 'gray' },
 }
 
-interface Row {
-  id: string
-  ref: string
-  name: string
-  submittedAt: string
-  status: ApplicationStatus
-  crs: number | null
-  tier: Tier | null
-}
-
-// Stub data. CRS is 0-100 with tier cut-points at 30 and 65 (app/scoring.py),
-// so these values and their tiers must stay consistent — a mismatch here teaches
-// the wrong mental model to anyone building against it.
-const ROWS: Row[] = [
-  { id: 'a1', ref: 'HL-000091', name: 'A. Rahman', submittedAt: ago(2), status: 'scored', crs: 18.4, tier: 'low' },
-  { id: 'a2', ref: 'HL-000092', name: 'M. Hossain', submittedAt: ago(9), status: 'processing', crs: null, tier: null },
-  { id: 'a3', ref: 'HL-000093', name: 'S. Khatun', submittedAt: ago(31), status: 'scored', crs: 78.2, tier: 'elevated' },
-  { id: 'a4', ref: 'HL-000094', name: 'R. Islam', submittedAt: ago(60), status: 'insufficient_evidence', crs: null, tier: 'insufficient_evidence' },
-  { id: 'a5', ref: 'HL-000095', name: 'N. Akter', submittedAt: ago(120), status: 'scored', crs: 47.9, tier: 'moderate' },
-  { id: 'a6', ref: 'HL-000096', name: 'K. Uddin', submittedAt: ago(300), status: 'submitted', crs: null, tier: null },
-  { id: 'a7', ref: 'HL-000097', name: 'J. Choudhury', submittedAt: ago(1440), status: 'decided', crs: 22.7, tier: 'low' },
-]
-
-const FILTERS: ({ value: ApplicationStatus | 'all'; label: string })[] = [
+const FILTERS: { value: ApplicationStatus | 'all'; label: string }[] = [
   { value: 'all', label: 'All' },
   { value: 'submitted', label: 'Evaluation pending' },
   { value: 'processing', label: 'Evaluating' },
@@ -78,11 +45,6 @@ const FILTERS: ({ value: ApplicationStatus | 'all'; label: string })[] = [
   { value: 'insufficient_evidence', label: 'More evidence needed' },
   { value: 'decided', label: 'Decided' },
 ]
-
-/** Minutes ago -> ISO, so the stub rows age like real ones. */
-function ago(minutes: number): string {
-  return new Date(Date.now() - minutes * 60_000).toISOString()
-}
 
 function relativeTime(iso: string): string {
   const seconds = Math.round((Date.now() - new Date(iso).getTime()) / 1000)
@@ -98,28 +60,20 @@ function relativeTime(iso: string): string {
 export function QueuePage() {
   const [status, setStatus] = useState<ApplicationStatus | 'all'>('all')
   const [query, setQuery] = useState('')
-  const [refreshing, setRefreshing] = useState(false)
 
-  const rows = useMemo(() => {
-    const q = query.trim().toLowerCase()
-    return ROWS.filter((r) => {
-      if (status !== 'all' && r.status !== status) return false
-      if (q && !`${r.ref} ${r.name}`.toLowerCase().includes(q)) return false
-      return true
-    })
-  }, [status, query])
+  const { data, isPending, isFetching, error, refetch } = useQuery({
+    queryKey: ['applications', status, query],
+    queryFn: () => getQueue({ status, q: query }),
+    // Scoring finishes in the background, so the row changes under the user.
+    refetchInterval: 30_000,
+    // Without this the table empties on every keystroke while the next search
+    // is in flight, which reads as "no results" rather than "loading".
+    placeholderData: keepPreviousData,
+  })
 
-  const counts = useMemo(() => {
-    const byStatus: Record<string, number> = {}
-    for (const r of ROWS) byStatus[r.status] = (byStatus[r.status] ?? 0) + 1
-    return byStatus
-  }, [])
-
-  const refresh = () => {
-    setRefreshing(true)
-    // TODO: refetch query.
-    window.setTimeout(() => setRefreshing(false), 600)
-  }
+  const rows = data?.items ?? []
+  const counts = data?.counts ?? {}
+  const total = data?.total ?? 0
 
   return (
     <Stack gap="md">
@@ -129,7 +83,7 @@ export function QueuePage() {
             Review queue
           </Text>
           <Text size="xs" c="dimmed">
-            {ROWS.length} applications in scope for this tenant
+            {total === 1 ? '1 application' : `${total} applications`} in scope for this company
           </Text>
         </div>
         <AppButton to="/applications/new" icon="plus">
@@ -156,7 +110,7 @@ export function QueuePage() {
             ),
           }))}
         />
-        <Spacer />
+        <Box style={{ flex: 1 }} />
         <TextInput
           size="xs"
           placeholder="Search ref or name"
@@ -166,13 +120,30 @@ export function QueuePage() {
           w={220}
         />
         <Tooltip label="Refresh" withArrow>
-          <ActionIcon variant="subtle" onClick={refresh} loading={refreshing}>
+          <ActionIcon variant="subtle" onClick={() => void refetch()} loading={isFetching}>
             <IconRefresh size={16} />
           </ActionIcon>
         </Tooltip>
       </Group>
 
-      <Box style={{ border: '1px solid var(--mantine-color-default-border)', borderRadius: 'var(--mantine-radius-sm)', overflow: 'hidden' }}>
+      {error && (
+        <Alert
+          color="red"
+          variant="light"
+          icon={<IconAlertTriangle size={16} />}
+          title="Could not load the queue"
+        >
+          {error instanceof Error ? error.message : 'Unknown error'}
+        </Alert>
+      )}
+
+      <Box
+        style={{
+          border: '1px solid var(--mantine-color-default-border)',
+          borderRadius: 'var(--mantine-radius-sm)',
+          overflow: 'hidden',
+        }}
+      >
         <Table.ScrollContainer minWidth={760}>
           <Table highlightOnHover>
             <Table.Thead>
@@ -181,71 +152,30 @@ export function QueuePage() {
                 <Table.Th>Applicant</Table.Th>
                 <Table.Th>Submitted</Table.Th>
                 <Table.Th>Status</Table.Th>
-                <Table.Th>CRS</Table.Th>
+                <Table.Th>Risk score</Table.Th>
                 <Table.Th>Tier</Table.Th>
                 <Table.Th w={90}>Action</Table.Th>
               </Table.Tr>
             </Table.Thead>
             <Table.Tbody>
-              {rows.map((row) => {
-                const meta = STATUS_META[row.status]
-                return (
-                  <Table.Tr key={row.id}>
-                    <Table.Td>
-                      <Text fz="sm" ff="monospace">
-                        {row.ref}
-                      </Text>
-                    </Table.Td>
-                    <Table.Td fz="sm">{row.name}</Table.Td>
-                    <Table.Td fz="sm" c="dimmed">
-                      {relativeTime(row.submittedAt)}
-                    </Table.Td>
-                    <Table.Td>
-                      <Badge color={meta.color} variant="light" size="sm">
-                        {meta.label}
-                      </Badge>
-                    </Table.Td>
-                    <Table.Td>
-                      {row.crs != null ? (
-                        <Text fz="sm" ff="monospace">
-                          {row.crs.toFixed(1)}
-                        </Text>
-                      ) : (
-                        <Text fz="sm" c="dimmed">
-                          —
-                        </Text>
-                      )}
-                    </Table.Td>
-                    <Table.Td>
-                      {row.tier ? (
-                        <TierBadge tier={row.tier} />
-                      ) : (
-                        <Text fz="sm" c="dimmed">
-                          —
-                        </Text>
-                      )}
-                    </Table.Td>
-                    <Table.Td>
-                      {row.status === 'scored' ? (
-                        <ActionIcon
-                          variant="light"
-                          color="clinical"
-                          component={Link}
-                          to={`/applications/${row.id}`}
-                          aria-label={`Review ${row.ref}`}
-                        >
-                          <IconVersions size={16} />
-                        </ActionIcon>
-                      ) : null}
+              {isPending &&
+                [0, 1, 2].map((i) => (
+                  <Table.Tr key={`skeleton-${i}`}>
+                    <Table.Td colSpan={7}>
+                      <Skeleton height={18} />
                     </Table.Td>
                   </Table.Tr>
-                )
-              })}
-              {rows.length === 0 && (
+                ))}
+
+              {!isPending && rows.map((row) => <Row key={row.id} row={row} />)}
+
+              {!isPending && rows.length === 0 && !error && (
                 <Table.Tr>
                   <Table.Td colSpan={7}>
                     <Text ta="center" c="dimmed" py="lg" size="sm">
-                      No applications match the current filter.
+                      {total === 0
+                        ? 'No applications yet. Start by reviewing a new client.'
+                        : 'No applications match the current filter.'}
                     </Text>
                   </Table.Td>
                 </Table.Tr>
@@ -258,6 +188,62 @@ export function QueuePage() {
   )
 }
 
-function Spacer() {
-  return <Box style={{ flex: 1 }} />
+function Row({ row }: { row: QueueItem }) {
+  const meta = STATUS_META[row.status]
+  // Anything already evaluated is worth opening — including an application that
+  // could not be scored, because that screen explains why.
+  const openable = row.status === 'scored' || row.status === 'decided' ||
+    row.status === 'insufficient_evidence'
+
+  return (
+    <Table.Tr>
+      <Table.Td>
+        <Text fz="sm" ff="monospace">
+          {row.reference}
+        </Text>
+      </Table.Td>
+      <Table.Td fz="sm">{row.applicantName ?? '—'}</Table.Td>
+      <Table.Td fz="sm" c="dimmed">
+        {relativeTime(row.submittedAt)}
+      </Table.Td>
+      <Table.Td>
+        <Badge color={meta?.color ?? 'gray'} variant="light" size="sm">
+          {meta?.label ?? row.status}
+        </Badge>
+      </Table.Td>
+      <Table.Td>
+        {row.crs != null ? (
+          <Text fz="sm" ff="monospace">
+            {row.crs.toFixed(1)}
+          </Text>
+        ) : (
+          <Text fz="sm" c="dimmed">
+            —
+          </Text>
+        )}
+      </Table.Td>
+      <Table.Td>
+        {row.tier ? (
+          <TierBadge tier={row.tier as Tier} />
+        ) : (
+          <Text fz="sm" c="dimmed">
+            —
+          </Text>
+        )}
+      </Table.Td>
+      <Table.Td>
+        {openable ? (
+          <ActionIcon
+            variant="light"
+            color="clinical"
+            component={Link}
+            to={`/applications/${row.id}`}
+            aria-label={`Review ${row.reference}`}
+          >
+            <IconVersions size={16} />
+          </ActionIcon>
+        ) : null}
+      </Table.Td>
+    </Table.Tr>
+  )
 }
