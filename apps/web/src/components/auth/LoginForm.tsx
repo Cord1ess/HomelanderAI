@@ -8,7 +8,7 @@ import {
   Text,
   TextInput,
 } from '@mantine/core'
-import { isEmail, useForm } from '@mantine/form'
+import { useForm } from '@mantine/form'
 import { IconAlertCircle, IconLock, IconMail } from '@tabler/icons-react'
 import { useState } from 'react'
 import { useAuth } from '../../context/AuthContext'
@@ -29,7 +29,7 @@ export function LoginForm({ onSwitchToRegister }: LoginFormProps) {
       password: '',
     },
     validate: {
-      email: isEmail('Enter a valid email address'),
+      email: (val) => (val.trim().length < 1 ? 'Enter your email or username' : null),
       password: (val) => (val.length < 1 ? 'Password is required' : null),
     },
   })
@@ -58,8 +58,8 @@ export function LoginForm({ onSwitchToRegister }: LoginFormProps) {
 
         <TextInput
           required
-          label="Email"
-          placeholder="underwriter@carrier.com"
+          label="Email or username"
+          placeholder="admin"
           leftSection={<IconMail size={16} />}
           {...form.getInputProps('email')}
         />

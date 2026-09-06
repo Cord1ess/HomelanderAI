@@ -23,6 +23,7 @@ import type { CSSProperties } from 'react'
 import { Link } from 'react-router-dom'
 
 import { BrandIcon } from '../../components/BrandIcon'
+import { useAuth } from '../../context/AuthContext'
 
 /**
  * Home landing — public, outside the guarded console.
@@ -72,6 +73,12 @@ const linkStyle: CSSProperties = {
 }
 
 export function HomePage() {
+  // This page is public, but a signed-in user can land back on it (the logo,
+  // a bookmark, the browser's back button). Point them at the console rather
+  // than at a sign-in they have already done.
+  const { isAuthenticated } = useAuth()
+  const ctaTo = isAuthenticated ? '/queue' : '/auth'
+
   return (
     <Box className="neo-shell">
       {/* Top bar */}
@@ -102,7 +109,7 @@ export function HomePage() {
             <Box className="neo-press">
               <Button
                 component={Link}
-                to="/auth"
+                to={ctaTo}
                 size="sm"
                 radius={0}
                 style={{
@@ -111,7 +118,7 @@ export function HomePage() {
                   fontWeight: 800,
                 }}
               >
-                Sign in →
+                {isAuthenticated ? 'Dashboard →' : 'Sign in →'}
               </Button>
             </Box>
           </Group>
@@ -154,13 +161,13 @@ export function HomePage() {
                 <Box className="neo-press">
                   <Button
                     component={Link}
-                    to="/auth"
+                    to={ctaTo}
                     size="lg"
                     radius={0}
                     color="clinical"
                     style={{ border: '3px solid var(--neo-ink)', boxShadow: '6px 6px 0 var(--neo-accent)', fontWeight: 800 }}
                   >
-                    Sign in to the console
+                    {isAuthenticated ? 'Go to the dashboard' : 'Sign in to the console'}
                   </Button>
                 </Box>
                 <Box className="neo-press">

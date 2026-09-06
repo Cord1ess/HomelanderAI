@@ -13,6 +13,7 @@ import {
   useMantineColorScheme,
 } from '@mantine/core'
 import { useDisclosure } from '@mantine/hooks'
+import { useQuery } from '@tanstack/react-query'
 import {
   IconBell,
   IconChevronsLeft,
@@ -20,6 +21,7 @@ import {
   IconFilePlus,
   IconLayoutDashboard,
   IconLogout,
+  IconReceipt,
   IconMoon,
   IconSun,
   IconUser,
@@ -27,6 +29,7 @@ import {
 import type { JSX } from 'react'
 import { NavLink as RouterLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
 
+import { getNotifications } from '../../api/client'
 import { BrandIcon } from '../../components/BrandIcon'
 import { useAuth } from '../../context/AuthContext'
 
@@ -37,8 +40,6 @@ import { useAuth } from '../../context/AuthContext'
  * brand lockup up top, icon nav with tooltips, and a thin header carrying the
  * current screen title, the notifications bell and a user menu.
  *
- * TODO: unread count → `GET /api/notifications`; session → `GET /api/auth/me`;
- * logout → `POST /api/auth/logout`.
  */
 export function AppLayout() {
   const [navOpened, { toggle: toggleNav }] = useDisclosure(true)
@@ -46,7 +47,15 @@ export function AppLayout() {
   const location = useLocation()
 
   const title = routeFor(location.pathname)?.title
-  const unread = 3
+
+  // Shares its cache key with the notifications screen, so opening one and
+  // marking something read updates the badge without a second request.
+  const { data: notifications } = useQuery({
+    queryKey: ['notifications'],
+    queryFn: getNotifications,
+    refetchInterval: 30_000,
+  })
+  const unread = (notifications ?? []).filter((n) => !n.readAt).length
 
   return (
     <AppShell
@@ -158,6 +167,7 @@ const NAV: { to: string; label: string; icon: () => JSX.Element }[] = [
   { to: '/queue', label: 'Queue', icon: () => <IconLayoutDashboard size={18} /> },
   { to: '/applications/new', label: 'New application', icon: () => <IconFilePlus size={18} /> },
   { to: '/notifications', label: 'Notifications', icon: () => <IconBell size={18} /> },
+  { to: '/pricing', label: 'Pricing', icon: () => <IconReceipt size={18} /> },
 ]
 
 function routeFor(path: string) {
@@ -165,6 +175,7 @@ function routeFor(path: string) {
   if (path.startsWith('/applications/new')) return { title: 'New application' }
   if (path.startsWith('/applications/')) return { title: 'Underwriting review' }
   if (path.startsWith('/notifications')) return { title: 'Notifications' }
+  if (path.startsWith('/pricing')) return { title: 'Pricing structure' }
   return { title: 'HomelanderAI' }
 }
 

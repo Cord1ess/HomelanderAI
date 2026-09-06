@@ -403,6 +403,17 @@ You will not have real carrier applicant files, and you must not seek them.
 > `external_ref` (auto), `name`, `phone`, `date_of_birth`, `sex` — see
 > [DATABASE.md §C](DATABASE.md).
 
+> **IDENTITY PHOTO (2026-09-01).** The intake form can capture a photo of the
+> applicant for the carrier's own records. It is **optional**, re-encoded on the
+> way in (which is what actually strips EXIF — a phone photo carries the device
+> and often the GPS coordinates), stored under `applicants.face_photo_path`, and
+> **never returned by the API**. It is deliberately **not shown on the review
+> screen**: a face beside a risk score cannot inform an underwriting decision,
+> only bias it, which is precisely what §10 is about. No model reads it.
+>
+> It was briefly mandatory. That was wrong — it made the most sensitive field on
+> the form the one hardest to skip, for no benefit to anyone.
+
 **Build a synthetic applicant generator in week 1–2.** It stitches a public image, a template-generated clinical note, and a sampled demographic/lab row into a plausible applicant package with a known ground-truth label. This unblocks the entire team before a single model works: backend gets fixtures, frontend gets realistic data, ML gets an integration target, and your demo is reproducible on any machine.
 
 Rules:

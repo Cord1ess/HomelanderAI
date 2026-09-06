@@ -4,10 +4,13 @@ Handles tenant registration, login credentials, httpOnly session cookies,
 and current user session verification.
 """
 
+import logging
 from datetime import UTC, datetime
+from uuid import UUID
 
 from fastapi import APIRouter, Cookie, Depends, HTTPException, Response, status
 from sqlalchemy import select
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
@@ -19,7 +22,7 @@ from app.core.security import (
 )
 from app.db.session import get_db
 from app.models.tenant import Tenant
-from app.models.user import User
+from app.models.user import User, UserRole
 from app.schemas.auth import (
     AuthResponseSchema,
     RegisterTenantSchema,
@@ -31,6 +34,50 @@ from app.schemas.auth import (
 router = APIRouter(prefix="/auth", tags=["Authentication"])
 
 COOKIE_NAME = "session_token"
+
+log = logging.getLogger(__name__)
+
+# ── Built-in admin sign-in ───────────────────────────────────────────────────
+#
+# Username `admin`, password `admin123`. Works with no database at all, so a
+# demo survives the database machine being unreachable. Development only —
+# see settings.admin_login_enabled.
+#
+# Fixed IDs so the session is recognisable in logs and can never collide with a
+# real row.
+ADMIN_USER_ID = UUID("00000000-0000-0000-0000-0000000000ad")
+ADMIN_TENANT_ID = UUID("00000000-0000-0000-0000-0000000000c0")
+
+
+def _admin_session() -> AuthResponseSchema:
+    """The user and company this account presents as. Never stored anywhere."""
+    now = datetime.now(UTC)
+    return AuthResponseSchema(
+        user=UserSchema(
+            id=ADMIN_USER_ID,
+            tenant_id=ADMIN_TENANT_ID,
+            full_name=settings.admin_display_name,
+            email=settings.admin_username,
+            role=UserRole.ADMIN,
+            license_number=None,
+            created_at=now,
+        ),
+        tenant=TenantSchema(
+            id=ADMIN_TENANT_ID,
+            name=settings.admin_company_name,
+            subscription_tier="demo",
+            created_at=now,
+        ),
+    )
+
+
+def _is_admin_login(username: str, password: str) -> bool:
+    if not settings.admin_login_enabled:
+        return False
+    return (
+        username.strip().lower() == settings.admin_username.lower()
+        and password == settings.admin_password
+    )
 
 
 def _set_auth_cookie(response: Response, token: str) -> None:
@@ -112,9 +159,42 @@ async def login(
     db: AsyncSession = Depends(get_db),
 ) -> AuthResponseSchema:
     """Authenticate user with email and password, setting an httpOnly session cookie."""
-    result = await db.execute(
-        select(User).where(User.email == payload.email.lower())
-    )
+    # Checked first and without the database, so this still works when the
+    # database machine is unreachable — which is the whole point of it.
+    if _is_admin_login(payload.email, payload.password):
+        log.warning(
+            "Built-in '%s' sign-in used. This bypasses the database and is only "
+            "available in development.",
+            settings.admin_username,
+        )
+        session = _admin_session()
+        _set_auth_cookie(
+            response,
+            create_access_token(
+                subject=str(session.user.id),
+                tenant_id=str(session.tenant.id),
+                role=session.user.role.value,
+                fallback=True,
+            ),
+        )
+        return session
+
+    # Anything that is not the built-in admin needs the database. Say so
+    # plainly rather than surfacing a driver traceback as a 500.
+    try:
+        result = await db.execute(
+            select(User).where(User.email == payload.email.lower())
+        )
+    except (SQLAlchemyError, OSError) as exc:
+        log.error("Database unreachable during sign-in: %s", exc)
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=(
+                "Cannot reach the database. Check its address, or sign in with "
+                "the built-in admin account."
+            ),
+        ) from exc
+
     user = result.scalar_one_or_none()
 
     if not user or not verify_password(payload.password, user.password_hash):
@@ -181,8 +261,24 @@ async def get_me(
             detail="Invalid or expired session cookie.",
         )
 
+    if payload.get("fallback"):
+        if not settings.admin_login_enabled:
+            # The switch was turned off while a cookie was still live.
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="The built-in admin sign-in is no longer enabled.",
+            )
+        return _admin_session()
+
     user_id = payload["sub"]
-    result = await db.execute(select(User).where(User.id == user_id))
+    try:
+        result = await db.execute(select(User).where(User.id == user_id))
+    except (SQLAlchemyError, OSError) as exc:
+        log.error("Database unreachable while checking the session: %s", exc)
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Cannot reach the database.",
+        ) from exc
     user = result.scalar_one_or_none()
 
     if not user or not user.is_active:

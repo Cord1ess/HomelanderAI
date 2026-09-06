@@ -23,10 +23,24 @@ INSERT INTO users (id, tenant_id, full_name, email, role, license_number, passwo
      'Dev Admin', 'admin@dev.local', 'admin', NULL,
      '$argon2id$v=19$m=65536,t=3,p=4$LcR7NibWlRRLszB6Gxrv7Q$Px8qGGljXwVwFACq72XHpuPSNLrekg4GIWYCfceOz/Q', TRUE);
 
--- 1 model_arms row: Phase 1 TB chest X-ray vision arm.
-INSERT INTO model_arms (id, name, arm_type, version, preprocessing_version, weight_hash, is_active) VALUES
-    ('b2222222-0000-0000-0000-000000000001', 'chest_xray_tb_screening', 'vision',
-     'v1.0.0', 'preprocess_v1', 'sha256:PLACEHOLDER_REPLACE_WITH_REAL_WEIGHT_HASH', TRUE);
+-- The built-in demo account. `admin` / `admin123` signs in without the database
+-- at all (see docs/DEMO_SETUP.md), but it presents fixed ids — so those ids need
+-- real rows here, or the moment it creates an application the foreign key on
+-- tenant_id fails. Seeding them also makes the same credentials work through the
+-- ordinary password path once the database is up.
+INSERT INTO tenants (id, name, subscription_tier) VALUES
+    ('00000000-0000-0000-0000-0000000000c0', 'Demo Insurance Co.', 'demo');
+
+INSERT INTO users (id, tenant_id, full_name, email, role, license_number, password_hash, is_active) VALUES
+    ('00000000-0000-0000-0000-0000000000ad', '00000000-0000-0000-0000-0000000000c0',
+     'Administrator', 'admin', 'admin', NULL,
+     '$argon2id$v=19$m=65536,t=3,p=4$u2Em6TQYJnliER/RgDMvrg$3LPs+jFI3ydevY2uRwdPDFnH5Sm7ZMx1LabGCnouiAE', TRUE);
+
+-- No model_arms rows here on purpose. The API registers each arm from its own
+-- registry (app/arms/__init__.py) the first time it runs one, so the name,
+-- version, preprocessing version and weight hash always describe the code that
+-- actually produced the score. A hand-written row here would drift the moment
+-- the model is retrained.
 
 -- Default notification preferences — one row per user per notification_type.
 DO $$

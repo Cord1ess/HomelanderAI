@@ -17,11 +17,24 @@ below is justified against it.
 | `pipeline.py` — evidence in, score out | **Done**, 11 tests |
 | `audit.py` — hash chain + verifier | **Done**, 12 tests |
 | TB model — trained and exported | **Done**, AUC 0.877 (internal) |
-| Database persistence | **Blocked** — schema changes not landed, no Postgres available |
-| HTTP endpoints | **Blocked** — dashboard track, and needs persistence |
+| Database persistence | **Done** — 11 ORM models, `persistence.py` |
+| HTTP endpoints | **Done** — intake, queue, review, decision, audit, files |
+| Dashboard wired to the API | **Done** — no screen runs on stub data |
 
-77 tests passing. Everything above runs without a database by design, so the
-blocked half is a thin persistence layer over finished logic.
+106 tests passing. The whole path runs end to end: an application submitted
+through the form is de-identified, stored, scored in the background, and shown
+to an underwriter with the image, the heatmap, the findings that moved the
+score, and the history rules that adjusted it.
+
+**Two things the schema had wrong**, found the first time it was actually
+executed against Postgres:
+
+- `db/schema.sql` created an index on `evidence_files(model_arm_id)`, a column
+  the table never had. Postgres aborts the whole file on that, so the schema had
+  never once run — which is also why nothing had ever been tested against a real
+  database.
+- `applications` was missing `policy_term` and `models_requested`, both required
+  by DATABASE.md §C and both already being sent by the intake form.
 
 **Model status.** Logistic regression over TorchXRayVision's 18 findings,
 trained on Shenzhen. AUC 0.877 (5-fold CV) against 0.772 for the hand-weighted
