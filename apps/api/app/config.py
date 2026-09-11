@@ -71,6 +71,14 @@ class Settings(BaseSettings):
     admin_display_name: str = "Administrator"
     admin_company_name: str = "Demo Insurance Co."
 
+    senior_username: str = "senior"
+    senior_password: str = "admin123"
+    senior_display_name: str = "Senior Underwriter"
+
+    underwriter_username: str = "underwriter"
+    underwriter_password: str = "admin123"
+    underwriter_display_name: str = "Underwriter"
+
     @property
     def cors_origin_list(self) -> list[str]:
         return [origin.strip() for origin in self.cors_origins.split(",") if origin.strip()]

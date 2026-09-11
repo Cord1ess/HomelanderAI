@@ -10,7 +10,6 @@ from uuid import UUID
 
 from fastapi import APIRouter, Cookie, Depends, HTTPException, Response, status
 from sqlalchemy import select
-from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
@@ -46,19 +45,39 @@ log = logging.getLogger(__name__)
 # Fixed IDs so the session is recognisable in logs and can never collide with a
 # real row.
 ADMIN_USER_ID = UUID("00000000-0000-0000-0000-0000000000ad")
+SENIOR_USER_ID = UUID("00000000-0000-0000-0000-0000000000b2")
+UNDERWRITER_USER_ID = UUID("00000000-0000-0000-0000-0000000000b1")
 ADMIN_TENANT_ID = UUID("00000000-0000-0000-0000-0000000000c0")
 
 
-def _admin_session() -> AuthResponseSchema:
+def _demo_session(user_id: str | None = None, username: str | None = None) -> AuthResponseSchema:
     """The user and company this account presents as. Never stored anywhere."""
     now = datetime.now(UTC)
+    uname = username.strip().lower() if username else None
+
+    if user_id == str(SENIOR_USER_ID) or uname == settings.senior_username.lower():
+        uid = SENIOR_USER_ID
+        full_name = settings.senior_display_name
+        email = settings.senior_username
+        role = UserRole.SENIOR_UNDERWRITER
+    elif user_id == str(UNDERWRITER_USER_ID) or uname == settings.underwriter_username.lower():
+        uid = UNDERWRITER_USER_ID
+        full_name = settings.underwriter_display_name
+        email = settings.underwriter_username
+        role = UserRole.UNDERWRITER
+    else:
+        uid = ADMIN_USER_ID
+        full_name = settings.admin_display_name
+        email = settings.admin_username
+        role = UserRole.ADMIN
+
     return AuthResponseSchema(
         user=UserSchema(
-            id=ADMIN_USER_ID,
+            id=uid,
             tenant_id=ADMIN_TENANT_ID,
-            full_name=settings.admin_display_name,
-            email=settings.admin_username,
-            role=UserRole.ADMIN,
+            full_name=full_name,
+            email=email,
+            role=role,
             license_number=None,
             created_at=now,
         ),
@@ -71,12 +90,18 @@ def _admin_session() -> AuthResponseSchema:
     )
 
 
-def _is_admin_login(username: str, password: str) -> bool:
+def _is_demo_login(username: str, password: str) -> bool:
     if not settings.admin_login_enabled:
         return False
+
+    uname = username.strip().lower()
     return (
-        username.strip().lower() == settings.admin_username.lower()
-        and password == settings.admin_password
+        (uname == settings.admin_username.lower() and password == settings.admin_password)
+        or (uname == settings.senior_username.lower() and password == settings.senior_password)
+        or (
+            uname == settings.underwriter_username.lower()
+            and password == settings.underwriter_password
+        )
     )
 
 
@@ -161,13 +186,12 @@ async def login(
     """Authenticate user with email and password, setting an httpOnly session cookie."""
     # Checked first and without the database, so this still works when the
     # database machine is unreachable — which is the whole point of it.
-    if _is_admin_login(payload.email, payload.password):
+    if _is_demo_login(payload.email, payload.password):
         log.warning(
-            "Built-in '%s' sign-in used. This bypasses the database and is only "
-            "available in development.",
-            settings.admin_username,
+            "Built-in demo sign-in used. This bypasses the database and is only "
+            "available in development."
         )
-        session = _admin_session()
+        session = _demo_session(username=payload.email)
         _set_auth_cookie(
             response,
             create_access_token(
@@ -185,13 +209,13 @@ async def login(
         result = await db.execute(
             select(User).where(User.email == payload.email.lower())
         )
-    except (SQLAlchemyError, OSError) as exc:
+    except Exception as exc:
         log.error("Database unreachable during sign-in: %s", exc)
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail=(
                 "Cannot reach the database. Check its address, or sign in with "
-                "the built-in admin account."
+                "one of the built-in demo accounts."
             ),
         ) from exc
 
@@ -266,14 +290,14 @@ async def get_me(
             # The switch was turned off while a cookie was still live.
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="The built-in admin sign-in is no longer enabled.",
+                detail="The built-in demo sign-in is no longer enabled.",
             )
-        return _admin_session()
+        return _demo_session(user_id=payload.get("sub"))
 
     user_id = payload["sub"]
     try:
         result = await db.execute(select(User).where(User.id == user_id))
-    except (SQLAlchemyError, OSError) as exc:
+    except Exception as exc:
         log.error("Database unreachable while checking the session: %s", exc)
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,

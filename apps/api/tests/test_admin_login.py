@@ -9,7 +9,7 @@ from fastapi.testclient import TestClient
 
 from app.config import settings
 from app.main import app
-from app.routers.auth import COOKIE_NAME, _is_admin_login
+from app.routers.auth import COOKIE_NAME, _is_demo_login
 
 
 @pytest.fixture
@@ -18,6 +18,10 @@ def dev(monkeypatch):
     monkeypatch.setattr(settings, "environment", "development")
     monkeypatch.setattr(settings, "admin_username", "admin")
     monkeypatch.setattr(settings, "admin_password", "admin123")
+    monkeypatch.setattr(settings, "senior_username", "senior")
+    monkeypatch.setattr(settings, "senior_password", "admin123")
+    monkeypatch.setattr(settings, "underwriter_username", "underwriter")
+    monkeypatch.setattr(settings, "underwriter_password", "admin123")
     return settings
 
 
@@ -31,7 +35,7 @@ def test_off_outside_development(monkeypatch):
     for environment in ("production", "staging", "prod", ""):
         monkeypatch.setattr(settings, "environment", environment)
         assert settings.admin_login_enabled is False
-        assert _is_admin_login("admin", "admin123") is False
+        assert _is_demo_login("admin", "admin123") is False
 
 
 def test_off_when_password_cleared(monkeypatch):
@@ -41,27 +45,29 @@ def test_off_when_password_cleared(monkeypatch):
     monkeypatch.setattr(settings, "admin_password", "")
 
     assert settings.admin_login_enabled is False
-    assert _is_admin_login("admin", "") is False
-    assert _is_admin_login("admin", "anything") is False
+    assert _is_demo_login("admin", "") is False
+    assert _is_demo_login("admin", "anything") is False
 
 
 def test_wrong_password_rejected(dev):
     for wrong in ("admin", "admin1234", "Admin123", "", "admin12"):
-        assert _is_admin_login("admin", wrong) is False
+        assert _is_demo_login("admin", wrong) is False
 
 
 def test_wrong_username_rejected(dev):
-    assert _is_admin_login("administrator", "admin123") is False
-    assert _is_admin_login("root", "admin123") is False
+    assert _is_demo_login("administrator", "admin123") is False
+    assert _is_demo_login("root", "admin123") is False
 
 
 def test_username_is_case_and_space_insensitive(dev):
-    assert _is_admin_login("ADMIN", "admin123") is True
-    assert _is_admin_login("  admin  ", "admin123") is True
+    assert _is_demo_login("ADMIN", "admin123") is True
+    assert _is_demo_login("  admin  ", "admin123") is True
 
 
 def test_correct_credentials_accepted(dev):
-    assert _is_admin_login("admin", "admin123") is True
+    assert _is_demo_login("admin", "admin123") is True
+    assert _is_demo_login("senior", "admin123") is True
+    assert _is_demo_login("underwriter", "admin123") is True
 
 
 # ── end to end, with no database ─────────────────────────────────────────────
@@ -85,6 +91,42 @@ def test_signs_in_and_stays_signed_in_without_a_database(dev):
         me = client.get("/api/auth/me")
         assert me.status_code == 200, me.text
         assert me.json()["user"]["email"] == "admin"
+
+
+def test_senior_underwriter_signs_in_without_a_database(dev):
+    with TestClient(app) as client:
+        login = client.post(
+            "/api/auth/login", json={"email": "senior", "password": "admin123"}
+        )
+        assert login.status_code == 200, login.text
+
+        body = login.json()
+        assert body["user"]["email"] == "senior"
+        assert body["user"]["role"] == "senior_underwriter"
+        assert COOKIE_NAME in login.cookies
+
+        me = client.get("/api/auth/me")
+        assert me.status_code == 200, me.text
+        assert me.json()["user"]["email"] == "senior"
+        assert me.json()["user"]["role"] == "senior_underwriter"
+
+
+def test_underwriter_signs_in_without_a_database(dev):
+    with TestClient(app) as client:
+        login = client.post(
+            "/api/auth/login", json={"email": "underwriter", "password": "admin123"}
+        )
+        assert login.status_code == 200, login.text
+
+        body = login.json()
+        assert body["user"]["email"] == "underwriter"
+        assert body["user"]["role"] == "underwriter"
+        assert COOKIE_NAME in login.cookies
+
+        me = client.get("/api/auth/me")
+        assert me.status_code == 200, me.text
+        assert me.json()["user"]["email"] == "underwriter"
+        assert me.json()["user"]["role"] == "underwriter"
 
 
 def test_session_dies_when_the_switch_is_turned_off(dev, monkeypatch):

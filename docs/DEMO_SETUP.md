@@ -175,34 +175,35 @@ its actions are named in the audit trail.
 
 ---
 
-## The built-in admin
+## The built-in admin and demo roles
 
-If the database machine cannot be reached, one account still works. It touches
+If the database machine cannot be reached, three accounts still work. They touch
 no database at all.
 
-| | |
-|---|---|
-| Username | `admin` |
-| Password | `admin123` |
+| Role | Username | Password |
+|---|---|---|
+| Administrator | `admin` | `admin123` |
+| Senior Underwriter | `senior` | `admin123` |
+| Underwriter | `underwriter` | `admin123` |
 
-**No setup needed** — it is on by default in development. You get an
-administrator session for "Demo Insurance Co." and the dashboard opens normally.
+**No setup needed** — these are on by default in development. You get a
+session for "Demo Insurance Co." and the dashboard opens normally for that role.
 
-Two things keep it contained:
+Two things keep them contained:
 
-1. **Development only.** `ENVIRONMENT` must be `development`; anywhere else it
-   is ignored, whatever the password says.
-2. **Clearing `ADMIN_PASSWORD` switches it off**, and empty never means "any
+1. **Development only.** `ENVIRONMENT` must be `development`; anywhere else they
+   are ignored, whatever the passwords say.
+2. **Clearing the passwords switches them off**, and empty never means "any
    password".
 
 Every use writes a warning to the API log.
 
-**What it cannot do while the database is unreachable:** anything that reads or
+**What they cannot do while the database is unreachable:** anything that reads or
 writes data. The queue, the intake form and the review screen all need the
 database. Signing in this way when the database is *down* shows the application
 running and nothing more.
 
-With the database up, this account is seeded (`db/seed.sql`) and works fully.
+With the database up, these accounts are seeded (`db/seed.sql`) and work fully.
 
 ---
 
