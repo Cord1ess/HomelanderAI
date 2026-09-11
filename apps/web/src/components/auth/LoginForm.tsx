@@ -59,7 +59,7 @@ export function LoginForm({ onSwitchToRegister }: LoginFormProps) {
         <TextInput
           required
           label="Email or username"
-          placeholder="admin"
+          placeholder="admin, senior, or underwriter"
           leftSection={<IconMail size={16} />}
           {...form.getInputProps('email')}
         />

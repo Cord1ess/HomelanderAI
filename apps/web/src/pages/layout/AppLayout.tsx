@@ -237,11 +237,31 @@ function UserMenu() {
           </ActionIcon>
         </UnstyledButton>
       </Menu.Target>
-      <Menu.Dropdown miw={180}>
-        <Menu.Label>signed in as</Menu.Label>
-        <Menu.Item leftSection={<IconUser size={14} />}>
-          {user?.email ?? 'unknown'}
-        </Menu.Item>
+      <Menu.Dropdown miw={200}>
+        <Menu.Label>Signed in as</Menu.Label>
+        <Box px="xs" py={4}>
+          <Text size="sm" fw={600} truncate>
+            {user?.fullName || user?.email || 'User'}
+          </Text>
+          <Group gap={6} mt={2}>
+            <Badge
+              size="xs"
+              variant="light"
+              color={
+                user?.role === 'admin'
+                  ? 'blue'
+                  : user?.role === 'senior_underwriter'
+                    ? 'indigo'
+                    : 'teal'
+              }
+            >
+              {user?.role?.replace('_', ' ') ?? 'user'}
+            </Badge>
+            <Text size="xs" c="dimmed" truncate>
+              {user?.email}
+            </Text>
+          </Group>
+        </Box>
         <Menu.Divider />
         <Menu.Item
           leftSection={
