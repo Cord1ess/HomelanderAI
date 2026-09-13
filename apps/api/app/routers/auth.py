@@ -27,6 +27,7 @@ from app.schemas.auth import (
     AuthResponseSchema,
     RegisterTenantSchema,
     TenantSchema,
+    UpdateProfileSchema,
     UserLoginSchema,
     UserSchema,
 )
@@ -311,3 +312,54 @@ async def logout(response: Response) -> dict[str, str]:
     """Clear httpOnly session cookie."""
     response.delete_cookie(key=COOKIE_NAME)
     return {"status": "ok"}
+
+
+@router.patch(
+    "/profile",
+    response_model=UserSchema,
+    summary="Update Profile Details",
+)
+async def update_profile(
+    payload: UpdateProfileSchema,
+    session_token: str | None = Cookie(default=None, alias=COOKIE_NAME),
+    db: AsyncSession = Depends(get_db),
+) -> UserSchema:
+    """Update authenticated operator profile attributes."""
+    if not session_token:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="No active session cookie found.",
+        )
+
+    token_data = decode_access_token(session_token)
+    if not token_data or "sub" not in token_data:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid or expired session cookie.",
+        )
+
+    if token_data.get("fallback"):
+        session = _admin_session()
+        if payload.full_name is not None and payload.full_name.strip():
+            session.user.full_name = payload.full_name.strip()
+        if payload.license_number is not None:
+            session.user.license_number = payload.license_number.strip() or None
+        return session.user
+
+    user_id = token_data["sub"]
+    result = await db.execute(select(User).where(User.id == user_id))
+    user = result.scalar_one_or_none()
+    if not user or not user.is_active:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="User not found or account is deactivated.",
+        )
+
+    if payload.full_name is not None and payload.full_name.strip():
+        user.full_name = payload.full_name.strip()
+    if payload.license_number is not None:
+        user.license_number = payload.license_number.strip() if payload.license_number.strip() else None
+
+    await db.commit()
+    await db.refresh(user)
+    return UserSchema.model_validate(user)
