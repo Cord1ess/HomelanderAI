@@ -69,3 +69,17 @@ class AuthResponseSchema(BaseSchema):
     user: UserSchema
     tenant: TenantSchema
 
+
+class UpdateProfileSchema(BaseSchema):
+    """Payload for updating operator profile details."""
+
+    full_name: str | None = Field(default=None, min_length=2, max_length=255)
+    license_number: str | None = Field(default=None, max_length=100)
+
+
+class ChangePasswordSchema(BaseSchema):
+    """Payload for updating user password with current credential verification."""
+
+    current_password: str = Field(..., min_length=1)
+    new_password: str = Field(..., min_length=8)
+
