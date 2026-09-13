@@ -25,6 +25,7 @@ from app.models.tenant import Tenant
 from app.models.user import User, UserRole
 from app.schemas.auth import (
     AuthResponseSchema,
+    ChangePasswordSchema,
     RegisterTenantSchema,
     TenantSchema,
     UpdateProfileSchema,
@@ -363,3 +364,54 @@ async def update_profile(
     await db.commit()
     await db.refresh(user)
     return UserSchema.model_validate(user)
+
+
+@router.post(
+    "/profile/change-password",
+    summary="Change Account Password",
+)
+async def change_password(
+    payload: ChangePasswordSchema,
+    session_token: str | None = Cookie(default=None, alias=COOKIE_NAME),
+    db: AsyncSession = Depends(get_db),
+) -> dict[str, str]:
+    """Change authenticated operator password with current credential verification."""
+    if not session_token:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="No active session cookie found.",
+        )
+
+    token_data = decode_access_token(session_token)
+    if not token_data or "sub" not in token_data:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid or expired session cookie.",
+        )
+
+    if token_data.get("fallback"):
+        if payload.current_password != settings.admin_password:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Current password is incorrect.",
+            )
+        return {"status": "ok"}
+
+    user_id = token_data["sub"]
+    result = await db.execute(select(User).where(User.id == user_id))
+    user = result.scalar_one_or_none()
+    if not user or not user.is_active:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="User not found or account is deactivated.",
+        )
+
+    if not verify_password(payload.current_password, user.password_hash):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Current password is incorrect.",
+        )
+
+    user.password_hash = hash_password(payload.new_password)
+    await db.commit()
+    return {"status": "ok"}
