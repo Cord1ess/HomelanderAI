@@ -109,6 +109,20 @@ export const getCurrentUser = () => request<AuthResponse>('/auth/me')
 
 export const logout = () => request<{ status: 'ok' }>('/auth/logout', { method: 'POST' })
 
+export const updateProfile = (payload: { fullName?: string; licenseNumber?: string }) =>
+  request<AuthResponse['user']>('/auth/profile', {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  })
+
+export const changePassword = (payload: { currentPassword: string; newPassword: string }) =>
+  request<{ status: 'ok' }>('/auth/profile/change-password', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  })
+
 // ── applications ─────────────────────────────────────────────────────────────
 
 export function getQueue(params: { status?: string; q?: string } = {}) {
