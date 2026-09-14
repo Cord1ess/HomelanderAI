@@ -26,6 +26,7 @@ from app.models.user import User, UserRole
 from app.schemas.auth import (
     AuthResponseSchema,
     ChangePasswordSchema,
+    RegisterStaffSchema,
     RegisterTenantSchema,
     TenantSchema,
     UpdateProfileSchema,
@@ -415,3 +416,173 @@ async def change_password(
     user.password_hash = hash_password(payload.new_password)
     await db.commit()
     return {"status": "ok"}
+
+
+# ── Staff Management (Admin Governance) ──────────────────────────────────────
+
+
+def _demo_staff() -> list[UserSchema]:
+    now = datetime.now(UTC)
+    return [
+        UserSchema(
+            id=ADMIN_USER_ID,
+            tenant_id=ADMIN_TENANT_ID,
+            full_name=settings.admin_display_name,
+            email=settings.admin_username,
+            role=UserRole.ADMIN,
+            license_number="ADM-001-HQ",
+            created_at=now,
+        ),
+        UserSchema(
+            id=UUID("00000000-0000-0000-0000-0000000000b1"),
+            tenant_id=ADMIN_TENANT_ID,
+            full_name="Dr. Aris Thorne",
+            email="aris.thorne@homelander.ai",
+            role=UserRole.SENIOR_UNDERWRITER,
+            license_number="HL-MED-2026-SR",
+            created_at=now,
+        ),
+        UserSchema(
+            id=UUID("00000000-0000-0000-0000-0000000000c2"),
+            tenant_id=ADMIN_TENANT_ID,
+            full_name="Fatima Al-Zahra",
+            email="fatima.zahra@homelander.ai",
+            role=UserRole.UNDERWRITER,
+            license_number="HL-UW-REG-4412",
+            created_at=now,
+        ),
+        UserSchema(
+            id=UUID("00000000-0000-0000-0000-0000000000d3"),
+            tenant_id=ADMIN_TENANT_ID,
+            full_name="Rahim Chowdhury",
+            email="rahim.c@homelander.ai",
+            role=UserRole.UNDERWRITER,
+            license_number="HL-UW-REG-9821",
+            created_at=now,
+        ),
+    ]
+
+
+_demo_staff_cache: list[UserSchema] = []
+
+
+@router.get(
+    "/users",
+    response_model=list[UserSchema],
+    summary="List Carrier Tenant Staff",
+)
+async def list_tenant_staff(
+    session_token: str | None = Cookie(default=None, alias=COOKIE_NAME),
+    db: AsyncSession = Depends(get_db),
+) -> list[UserSchema]:
+    """Retrieve all staff members associated with the caller's carrier tenant."""
+    if not session_token:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="No active session cookie found.",
+        )
+
+    token_data = decode_access_token(session_token)
+    if not token_data or "sub" not in token_data:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid or expired session cookie.",
+        )
+
+    if token_data.get("fallback"):
+        global _demo_staff_cache
+        if not _demo_staff_cache:
+            _demo_staff_cache = _demo_staff()
+        return _demo_staff_cache
+
+    user_id = token_data["sub"]
+    user_result = await db.execute(select(User).where(User.id == user_id))
+    caller = user_result.scalar_one_or_none()
+    if not caller or not caller.is_active:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Caller account not found or deactivated.",
+        )
+
+    staff_result = await db.execute(
+        select(User).where(User.tenant_id == caller.tenant_id).order_by(User.created_at.desc())
+    )
+    users = staff_result.scalars().all()
+    return [UserSchema.model_validate(u) for u in users]
+
+
+@router.post(
+    "/users",
+    response_model=UserSchema,
+    summary="Provision New Staff Operator",
+)
+async def provision_staff(
+    payload: RegisterStaffSchema,
+    session_token: str | None = Cookie(default=None, alias=COOKIE_NAME),
+    db: AsyncSession = Depends(get_db),
+) -> UserSchema:
+    """Provision a new underwriter or senior underwriter within the tenant."""
+    if not session_token:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="No active session cookie found.",
+        )
+
+    token_data = decode_access_token(session_token)
+    if not token_data or "sub" not in token_data:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid or expired session cookie.",
+        )
+
+    if token_data.get("fallback"):
+        global _demo_staff_cache
+        if not _demo_staff_cache:
+            _demo_staff_cache = _demo_staff()
+        new_operator = UserSchema(
+            id=uuid.uuid4(),
+            tenant_id=ADMIN_TENANT_ID,
+            full_name=payload.full_name.strip(),
+            email=payload.email.strip().lower(),
+            role=payload.role,
+            license_number=payload.license_number.strip() if payload.license_number else None,
+            created_at=datetime.now(UTC),
+        )
+        _demo_staff_cache.insert(0, new_operator)
+        return new_operator
+
+    caller_id = token_data["sub"]
+    caller_result = await db.execute(select(User).where(User.id == caller_id))
+    caller = caller_result.scalar_one_or_none()
+    if not caller or not caller.is_active:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Caller not found or deactivated.",
+        )
+
+    if caller.role != UserRole.ADMIN:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only administrators may provision staff operators.",
+        )
+
+    # Check unique email
+    existing = await db.execute(select(User).where(User.email == payload.email.strip().lower()))
+    if existing.scalar_one_or_none():
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="An account with this email address already exists.",
+        )
+
+    new_user = User(
+        tenant_id=caller.tenant_id,
+        full_name=payload.full_name.strip(),
+        email=payload.email.strip().lower(),
+        password_hash=hash_password(payload.password),
+        role=payload.role,
+        license_number=payload.license_number.strip() if payload.license_number else None,
+    )
+    db.add(new_user)
+    await db.commit()
+    await db.refresh(new_user)
+    return UserSchema.model_validate(new_user)

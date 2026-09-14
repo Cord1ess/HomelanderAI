@@ -83,3 +83,13 @@ class ChangePasswordSchema(BaseSchema):
     current_password: str = Field(..., min_length=1)
     new_password: str = Field(..., min_length=8)
 
+
+class RegisterStaffSchema(BaseSchema):
+    """Payload for tenant admin provisioning a new underwriter or senior staff."""
+
+    full_name: str = Field(..., min_length=2, max_length=255)
+    email: str
+    password: str = Field(..., min_length=8)
+    role: UserRole = Field(default=UserRole.UNDERWRITER)
+    license_number: str | None = None
+
