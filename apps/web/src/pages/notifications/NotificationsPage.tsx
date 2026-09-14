@@ -91,11 +91,22 @@ export function NotificationsPage() {
           {!isPending &&
             visible.map((n) => {
               const unread = !n.readAt
+              const isEscalation =
+                n.notificationType === 'tier_escalation' ||
+                n.message.toLowerCase().includes('escalat')
+
               const body = (
                 <>
-                  <Text size="sm" fw={unread ? 600 : 500}>
-                    {n.message}
-                  </Text>
+                  <Group gap="xs" align="center">
+                    <Text size="sm" fw={unread ? 600 : 500}>
+                      {n.message}
+                    </Text>
+                    {isEscalation && (
+                      <Badge size="xs" variant="light" color="orange">
+                        Senior Escalation
+                      </Badge>
+                    )}
+                  </Group>
                   <Group gap="xs">
                     <IconAt size={12} />
                     <Text size="xs" c="dimmed">
@@ -114,10 +125,19 @@ export function NotificationsPage() {
                   wrap="nowrap"
                   style={{
                     borderBottom: '1px solid var(--mantine-color-default-border)',
-                    backgroundColor: unread ? 'var(--mantine-color-dark-6)' : undefined,
+                    backgroundColor: unread
+                      ? isEscalation
+                        ? 'rgba(240, 140, 0, 0.08)'
+                        : 'var(--mantine-color-dark-6)'
+                      : undefined,
                   }}
                 >
-                  <Badge size="xs" variant="filled" color={unread ? 'clinical' : 'gray'} circle />
+                  <Badge
+                    size="xs"
+                    variant="filled"
+                    color={unread ? (isEscalation ? 'orange' : 'clinical') : 'gray'}
+                    circle
+                  />
                   <Stack gap={1} style={{ flex: 1 }}>
                     {n.applicationId ? (
                       <Link
@@ -134,7 +154,7 @@ export function NotificationsPage() {
                     )}
                   </Stack>
                   {REVIEW_KINDS.has(n.notificationType) && (
-                    <Badge size="xs" variant="outline" color="gray">
+                    <Badge size="xs" variant="outline" color={isEscalation ? 'orange' : 'gray'}>
                       Review
                     </Badge>
                   )}
