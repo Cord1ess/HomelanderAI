@@ -123,6 +123,21 @@ export const changePassword = (payload: { currentPassword: string; newPassword: 
     body: JSON.stringify(payload),
   })
 
+export const getStaffUsers = () => request<AuthResponse['user'][]>('/auth/users')
+
+export const provisionStaffUser = (payload: {
+  fullName: string
+  email: string
+  password: string
+  role: 'underwriter' | 'senior_underwriter' | 'admin'
+  licenseNumber?: string
+}) =>
+  request<AuthResponse['user']>('/auth/users', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  })
+
 // ── applications ─────────────────────────────────────────────────────────────
 
 export function getQueue(params: { status?: string; q?: string } = {}) {
