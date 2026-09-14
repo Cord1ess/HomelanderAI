@@ -25,6 +25,7 @@ import {
   IconMoon,
   IconSun,
   IconUser,
+  IconUserCircle,
 } from '@tabler/icons-react'
 import type { JSX } from 'react'
 import { NavLink as RouterLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
@@ -168,6 +169,7 @@ const NAV: { to: string; label: string; icon: () => JSX.Element }[] = [
   { to: '/applications/new', label: 'New application', icon: () => <IconFilePlus size={18} /> },
   { to: '/notifications', label: 'Notifications', icon: () => <IconBell size={18} /> },
   { to: '/pricing', label: 'Pricing', icon: () => <IconReceipt size={18} /> },
+  { to: '/profile', label: 'Profile', icon: () => <IconUserCircle size={18} /> },
 ]
 
 function routeFor(path: string) {
@@ -176,6 +178,7 @@ function routeFor(path: string) {
   if (path.startsWith('/applications/')) return { title: 'Underwriting review' }
   if (path.startsWith('/notifications')) return { title: 'Notifications' }
   if (path.startsWith('/pricing')) return { title: 'Pricing structure' }
+  if (path.startsWith('/profile')) return { title: 'Operator profile & authority' }
   return { title: 'HomelanderAI' }
 }
 
@@ -238,9 +241,15 @@ function UserMenu() {
         </UnstyledButton>
       </Menu.Target>
       <Menu.Dropdown miw={180}>
-        <Menu.Label>signed in as</Menu.Label>
         <Menu.Item leftSection={<IconUser size={14} />}>
           {user?.email ?? 'unknown'}
+        </Menu.Item>
+        <Menu.Item
+          component={RouterLink}
+          to="/profile"
+          leftSection={<IconUserCircle size={14} />}
+        >
+          Profile & workspace
         </Menu.Item>
         <Menu.Divider />
         <Menu.Item
