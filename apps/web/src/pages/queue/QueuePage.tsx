@@ -3,6 +3,7 @@ import {
   Alert,
   Badge,
   Box,
+  Button,
   Group,
   SegmentedControl,
   Skeleton,
@@ -12,7 +13,14 @@ import {
   TextInput,
   Tooltip,
 } from '@mantine/core'
-import { IconAlertTriangle, IconRefresh, IconSearch, IconVersions } from '@tabler/icons-react'
+import {
+  IconAlertTriangle,
+  IconFlame,
+  IconRefresh,
+  IconSearch,
+  IconShieldCheck,
+  IconVersions,
+} from '@tabler/icons-react'
 import { keepPreviousData, useQuery } from '@tanstack/react-query'
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
@@ -20,6 +28,8 @@ import { Link } from 'react-router-dom'
 import { getQueue, type ApplicationStatus, type QueueItem } from '../../api/client'
 import { AppButton } from '../../components/AppButton'
 import { TierBadge, type Tier } from '../../components/TierBadge'
+import { useAuth } from '../../context/AuthContext'
+import type { UserRole } from '../../types/auth'
 
 /**
  * Queue (home) — every application for the signed-in carrier, newest first.
@@ -58,8 +68,13 @@ function relativeTime(iso: string): string {
 }
 
 export function QueuePage() {
+  const { user } = useAuth()
   const [status, setStatus] = useState<ApplicationStatus | 'all'>('all')
   const [query, setQuery] = useState('')
+  const [escalatedOnly, setEscalatedOnly] = useState(false)
+
+  const isSenior = user?.role === 'senior_underwriter'
+  const isUnderwriter = user?.role === 'underwriter'
 
   const { data, isPending, isFetching, error, refetch } = useQuery({
     queryKey: ['applications', status, query],
@@ -71,25 +86,68 @@ export function QueuePage() {
     placeholderData: keepPreviousData,
   })
 
-  const rows = data?.items ?? []
+  const rawRows = data?.items ?? []
   const counts = data?.counts ?? {}
   const total = data?.total ?? 0
+
+  const elevatedCount = rawRows.filter((r) => r.tier === 'elevated').length
+  const rows = escalatedOnly ? rawRows.filter((r) => r.tier === 'elevated') : rawRows
 
   return (
     <Stack gap="md">
       <Group justify="space-between" align="flex-end">
         <div>
-          <Text size="sm" fw={600}>
-            Review queue
-          </Text>
+          <Group gap="xs" align="center">
+            <Text size="sm" fw={600}>
+              Review queue
+            </Text>
+            {isSenior ? (
+              <Badge color="grape" variant="light" size="xs">
+                Senior Review & Escalation Workspace
+              </Badge>
+            ) : isUnderwriter ? (
+              <Badge color="clinical" variant="light" size="xs">
+                Underwriter Workspace
+              </Badge>
+            ) : (
+              <Badge color="orange" variant="light" size="xs">
+                Admin Console
+              </Badge>
+            )}
+          </Group>
           <Text size="xs" c="dimmed">
-            {total === 1 ? '1 application' : `${total} applications`} in scope for this company
+            {total === 1 ? '1 application' : `${total} applications`} in scope for this carrier
           </Text>
         </div>
         <AppButton to="/applications/new" icon="plus">
           Review a new client
         </AppButton>
       </Group>
+
+      {/* Senior Underwriter Priority Triage Banner */}
+      {isSenior && elevatedCount > 0 && (
+        <Alert
+          color="grape"
+          variant="light"
+          icon={<IconFlame size={16} />}
+          title="Senior Escalation Triage Active"
+        >
+          <Group justify="space-between" align="center" wrap="wrap" gap="xs">
+            <Text size="xs">
+              <strong>{elevatedCount}</strong> high-risk (Tier 3 Elevated) application
+              {elevatedCount > 1 ? 's' : ''} awaiting mandatory Senior Underwriter clinical review.
+            </Text>
+            <Button
+              size="compact-xs"
+              color="grape"
+              variant={escalatedOnly ? 'filled' : 'light'}
+              onClick={() => setEscalatedOnly(!escalatedOnly)}
+            >
+              {escalatedOnly ? 'Show all cases' : 'Filter to Escalated cases'}
+            </Button>
+          </Group>
+        </Alert>
+      )}
 
       <Group gap="xs" wrap="nowrap">
         <SegmentedControl
@@ -168,7 +226,7 @@ export function QueuePage() {
                   </Table.Tr>
                 ))}
 
-              {!isPending && rows.map((row) => <Row key={row.id} row={row} />)}
+              {!isPending && rows.map((row) => <Row key={row.id} row={row} userRole={user?.role} />)}
 
               {!isPending && rows.length === 0 && !error && (
                 <Table.Tr>
@@ -189,19 +247,44 @@ export function QueuePage() {
   )
 }
 
-function Row({ row }: { row: QueueItem }) {
+function Row({ row, userRole }: { row: QueueItem; userRole?: UserRole }) {
   const meta = STATUS_META[row.status]
   // Anything already evaluated is worth opening — including an application that
   // could not be scored, because that screen explains why.
   const openable = row.status === 'scored' || row.status === 'decided' ||
     row.status === 'insufficient_evidence'
+  const isElevated = row.tier === 'elevated'
+  const isSenior = userRole === 'senior_underwriter'
+  const isUnderwriter = userRole === 'underwriter'
 
   return (
-    <Table.Tr>
+    <Table.Tr
+      style={
+        isElevated && isSenior
+          ? { backgroundColor: 'rgba(174, 62, 201, 0.06)' }
+          : undefined
+      }
+    >
       <Table.Td>
-        <Text fz="sm" ff="monospace">
-          {row.reference}
-        </Text>
+        <Group gap={6} wrap="nowrap">
+          <Text fz="sm" ff="monospace">
+            {row.reference}
+          </Text>
+          {isElevated && (
+            <Tooltip
+              label={
+                isUnderwriter
+                  ? 'Elevated risk — mandatory senior underwriter escalation'
+                  : 'Mandatory Senior Review case'
+              }
+              withArrow
+            >
+              <Badge size="xs" variant="filled" color="red">
+                Tier 3
+              </Badge>
+            </Tooltip>
+          )}
+        </Group>
       </Table.Td>
       <Table.Td fz="sm">{row.applicantName ?? '—'}</Table.Td>
       <Table.Td fz="sm" ff="monospace">
@@ -238,15 +321,30 @@ function Row({ row }: { row: QueueItem }) {
       </Table.Td>
       <Table.Td>
         {openable ? (
-          <ActionIcon
-            variant="light"
-            color="clinical"
-            component={Link}
-            to={`/applications/${row.id}`}
-            aria-label={`Review ${row.reference}`}
+          <Tooltip
+            label={
+              isElevated && isSenior
+                ? `Senior Review for ${row.reference}`
+                : isElevated && isUnderwriter
+                ? `Review ${row.reference} (Escalation required)`
+                : `Review ${row.reference}`
+            }
+            withArrow
           >
-            <IconVersions size={16} />
-          </ActionIcon>
+            <ActionIcon
+              variant="light"
+              color={isElevated && isSenior ? 'grape' : 'clinical'}
+              component={Link}
+              to={`/applications/${row.id}`}
+              aria-label={`Review ${row.reference}`}
+            >
+              {isElevated && isSenior ? (
+                <IconShieldCheck size={16} />
+              ) : (
+                <IconVersions size={16} />
+              )}
+            </ActionIcon>
+          </Tooltip>
         ) : null}
       </Table.Td>
     </Table.Tr>
