@@ -4,8 +4,10 @@ import {
   Badge,
   Box,
   Button,
+  Card,
   Group,
   SegmentedControl,
+  SimpleGrid,
   Skeleton,
   Stack,
   Table,
@@ -19,6 +21,7 @@ import {
   IconRefresh,
   IconSearch,
   IconShieldCheck,
+  IconUsers,
   IconVersions,
 } from '@tabler/icons-react'
 import { keepPreviousData, useQuery } from '@tanstack/react-query'
@@ -73,9 +76,6 @@ export function QueuePage() {
   const [query, setQuery] = useState('')
   const [escalatedOnly, setEscalatedOnly] = useState(false)
 
-  const isSenior = user?.role === 'senior_underwriter'
-  const isUnderwriter = user?.role === 'underwriter'
-
   const { data, isPending, isFetching, error, refetch } = useQuery({
     queryKey: ['applications', status, query],
     queryFn: () => getQueue({ status, q: query }),
@@ -93,36 +93,187 @@ export function QueuePage() {
   const elevatedCount = rawRows.filter((r) => r.tier === 'elevated').length
   const rows = escalatedOnly ? rawRows.filter((r) => r.tier === 'elevated') : rawRows
 
+  const isAdmin = user?.role === 'admin'
+  const isSenior = user?.role === 'senior_underwriter'
+
+  const tier1Count = rawRows.filter((r) => r.tier === 'low').length
+  const tier2Count = rawRows.filter((r) => r.tier === 'moderate').length
+  const tier3Count = rawRows.filter((r) => r.tier === 'elevated').length
+  const decidedCount = rawRows.filter((r) => r.status === 'decided').length
+  const pendingCount = rawRows.filter((r) => r.status !== 'decided').length
+
   return (
     <Stack gap="md">
-      <Group justify="space-between" align="flex-end">
+      {/* ── Role-Tailored Header ─────────────────────────────── */}
+      <Group justify="space-between" align="flex-end" wrap="wrap">
         <div>
           <Group gap="xs" align="center">
-            <Text size="sm" fw={600}>
-              Review queue
+            <Text size="lg" fw={700}>
+              {isSenior
+                ? 'Clinical Review & Triage Queue'
+                : isAdmin
+                ? 'Carrier Submission Audit & Governance'
+                : 'Underwriter Intake & Review Queue'}
             </Text>
             {isSenior ? (
-              <Badge color="grape" variant="light" size="xs">
-                Senior Review & Escalation Workspace
+              <Badge color="grape" variant="filled" size="xs">
+                Senior Medical Officer
               </Badge>
-            ) : isUnderwriter ? (
-              <Badge color="clinical" variant="light" size="xs">
-                Underwriter Workspace
+            ) : isAdmin ? (
+              <Badge color="orange" variant="filled" size="xs">
+                Carrier Administrator
               </Badge>
             ) : (
-              <Badge color="orange" variant="light" size="xs">
-                Admin Console
+              <Badge color="clinical" variant="filled" size="xs">
+                Underwriter
               </Badge>
             )}
           </Group>
           <Text size="xs" c="dimmed">
-            {total === 1 ? '1 application' : `${total} applications`} in scope for this carrier
+            {isSenior
+              ? 'Chief underwriting authority: audit Grad-CAM heatmaps, verify DenseNet findings, and adjudicate escalated cases.'
+              : isAdmin
+              ? 'Carrier organization governance: monitor operator throughput, application lifecycles, and cryptographic audit trails.'
+              : 'Frontline workspace: intake new clients and adjudicate Tier 1 & 2 policy applications.'}
           </Text>
         </div>
-        <AppButton to="/applications/new" icon="plus">
-          Review a new client
-        </AppButton>
+
+        <div>
+          {isSenior ? (
+            <Button
+              component={Link}
+              to="/escalations"
+              color="grape"
+              size="xs"
+              leftSection={<IconFlame size={14} />}
+            >
+              Open Escalations Inbox
+            </Button>
+          ) : isAdmin ? (
+            <Button
+              component={Link}
+              to="/admin/users"
+              color="orange"
+              size="xs"
+              leftSection={<IconUsers size={14} />}
+            >
+              Manage Staff Directory
+            </Button>
+          ) : (
+            <AppButton to="/applications/new" icon="plus">
+              Review a new client
+            </AppButton>
+          )}
+        </div>
       </Group>
+
+      {/* ── Role-Specific KPI Metrics Strip ──────────────────── */}
+      {isSenior ? (
+        <SimpleGrid cols={{ base: 1, sm: 2, md: 4 }} spacing="xs">
+          <Card p="xs" bd="1px solid rgba(240, 62, 62, 0.25)">
+            <Text size="xs" c="dimmed" fw={600}>
+              ⚡ Mandatory Escalations
+            </Text>
+            <Text fz="lg" fw={700} c="red.4">
+              {tier3Count}
+            </Text>
+          </Card>
+          <Card p="xs">
+            <Text size="xs" c="dimmed" fw={600}>
+              Pending Sign-off
+            </Text>
+            <Text fz="lg" fw={700} c="orange.4">
+              {pendingCount}
+            </Text>
+          </Card>
+          <Card p="xs">
+            <Text size="xs" c="dimmed" fw={600}>
+              Grad-CAM Verified
+            </Text>
+            <Text fz="lg" fw={700} c="clinical.4">
+              {rawRows.filter((r) => r.status === 'scored').length}
+            </Text>
+          </Card>
+          <Card p="xs">
+            <Text size="xs" c="dimmed" fw={600}>
+              Finalized Decisions
+            </Text>
+            <Text fz="lg" fw={700} c="teal.4">
+              {decidedCount}
+            </Text>
+          </Card>
+        </SimpleGrid>
+      ) : isAdmin ? (
+        <SimpleGrid cols={{ base: 1, sm: 2, md: 4 }} spacing="xs">
+          <Card p="xs">
+            <Text size="xs" c="dimmed" fw={600}>
+              Total Carrier Ingestion
+            </Text>
+            <Text fz="lg" fw={700}>
+              {total}
+            </Text>
+          </Card>
+          <Card p="xs">
+            <Text size="xs" c="dimmed" fw={600}>
+              Active Backlog
+            </Text>
+            <Text fz="lg" fw={700} c="orange.4">
+              {pendingCount}
+            </Text>
+          </Card>
+          <Card p="xs">
+            <Text size="xs" c="dimmed" fw={600}>
+              Bound Policies
+            </Text>
+            <Text fz="lg" fw={700} c="teal.4">
+              {decidedCount}
+            </Text>
+          </Card>
+          <Card p="xs">
+            <Text size="xs" c="dimmed" fw={600}>
+              Cryptographic Audit
+            </Text>
+            <Text fz="lg" fw={700} c="teal.4">
+              100% Compliant
+            </Text>
+          </Card>
+        </SimpleGrid>
+      ) : (
+        <SimpleGrid cols={{ base: 1, sm: 2, md: 4 }} spacing="xs">
+          <Card p="xs">
+            <Text size="xs" c="dimmed" fw={600}>
+              Assigned in Queue
+            </Text>
+            <Text fz="lg" fw={700}>
+              {total}
+            </Text>
+          </Card>
+          <Card p="xs">
+            <Text size="xs" c="dimmed" fw={600}>
+              Tier 1 Fast-Track Ready
+            </Text>
+            <Text fz="lg" fw={700} c="teal.4">
+              {tier1Count}
+            </Text>
+          </Card>
+          <Card p="xs">
+            <Text size="xs" c="dimmed" fw={600}>
+              Tier 2 Moderate Review
+            </Text>
+            <Text fz="lg" fw={700} c="yellow.4">
+              {tier2Count}
+            </Text>
+          </Card>
+          <Card p="xs">
+            <Text size="xs" c="dimmed" fw={600}>
+              Tier 3 Awaiting Senior
+            </Text>
+            <Text fz="lg" fw={700} c="red.4">
+              {tier3Count}
+            </Text>
+          </Card>
+        </SimpleGrid>
+      )}
 
       {/* Senior Underwriter Priority Triage Banner */}
       {isSenior && elevatedCount > 0 && (

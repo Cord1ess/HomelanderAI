@@ -2,6 +2,8 @@ import { Navigate, Route, Routes } from 'react-router-dom'
 
 import { ProtectedRoute } from './components/auth/ProtectedRoute'
 import { AuthPage } from './pages/AuthPage'
+import { StaffManagementPage } from './pages/admin/StaffManagementPage'
+import { EscalationsPage } from './pages/escalations/EscalationsPage'
 import { HomePage } from './pages/home/HomePage'
 import { IntakePage } from './pages/intake/IntakePage'
 import { AppLayout } from './pages/layout/AppLayout'
@@ -19,17 +21,14 @@ import { ReviewPage } from './pages/review/ReviewPage'
  *   /auth                  Sign in / register a carrier
  *
  * Guarded by ProtectedRoute -> AppLayout (the console):
- *   /queue                 Queue - all applications, filterable
+ *   /queue                 Queue - role-tailored view
+ *   /escalations           Senior Underwriter escalation inbox (unique)
+ *   /admin/users           Carrier staff & operator governance (unique)
  *   /applications/new      Intake form
  *   /applications/:id      Review workspace
  *   /notifications         Notification list
  *   /pricing               Plan and premium per risk tier
  *   /profile               Operator profile & workspace authority
- *
- * Sign-in is required for the console because it shows health data.
- *
- * The router and the auth provider both live in main.tsx, so there is exactly
- * one of each. This file only maps paths to screens.
  */
 export function App() {
   return (
@@ -44,6 +43,8 @@ export function App() {
         }
       >
         <Route path="/queue" element={<QueuePage />} />
+        <Route path="/escalations" element={<EscalationsPage />} />
+        <Route path="/admin/users" element={<StaffManagementPage />} />
         <Route path="/applications/new" element={<IntakePage />} />
         <Route path="/applications/:id" element={<ReviewPage />} />
         <Route path="/notifications" element={<NotificationsPage />} />
