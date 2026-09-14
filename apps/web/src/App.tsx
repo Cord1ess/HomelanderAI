@@ -7,6 +7,7 @@ import { IntakePage } from './pages/intake/IntakePage'
 import { AppLayout } from './pages/layout/AppLayout'
 import { NotificationsPage } from './pages/notifications/NotificationsPage'
 import { PricingPage } from './pages/pricing/PricingPage'
+import { ProfilePage } from './pages/profile/ProfilePage'
 import { QueuePage } from './pages/queue/QueuePage'
 import { ReviewPage } from './pages/review/ReviewPage'
 
@@ -23,6 +24,7 @@ import { ReviewPage } from './pages/review/ReviewPage'
  *   /applications/:id      Review workspace
  *   /notifications         Notification list
  *   /pricing               Plan and premium per risk tier
+ *   /profile               Operator profile & workspace authority
  *
  * Sign-in is required for the console because it shows health data.
  *
@@ -46,6 +48,7 @@ export function App() {
         <Route path="/applications/:id" element={<ReviewPage />} />
         <Route path="/notifications" element={<NotificationsPage />} />
         <Route path="/pricing" element={<PricingPage />} />
+        <Route path="/profile" element={<ProfilePage />} />
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
