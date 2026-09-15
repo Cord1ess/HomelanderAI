@@ -259,11 +259,31 @@ function NavItem({
       <ThemeIcon
         variant={active ? 'filled' : 'transparent'}
         color={active ? 'clinical' : 'gray'}
-        size={20}
+        size={22}
+        radius="sm"
+        style={
+          active
+            ? {
+                backgroundColor: '#15803d',
+                color: '#ffffff',
+              }
+            : {
+                color: '#94a3b8',
+              }
+        }
       >
         {icon()}
       </ThemeIcon>
-      {!collapsed && <span>{label}</span>}
+      {!collapsed && (
+        <span
+          style={{
+            fontWeight: active ? 700 : 500,
+            fontSize: '0.825rem',
+          }}
+        >
+          {label}
+        </span>
+      )}
     </RouterLink>
   )
 
