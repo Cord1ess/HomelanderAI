@@ -1,4 +1,4 @@
-import { Badge, Group, Stack, Text, type StackProps } from '@mantine/core'
+import { Badge, Box, Group, Stack, Text, type StackProps } from '@mantine/core'
 
 /**
  * A numbered intake section with its completion indicator. Reused across the
@@ -17,25 +17,40 @@ export function Section({
   children: React.ReactNode
 } & StackProps) {
   return (
-    <Stack gap="sm" {...rest}>
-      <Group gap="xs" justify="space-between">
-        <Group gap="xs">
-          <Badge color="clinical" variant="light" radius="sm">
-            {n}
-          </Badge>
-          <Text fw={600} size="sm">
-            {title}
-          </Text>
-        </Group>
-        <Badge
-          size="xs"
-          color={complete ? 'teal' : 'gray'}
-          variant={complete ? 'light' : 'outline'}
+    <Box
+      style={{
+        backgroundColor: '#13261c',
+        border: '1px solid rgba(255, 255, 255, 0.12)',
+        borderRadius: '8px',
+        padding: '1.25rem',
+        boxShadow: '0 4px 20px rgba(0, 0, 0, 0.28)',
+      }}
+    >
+      <Stack gap="md" {...rest}>
+        <Group
+          gap="xs"
+          justify="space-between"
+          pb="xs"
+          style={{ borderBottom: '1px solid rgba(255, 255, 255, 0.09)' }}
         >
-          {complete ? 'Complete' : 'Incomplete'}
-        </Badge>
-      </Group>
-      {children}
-    </Stack>
+          <Group gap="xs">
+            <Badge color="clinical" variant="filled" radius="sm" size="sm">
+              Section {n}
+            </Badge>
+            <Text fw={700} size="sm" c="#ffffff">
+              {title}
+            </Text>
+          </Group>
+          <Badge
+            size="xs"
+            color={complete ? 'teal' : 'gray'}
+            variant={complete ? 'filled' : 'outline'}
+          >
+            {complete ? 'Complete' : 'Incomplete'}
+          </Badge>
+        </Group>
+        {children}
+      </Stack>
+    </Box>
   )
 }
