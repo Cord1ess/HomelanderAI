@@ -43,11 +43,14 @@ export const theme: MantineThemeOverride = createTheme({
   },
 
   fontFamily:
-    'Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif',
+    '"Space Grotesk Variable", "Space Grotesk", Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif',
   fontFamilyMonospace:
     'ui-monospace, "JetBrains Mono", "Cascadia Code", Menlo, Consolas, monospace',
 
-  headings: {
+  headings:
+    fontFamily:
+      '"Space Grotesk Variable", "Space Grotesk", Inter, ui-sans-serif, sans-serif',
+
     fontWeight: '600',
     sizes: {
       h1: { fontSize: '1.125rem', lineHeight: '1.4' },
