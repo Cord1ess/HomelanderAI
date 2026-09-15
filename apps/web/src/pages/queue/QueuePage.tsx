@@ -140,25 +140,37 @@ export function QueuePage() {
 
         <div>
           {isSenior ? (
-            <Button
-              component={Link}
-              to="/escalations"
-              color="grape"
-              size="xs"
-              leftSection={<IconFlame size={14} />}
-            >
-              Open Escalations Inbox
-            </Button>
+            <Group gap="xs">
+              <AppButton to="/applications/new" icon="plus" size="xs">
+                New Applicant Intake
+              </AppButton>
+              <Button
+                component={Link}
+                to="/escalations"
+                color="grape"
+                size="xs"
+                variant="light"
+                leftSection={<IconFlame size={14} />}
+              >
+                Open Escalations Inbox
+              </Button>
+            </Group>
           ) : isAdmin ? (
-            <Button
-              component={Link}
-              to="/admin/users"
-              color="orange"
-              size="xs"
-              leftSection={<IconUsers size={14} />}
-            >
-              Manage Staff Directory
-            </Button>
+            <Group gap="xs">
+              <AppButton to="/applications/new" icon="plus" size="xs">
+                New Applicant Intake
+              </AppButton>
+              <Button
+                component={Link}
+                to="/admin/users"
+                color="orange"
+                size="xs"
+                variant="light"
+                leftSection={<IconUsers size={14} />}
+              >
+                Manage Staff Directory
+              </Button>
+            </Group>
           ) : (
             <AppButton to="/applications/new" icon="plus">
               Review a new client
