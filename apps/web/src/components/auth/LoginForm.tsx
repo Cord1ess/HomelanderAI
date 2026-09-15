@@ -1,15 +1,6 @@
-import {
-  Alert,
-  Anchor,
-  Button,
-  Group,
-  PasswordInput,
-  Stack,
-  Text,
-  TextInput,
-} from '@mantine/core'
+import { Alert } from '@mantine/core'
 import { useForm } from '@mantine/form'
-import { IconAlertCircle, IconLock, IconMail } from '@tabler/icons-react'
+import { IconAlertCircle } from '@tabler/icons-react'
 import { useState } from 'react'
 import { useAuth } from '../../context/AuthContext'
 import type { LoginPayload } from '../../types/auth'
@@ -18,18 +9,21 @@ interface LoginFormProps {
   onSwitchToRegister?: () => void
 }
 
+/**
+ * Sign-in form — clean white right panel style.
+ * Labels and inputs are plain HTML with auth-* CSS classes to match the
+ * screenshot design (no Mantine form controls, which carry console dark-mode
+ * styling).
+ */
 export function LoginForm({ onSwitchToRegister }: LoginFormProps) {
   const { login } = useAuth()
   const [error, setError] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
 
   const form = useForm<LoginPayload>({
-    initialValues: {
-      email: '',
-      password: '',
-    },
+    initialValues: { email: '', password: '' },
     validate: {
-      email: (val) => (val.trim().length < 1 ? 'Enter your email or username' : null),
+      email: (val) => (val.trim().length < 1 ? 'Enter your email' : null),
       password: (val) => (val.length < 1 ? 'Password is required' : null),
     },
   })
@@ -40,8 +34,7 @@ export function LoginForm({ onSwitchToRegister }: LoginFormProps) {
     try {
       await login(values)
     } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : 'Invalid email or password'
-      setError(message)
+      setError(err instanceof Error ? err.message : 'Invalid email or password')
     } finally {
       setSubmitting(false)
     }
@@ -49,48 +42,90 @@ export function LoginForm({ onSwitchToRegister }: LoginFormProps) {
 
   return (
     <form onSubmit={form.onSubmit(handleSubmit)}>
-      <Stack gap="md">
-        {error && (
-          <Alert color="red" variant="light" icon={<IconAlertCircle size={16} />} title="Could not sign in">
-            {error}
-          </Alert>
-        )}
+      {/* Heading */}
+      <h2 className="auth-heading">Welcome back.</h2>
+      <p className="auth-subheading">
+        Sign in to your <em>underwriting</em> workspace.
+      </p>
 
-        <TextInput
-          required
-          label="Email or username"
-          placeholder="admin"
-          leftSection={<IconMail size={16} />}
+      {error && (
+        <Alert
+          color="red"
+          variant="light"
+          icon={<IconAlertCircle size={15} />}
+          mb="md"
+          p="xs"
+          style={{ fontSize: '0.8rem' }}
+        >
+          {error}
+        </Alert>
+      )}
+
+      {/* Work email */}
+      <div style={{ marginBottom: '1rem' }}>
+        <label className="auth-label" htmlFor="login-email">Work email</label>
+        <input
+          id="login-email"
+          type="text"
+          className="auth-input"
+          placeholder="you@carrier.com"
+          autoComplete="email"
           {...form.getInputProps('email')}
         />
+        {form.errors.email && (
+          <p style={{ margin: '0.25rem 0 0', fontSize: '0.72rem', color: '#c0392b' }}>
+            {form.errors.email}
+          </p>
+        )}
+      </div>
 
-        <PasswordInput
-          required
-          label="Password"
-          placeholder="Your password"
-          leftSection={<IconLock size={16} />}
+      {/* Password */}
+      <div style={{ marginBottom: '1.5rem' }}>
+        <label className="auth-label" htmlFor="login-password">Password</label>
+        <input
+          id="login-password"
+          type="password"
+          className="auth-input"
+          placeholder="••••••••"
+          autoComplete="current-password"
           {...form.getInputProps('password')}
         />
-
-        <Group justify="space-between" mt="xs">
-          <Anchor component="button" type="button" size="xs" c="dimmed">
-            Forgot password?
-          </Anchor>
-        </Group>
-
-        <Button type="submit" loading={submitting} color="clinical" fullWidth radius="md" mt="sm">
-          Sign in
-        </Button>
-
-        {onSwitchToRegister && (
-          <Text size="xs" ta="center" c="dimmed" mt="xs">
-            Need to register a new carrier?{' '}
-            <Anchor component="button" type="button" size="xs" onClick={onSwitchToRegister} fw={600}>
-              Create a company account
-            </Anchor>
-          </Text>
+        {form.errors.password && (
+          <p style={{ margin: '0.25rem 0 0', fontSize: '0.72rem', color: '#c0392b' }}>
+            {form.errors.password}
+          </p>
         )}
-      </Stack>
+      </div>
+
+      {/* Submit */}
+      <button type="submit" className="auth-btn-primary" disabled={submitting}>
+        {submitting ? 'Signing in…' : 'Sign in →'}
+      </button>
+
+      {/* Switch to register */}
+      {onSwitchToRegister && (
+        <p style={{ marginTop: '1.25rem', fontSize: '0.78rem', textAlign: 'center', color: 'rgba(15,26,20,0.45)' }}>
+          Need access?{' '}
+          <button
+            type="button"
+            onClick={onSwitchToRegister}
+            style={{
+              background: 'none',
+              border: 'none',
+              padding: 0,
+              fontSize: 'inherit',
+              cursor: 'pointer',
+              color: 'var(--neo-accent)',
+              fontWeight: 600,
+              textDecoration: 'underline',
+              textUnderlineOffset: '2px',
+            }}
+          >
+            Contact your workspace administrator
+          </button>
+        </p>
+      )}
     </form>
   )
 }
+
