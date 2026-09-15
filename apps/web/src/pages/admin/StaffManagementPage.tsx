@@ -23,6 +23,7 @@ import { notifications } from '@mantine/notifications'
 import {
   IconAlertCircle,
   IconCheck,
+  IconFilePlus,
   IconKey,
   IconMail,
   IconPlus,
@@ -34,6 +35,7 @@ import {
 } from '@tabler/icons-react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useState } from 'react'
+import { Link } from 'react-router-dom'
 
 import { getStaffUsers, provisionStaffUser } from '../../api/client'
 import { useAuth } from '../../context/AuthContext'
@@ -132,6 +134,16 @@ export function StaffManagementPage() {
         </div>
 
         <Group gap="xs">
+          <Button
+            component={Link}
+            to="/applications/new"
+            size="xs"
+            color="clinical"
+            variant="light"
+            leftSection={<IconFilePlus size={14} />}
+          >
+            New Applicant Intake
+          </Button>
           <Button
             size="xs"
             color="clinical"
