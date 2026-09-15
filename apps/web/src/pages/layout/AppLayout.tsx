@@ -188,6 +188,7 @@ function getNavForRole(role?: UserRole): { to: string; label: string; icon: () =
     return [
       { to: '/escalations', label: 'Escalations', icon: () => <IconFlame size={18} /> },
       { to: '/queue', label: 'Clinical queue', icon: () => <IconStethoscope size={18} /> },
+      { to: '/applications/new', label: 'New applicant intake', icon: () => <IconFilePlus size={18} /> },
       { to: '/pricing', label: 'Risk bands', icon: () => <IconReceipt size={18} /> },
       { to: '/notifications', label: 'Notifications', icon: () => <IconBell size={18} /> },
       { to: '/profile', label: 'My profile', icon: () => <IconUserCircle size={18} /> },
@@ -198,6 +199,7 @@ function getNavForRole(role?: UserRole): { to: string; label: string; icon: () =
     return [
       { to: '/admin/users', label: 'Staff governance', icon: () => <IconUsers size={18} /> },
       { to: '/queue', label: 'Carrier audit', icon: () => <IconShieldCheck size={18} /> },
+      { to: '/applications/new', label: 'New applicant intake', icon: () => <IconFilePlus size={18} /> },
       { to: '/pricing', label: 'Policy pricing', icon: () => <IconReceipt size={18} /> },
       { to: '/notifications', label: 'Notifications', icon: () => <IconBell size={18} /> },
       { to: '/profile', label: 'Admin profile', icon: () => <IconUserCircle size={18} /> },
@@ -207,7 +209,7 @@ function getNavForRole(role?: UserRole): { to: string; label: string; icon: () =
   // default: underwriter
   return [
     { to: '/queue', label: 'Intake queue', icon: () => <IconLayoutDashboard size={18} /> },
-    { to: '/applications/new', label: 'New client intake', icon: () => <IconFilePlus size={18} /> },
+    { to: '/applications/new', label: 'New applicant intake', icon: () => <IconFilePlus size={18} /> },
     { to: '/pricing', label: 'Plan rate card', icon: () => <IconReceipt size={18} /> },
     { to: '/notifications', label: 'Notifications', icon: () => <IconBell size={18} /> },
     { to: '/profile', label: 'My profile', icon: () => <IconUserCircle size={18} /> },
@@ -222,7 +224,7 @@ function routeFor(path: string, role?: string) {
     if (role === 'admin') return { title: 'Carrier Submission Audit' }
     return { title: 'Underwriting Intake Queue' }
   }
-  if (path.startsWith('/applications/new')) return { title: 'New Client Intake Form' }
+  if (path.startsWith('/applications/new')) return { title: 'New Applicant Intake Form' }
   if (path.startsWith('/applications/')) return { title: 'Underwriting Adjudication' }
   if (path.startsWith('/notifications')) return { title: 'Notifications' }
   if (path.startsWith('/pricing')) return { title: 'Plan & Risk Structure' }
