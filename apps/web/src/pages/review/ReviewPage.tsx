@@ -187,11 +187,19 @@ interface ReviewState {
   submit: { mutate: () => void; isPending: boolean }
 }
 
+/** Derive a human-readable image label from whichever arm produced the evidence. */
+function imageLabelFor(modelsRequested: string[]): string {
+  if (modelsRequested.includes('eyepacs')) return 'Retinal photo'
+  return 'Chest X-ray'
+}
+
 function Review({ data, state }: { data: ApplicationDetail; state: ReviewState }) {
   const findings = data.findings ?? []
   const adjustments = data.adjustments ?? []
   const files = data.files ?? []
   const errors = data.errors ?? []
+
+  const imageLabel = imageLabelFor(data.modelsRequested ?? [])
 
   const evidence = files.find((f) => f.kind === 'evidence')
   const heatmap = files.find((f) => f.kind === 'gradcam')
@@ -281,7 +289,7 @@ function Review({ data, state }: { data: ApplicationDetail; state: ReviewState }
         <Paper p="sm" bd="1px solid var(--mantine-color-default-border)">
           <Group justify="space-between" mb="sm">
             <Text fw={600} size="sm">
-              Chest X-ray
+              {imageLabel}
             </Text>
             <Switch
               label="Heatmap overlay"
@@ -305,7 +313,7 @@ function Review({ data, state }: { data: ApplicationDetail; state: ReviewState }
             {evidence || heatmap ? (
               <Image
                 src={fileUrl(state.showHeatmap && heatmap ? heatmap.id : (evidence ?? heatmap)!.id)}
-                alt={state.showHeatmap ? 'Chest X-ray with model heatmap' : 'Chest X-ray'}
+                alt={state.showHeatmap ? `${imageLabel} with model heatmap` : imageLabel}
                 h={340}
                 fit="contain"
               />

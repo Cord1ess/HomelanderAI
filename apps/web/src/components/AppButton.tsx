@@ -10,17 +10,19 @@ export function AppButton({
   to,
   children,
   icon,
+  size = 'xs',
 }: {
   to: string
   children: string
   icon?: 'plus' | 'none'
+  size?: 'xs' | 'sm' | 'md' | 'lg' | 'xl'
 }) {
   return (
     <Button
       component={Link}
       to={to}
       color="clinical"
-      size="xs"
+      size={size}
       leftSection={icon === 'plus' ? <IconPlus size={16} /> : undefined}
     >
       {children}
