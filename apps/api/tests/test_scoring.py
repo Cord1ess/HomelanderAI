@@ -182,6 +182,9 @@ def test_every_rule_can_actually_fire():
         "antibiotics_no_improvement": (history(antibiotics_no_improvement=True), None),
         "smoker": (history(smoker=True), None),
         "age_over_60": (history(), 70),
+        "diabetes_duration_over_10_years": ({"diabetes_duration": "Over 10 years"}, None),
+        "diabetes_duration_5_to_10_years": ({"diabetes_duration": "5–10 years"}, None),
+        "diabetes_with_hypertension": ({"hypertension": True}, None),
     }
 
     assert set(triggers) == {r.key for r in RULES}, "a rule has no trigger case"
