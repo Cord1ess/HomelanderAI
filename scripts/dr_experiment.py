@@ -142,17 +142,18 @@ def subsample(rows: list[dict], limit: int | None) -> list[dict]:
 def extract(backbone: str, dataset: str, limit: int | None = None) -> dict:
     """Features for one dataset through one backbone, cached on disk."""
     import torch
-
     from app.arms.fundus import NotAFundusPhoto, frame
 
-    tag = f"{backbone}__{dataset}" + (f"__{limit}" if limit else "")
+    everything = read_labels(dataset)
+    rows = subsample(everything, limit)
+    # A limit larger than the dataset changes nothing, so it shares the cache.
+    tag = f"{backbone}__{dataset}" + (f"__{limit}" if len(rows) < len(everything) else "")
     cache = FEATURES / f"{tag}.npz"
     if cache.exists():
         loaded = np.load(cache, allow_pickle=False)
         print(f"  {tag}: {len(loaded['grades'])} images (cached)")
         return {k: loaded[k] for k in loaded.files}
 
-    rows = subsample(read_labels(dataset), limit)
     model, size, mean, std = BACKBONES[backbone]()
     mean_t = torch.tensor(mean).view(1, 3, 1, 1)
     std_t = torch.tensor(std).view(1, 3, 1, 1)
@@ -234,7 +235,10 @@ def choose_c(data: dict) -> float:
     Never on the test split, and never on an external set: a setting tuned on
     the data it is then reported on is no longer a test of anything.
     """
+    from sklearn.linear_model import LogisticRegression
     from sklearn.metrics import roc_auc_score
+    from sklearn.pipeline import make_pipeline
+    from sklearn.preprocessing import StandardScaler
 
     train = data["splits"] == "train"
     valid = data["splits"] == "valid"
@@ -242,7 +246,9 @@ def choose_c(data: dict) -> float:
 
     best, best_auc = 0.1, -1.0
     for c in (0.0003, 0.001, 0.003, 0.01, 0.03, 0.1, 0.3):
-        referable, _ = fit_heads(data["X"][train], data["grades"][train], c)
+        # Only the referable head: it is the one that sets the score.
+        referable = make_pipeline(StandardScaler(), LogisticRegression(C=c, max_iter=5000))
+        referable.fit(data["X"][train], data["grades"][train] >= REFERABLE_FROM)
         auc = roc_auc_score(truth, referable.predict_proba(data["X"][valid])[:, 1])
         print(f"    C={c:<6} validation AUC {auc:.4f}")
         if auc > best_auc:
@@ -362,13 +368,17 @@ def evaluate(backbone: str, limit: int | None, datasets: tuple[str, ...]) -> dic
                 )
                 results[key]["clean"] = clean
 
-        if f"{dataset}:test" in CLEAN[backbone]:
-            part = data["splits"] == "test"
+        # The official test split on its own. For FLAIR it is the only part of
+        # IDRiD that counts; reported for every backbone so they can be compared
+        # on the same photographs.
+        part = data["splits"] == "test"
+        if part.any() and not part.all():
+            test_clean = clean or f"{dataset}:test" in CLEAN[backbone]
             results[f"{dataset}_test"] = report(
-                f"{dataset} test split (external)",
+                f"{dataset} test split ({'external' if test_clean else 'SEEN IN PRETRAINING'})",
                 referable, grading, data["X"][part], data["grades"][part],
             )
-            results[f"{dataset}_test"]["clean"] = True
+            results[f"{dataset}_test"]["clean"] = test_clean
     return {
         "results": results,
         "referable": referable,
@@ -473,8 +483,13 @@ def main() -> int:
         return 0
 
     if args.command == "compare":
+        # Every backbone fitted on the same DDR photographs and tested on the
+        # sets none of them has seen. 2,500 rather than all of DDR because the
+        # two comparison backbones are not what ships, and an hour of feature
+        # extraction each buys nothing the subset does not already show.
+        limit = args.limit or 2500
         for backbone in BACKBONES:
-            evaluate(backbone, args.limit, ("idrid", "deepdrid", "aptos"))
+            evaluate(backbone, limit, ("deepdrid", "idrid"))
         return 0
 
     if not args.backbone:

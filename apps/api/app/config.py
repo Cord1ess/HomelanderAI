@@ -75,7 +75,7 @@ class Settings(BaseSettings):
     access_token_ttl_minutes: int = 30
 
     # ── Built-in accounts ─────────────────────────────────────
-    # Three of them, one per staff role: `underwriter`, `medical` and `dev`.
+    # Three of them, one per staff role: `underwriter`, `medical` and `admin`.
     # They are defined in routers/auth.py (BUILT_IN_ACCOUNTS) and all share this
     # one password. They work with no database at all, so a demo survives the
     # database machine being unreachable.

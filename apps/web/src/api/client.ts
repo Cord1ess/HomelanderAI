@@ -1,5 +1,5 @@
 import type { components } from './schema'
-import type { AuthResponse, LoginPayload, RegisterTenantPayload } from '../types/auth'
+import type { AuthResponse, LoginPayload, RegisterTenantPayload, UserRole } from '../types/auth'
 
 /**
  * API client.
@@ -135,7 +135,7 @@ export const provisionStaffUser = (payload: {
   fullName: string
   email: string
   password: string
-  role: 'underwriter' | 'senior_underwriter' | 'admin'
+  role: UserRole
   licenseNumber?: string
 }) =>
   request<AuthResponse['user']>('/auth/users', {

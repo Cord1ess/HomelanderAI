@@ -34,7 +34,7 @@ import { getQueue, type QueueItem } from '../../api/client'
 import { TierBadge } from '../../components/TierBadge'
 
 /**
- * Senior Underwriter & Medical Officer Escalations Command Center.
+ * Medical Professional Escalations Command Center.
  *
  * Dedicated clinical workbench for managing mandatory Tier 3 (Elevated Risk)
  * escalations, reviewing sub-score breakdowns, and issuing binding decisions.
@@ -83,7 +83,7 @@ export function EscalationsPage() {
         <div>
           <Group gap="xs" align="center">
             <Text size="lg" fw={700}>
-              Senior Escalations Command Center
+              Escalations Command Center
             </Text>
             <Badge color="grape" variant="filled" size="sm" leftSection={<IconFlame size={12} />}>
               Medical Officer Review
@@ -107,7 +107,7 @@ export function EscalationsPage() {
         <Card p="sm" bd="1px solid rgba(240, 62, 62, 0.25)">
           <Group justify="space-between">
             <Text size="xs" c="dimmed" fw={600}>
-              Pending Senior Review
+              Pending Medical Review
             </Text>
             <Badge color="red" variant="filled" size="xs">
               SLA Priority
@@ -147,7 +147,7 @@ export function EscalationsPage() {
             {decidedCount}
           </Text>
           <Text size="xs" c="dimmed">
-            Completed Senior Underwriting sign-offs
+            Completed Medical Professional sign-offs
           </Text>
         </Card>
 
@@ -175,7 +175,7 @@ export function EscalationsPage() {
         title="Clinical Underwriting Protocol"
       >
         <Text size="xs">
-          As Senior Underwriter / Medical Officer, verify the 18 DenseNet vision findings against declared
+          As a Medical Professional, verify the 18 DenseNet vision findings against declared
           symptoms and the Grad-CAM lung heatmap overlay. Underwriters cannot finalize Tier 3 cases without your sign-off.
         </Text>
       </Alert>
@@ -246,7 +246,7 @@ export function EscalationsPage() {
                         Escalation Queue Clear
                       </Text>
                       <Text size="xs" c="dimmed" mt={4}>
-                        No Tier 3 elevated applications currently require senior adjudication.
+                        No Tier 3 elevated applications currently require medical review.
                       </Text>
                     </Paper>
                   </Table.Td>
@@ -295,7 +295,7 @@ function EscalationRow({ row }: { row: QueueItem }) {
           </Badge>
         ) : (
           <Badge color="orange" variant="light" size="sm">
-            Awaiting Senior Review
+            Awaiting Medical Review
           </Badge>
         )}
       </Table.Td>

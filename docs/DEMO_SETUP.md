@@ -3,7 +3,8 @@
 For the first showcase. One laptop runs PostgreSQL; the other runs the API and
 the dashboard and connects to it over the network.
 
-There is also a built-in `admin` / `admin123` sign-in that works with no
+There are also three built-in accounts, one per staff role (`underwriter`,
+`medical`, `admin`, all with the password `admin123`), that sign in with no
 database at all, so a network problem on the day does not cost you the demo.
 
 ---
@@ -164,46 +165,58 @@ Accounts from `db/seed.sql`:
 
 | Email | Password | Role |
 |---|---|---|
-| `admin@dev.local` | `devpassword123` | Administrator |
-| `senior@dev.local` | `devpassword123` | Senior underwriter |
 | `underwriter@dev.local` | `devpassword123` | Underwriter |
-| `admin` | `admin123` | Administrator, "Demo Insurance Co." |
+| `medical@dev.local` | `devpassword123` | Medical Professional |
+| `dev@dev.local` | `devpassword123` | Dev |
 
-The last row is the built-in admin. It is seeded as a real account too, so with
-the database up it behaves like any other user — it can submit applications and
-its actions are named in the audit trail.
+Those three belong to "Tenant A". For a demo, use the built-in accounts below
+instead: they need no seed step.
 
 ---
 
-## The built-in admin and demo roles
+## The built-in accounts and the three roles
 
-If the database machine cannot be reached, three accounts still work. They touch
-no database at all.
+There are exactly three staff roles, and one built-in account for each. They
+work even when the database machine cannot be reached.
 
-| Role | Username | Password |
-|---|---|---|
-| Administrator | `admin` | `admin123` |
-| Senior Underwriter | `senior` | `admin123` |
-| Underwriter | `underwriter` | `admin123` |
+| Username | Password | Role | What it is for |
+|---|---|---|---|
+| `underwriter` | `admin123` | Underwriter | Takes applications in. Decides low and moderate cases. On an elevated case it can only escalate. |
+| `medical` | `admin123` | Medical Professional | Reads the clinical evidence on escalated cases and decides them. Has the Escalations inbox. |
+| `admin` | `admin123` | Administrator | Runs the carrier's workspace: creates staff accounts and sets the turnaround promise. Has Staff governance. |
 
-**No setup needed** — these are on by default in development. You get a
-session for "Demo Insurance Co." and the dashboard opens normally for that role.
+Type the username where the sign-in form asks for a work email.
+
+**Applicants are not in this table, and have no role.** They never get a staff
+account. When an application is taken, the system generates a portal ID and a
+password for them, and they use those on the **Check status** side of the
+sign-in page. See "The client portal" below.
+
+**No setup needed.** These are on by default in development. You get a session
+for "Demo Insurance Co." and the console opens as that role. All three share one
+password, `ADMIN_PASSWORD` in `.env`.
 
 Two things keep them contained:
 
 1. **Development only.** `ENVIRONMENT` must be `development`; anywhere else they
-   are ignored, whatever the passwords say.
-2. **Clearing the passwords switches them off**, and empty never means "any
-   password".
+   are ignored, whatever the password says.
+2. **Clearing `ADMIN_PASSWORD` switches all three off**, and empty never means
+   "any password". Their database rows hold an unusable password hash, so they
+   cannot sneak back in through the ordinary sign-in either.
 
 Every use writes a warning to the API log.
 
-**What they cannot do while the database is unreachable:** anything that reads or
-writes data. The queue, the intake form and the review screen all need the
-database. Signing in this way when the database is *down* shows the application
-running and nothing more.
+**With the database up they are full accounts.** The first built-in sign-in
+creates a real row for each of the three, so their decisions and audit entries
+name a person, and a staff account created by `admin` is a real account that can
+sign in. There is no seed step for this.
 
-With the database up, these accounts are seeded (`db/seed.sql`) and work fully.
+**While the database is unreachable** they can sign in and nothing more: the
+queue, the intake form and the review screen all need data. Signing in this way
+when the database is *down* shows the application running.
+
+The old `senior` username no longer exists (changed 2026-09-22); `medical`
+replaces it.
 
 ---
 
@@ -256,8 +269,9 @@ They never see a risk score or a model finding (SPEC §3 explains why).
    **password**. With no mail server configured, which is the default, they are
    always shown here. Copy both before leaving the page: only a hash of the
    password is stored, so it cannot be shown again.
-3. Open a private window (so the staff session does not get in the way), go to
-   the sign-in page, choose the **Client** tab, and sign in.
+3. Open a private window (so the staff session does not get in the way), press
+   **Check status** on the landing page (or choose the **Client** tab on the
+   sign-in page), and sign in.
 4. Back in the console, request a document or record a decision. The portal
    picks the change up on its own within a minute, or on refresh.
 
@@ -290,7 +304,7 @@ because email is not a confidential channel.
 ### Carrier registration
 
 The public sign-in page no longer offers "Create account". Staff accounts are
-made by a carrier admin under **Staff governance** in the console. The form that onboards a
+made by an administrator under **Staff governance** in the console. The form that onboards a
 whole new carrier still exists at `/auth/register-carrier`, but nothing links to
 it.
 
@@ -305,7 +319,7 @@ it.
 | Load sample accounts | `docker exec -i homelander-postgres psql -U homelander -d homelander < db/seed.sql` |
 | Start API + dashboard | `npm run dev` |
 | Is the database reachable? | `http://127.0.0.1:8000/api/health/database` |
-| Sign in with no database | `admin` / `admin123` |
+| Sign in with no database | `underwriter`, `medical` or `admin`, password `admin123` |
 | Is the API alive? | `http://127.0.0.1:8000/api/health` |
 | Dashboard | `http://localhost:5173` |
 | Images to demo with | `data/demo/` — **not** `Reference/Nirnoy/assets/samples/` |

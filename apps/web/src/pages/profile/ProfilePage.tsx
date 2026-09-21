@@ -35,42 +35,42 @@ const ROLE_META: Record<
     scope: [
       'Client intake interviews and structured questionnaire recording',
       'Evidence attachment and model arm specification (Chest X-ray / DenseNet)',
-      'Adjudication & rate adjustment for Tier 1 (CRS < 25) & Tier 2 (CRS 25–50)',
-      'Direct escalation routing to Senior Underwriter for Tier 3 cases',
+      'Adjudication & rate adjustment for Tier 1 (score up to 30) & Tier 2 (score above 30, up to 65)',
+      'Direct escalation routing to a Medical Professional for Tier 3 cases',
       'Requesting supplementary clinical documentation from applicants',
     ],
     restrictions: [
-      'Binding approval prohibited on Tier 3 (Elevated Risk) cases without Senior sign-off',
+      'Binding approval prohibited on Tier 3 (Elevated Risk) cases without Medical Professional sign-off',
       'Cannot edit or delete carrier-level underwriting policy guidelines',
-      'Cannot provision or deactivate colleague accounts (Admin exclusive)',
+      'Cannot provision or deactivate colleague accounts (Administrator exclusive)',
     ],
   },
-  senior_underwriter: {
-    title: 'Senior Underwriter / Medical Officer',
-    shortTitle: 'Senior Underwriter',
+  medical_professional: {
+    title: 'Medical Professional',
+    shortTitle: 'Medical Professional',
     color: 'grape',
     description:
-      'Chief underwriting review authority overseeing all tenant applications, complex clinical triages, and mandatory adjudication of Tier 3 (Elevated Risk) escalated cases.',
+      'Clinical review authority for this carrier: reads the medical evidence on escalated applications and decides the Tier 3 (Elevated Risk) cases an underwriter may not.',
     scope: [
       'Full adjudication discretion across all risk tiers (Tier 1, Tier 2, Tier 3)',
       'Mandatory review and binding sign-off on escalated high-risk applications',
       'Detailed inspection of 18-finding vision probability & Grad-CAM explainability heatmaps',
       'Application of customized actuarial rate surcharges and final premium binding',
-      'Cross-tenant queue monitoring and review backlog prioritization',
+      'Queue monitoring and review backlog prioritization within this carrier',
     ],
     restrictions: [
-      'Cannot provision or delete carrier tenant configuration (Admin exclusive)',
+      'Cannot provision staff or change carrier settings (Administrator exclusive)',
       'Adjudication decisions are write-once per regulatory compliance audit trail',
     ],
   },
   admin: {
-    title: 'Carrier System Administrator',
+    title: 'Carrier Administrator',
     shortTitle: 'Administrator',
     color: 'orange',
     description:
-      'Organization administrator managing carrier tenant settings, staff account access governance, and compliance audit trail inspection.',
+      'Runs this carrier workspace: staff accounts, carrier settings such as the turnaround promise, and audit trail inspection.',
     scope: [
-      'Carrier tenant provisioning and subscription tier administration',
+      'Carrier settings, including the working-day turnaround promised to applicants',
       'User management: creating, onboarding, and deactivating operator accounts',
       'Audit log inspection and compliance verification across all submissions',
       'Underwriting workflow operational health monitoring',

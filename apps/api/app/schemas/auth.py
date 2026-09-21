@@ -54,7 +54,7 @@ class RegisterTenantSchema(BaseSchema):
     admin_password: str = Field(..., min_length=8)
     license_number: str | None = None
     # The first account of a new carrier runs its workspace.
-    role: UserRole = Field(default=UserRole.DEV)
+    role: UserRole = Field(default=UserRole.ADMIN)
 
 
 class UserLoginSchema(BaseSchema):
@@ -90,7 +90,7 @@ class ChangePasswordSchema(BaseSchema):
 
 
 class RegisterStaffSchema(BaseSchema):
-    """A new staff account, added by a Dev account of the same tenant."""
+    """A new staff account, added by an administrator of the same tenant."""
 
     full_name: str = Field(..., min_length=2, max_length=255)
     email: str

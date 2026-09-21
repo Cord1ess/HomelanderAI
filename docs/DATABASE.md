@@ -446,8 +446,9 @@ consistent.
 Please ship a `db/seed.sql`:
 
 - 2 tenants (proves isolation is real — with one tenant, a leak is invisible)
-- 3 users: one `underwriter`, one `senior_underwriter`, one `admin`, with known
-  dev passwords
+- 3 users, one per staff role: `underwriter`, `medical_professional`, `admin`
+  (`medical_professional` was `senior_underwriter` until 2026-09-22), with known dev
+  passwords
 - 1 `model_arms` row for the Phase 1 TB vision arm
 - Default `notification_preferences` rows for each user
 

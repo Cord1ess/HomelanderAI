@@ -74,8 +74,11 @@ def _stage(status_value: str, decision: UnderwriterDecisionType | None) -> tuple
         if decision == UnderwriterDecisionType.ESCALATED_SENIOR_REVIEW:
             return (
                 "senior_review",
-                "With a senior underwriter",
-                "Your application has been passed to a senior underwriter for a closer look. "
+                "With a senior reviewer",
+                # Deliberately not "a medical professional", which is who it is.
+                # The portal tells an applicant nothing clinical, and naming a
+                # medical reviewer would imply a finding.
+                "Your application has been passed to a senior reviewer for a closer look. "
                 "This is a normal step and is not a refusal.",
             )
         return ("decided", "Decided", "A decision has been recorded on your application.")

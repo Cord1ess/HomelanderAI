@@ -30,11 +30,11 @@ moderate case entirely. The same ten through the arm described here:
 
 | Photograph | True grade | Old score | New score |
 |---|---|---|---|
-| 13_left | 0 none | 19.8 | PENDING |
-| 17_left | 0 none | 25.2 | PENDING |
-| 15_right | 2 moderate | 9.3 | PENDING |
-| 16_left | 4 proliferative | 17.5 | PENDING |
-| 16_right | 4 proliferative | 38.0 | PENDING |
+| 13_left | 0 none | 19.8 | 0.1 |
+| 17_left | 0 none | 25.2 | 1.1 |
+| 15_right | 2 moderate | 9.3 | 94.6 |
+| 16_left | 4 proliferative | 17.5 | 100.0 |
+| 16_right | 4 proliferative | 38.0 | 100.0 |
 
 Those ten are **not validation** — see "Which numbers are honest" below. They
 are the fixed point the old arm failed on, nothing more.
@@ -76,9 +76,10 @@ Framing also **refuses** what is not a colour fundus photograph: a frame that is
 almost entirely black, a greyscale image, or one too dark to read. A grading
 model handed a chest X-ray does not decline. It answers, and the answer looks
 like a real one — the old arm returned 98.8 on a lung. Triage and `Arm.accepts`
-stop that first; this is the backstop. The thresholds were measured, not
-guessed: across PENDING real photographs from four datasets, PENDING were
-refused.
+stop that first; this is the backstop. The thresholds were checked against real
+output rather than guessed: across 14,638 photographs from three datasets and
+dozens of camera models (DDR, IDRiD, DeepDRiD), none was refused, and DeepDRiD's
+own graders had called half of theirs poor.
 
 ### Step 3 — The backbone
 
@@ -161,8 +162,11 @@ The size of the effect, measured here on identical code:
 
 | IDRiD photographs | Referable-DR AUC |
 |---|---|
-| All 516 (413 of them seen in pretraining) | PENDING |
-| The 103 FLAIR never saw | PENDING |
+| All 516 (413 of them seen in pretraining) | 0.983 |
+| The 103 FLAIR never saw | 0.946 |
+
+Same code, same head, same camera. The only difference is whether the backbone
+had seen the photographs, and it is worth four points.
 
 So only results on data the backbone never saw are reported as validation, the
 model file names exactly which results those are (`validated_on`), and a test
@@ -177,7 +181,41 @@ such.
 
 ## How well it works
 
-PENDING — results table
+The head was fitted on 8,763 DDR photographs (train + valid) and tested on
+everything else. Referable DR means ICDR grade 2 or worse. The two operating
+points are the platform's own tier cut-points (`scoring.Thresholds`): a score
+over 30 is the moderate band, over 65 the elevated band.
+
+| Test set | Seen by FLAIR? | n | Referable | AUC (95% CI) | Kappa | At 30: sens / spec | At 65: sens / spec |
+|---|---|---|---|---|---|---|---|
+| **DeepDRiD** (Shanghai) | **no** | 1,600 | 44% | **0.945** (0.936–0.955) | 0.66 | 0.99 / 0.61 | 0.94 / 0.78 |
+| — good-quality photographs | no | 758 | 47% | 0.958 (0.945–0.970) | 0.67 | 0.98 / 0.60 | 0.94 / 0.79 |
+| — poor-quality photographs | no | 842 | 41% | 0.933 (0.917–0.947) | 0.65 | 0.99 / 0.62 | 0.93 / 0.78 |
+| **IDRiD test split** (Nanded) | **no** | 103 | 62% | **0.946** (0.899–0.976) | 0.62 | 0.95 / 0.51 | 0.94 / 0.69 |
+| DDR test split | yes, with grades | 3,759 | 45% | 0.972 | 0.85 | 0.85 / 0.95 | 0.75 / 0.98 |
+| IDRiD, all | 80% of it | 516 | 63% | 0.983 | 0.75 | 0.98 / 0.70 | 0.97 / 0.83 |
+
+The two bold rows are the claim. The two grey rows are what the same model
+scores on photographs the backbone has seen, and are here only to show the gap.
+
+**Reading it.** Ranking is good: on 1,600 photographs from a screening programme
+on a different continent from the training hospitals, a referable eye outscores
+a healthy one 94.5% of the time. Poor photographs cost about 2.5 points of AUC,
+not the collapse one might fear. Kappa on the five-point grade is moderate
+(0.62–0.66), and mostly reflects mild versus none — the same weak spot every
+published system has.
+
+**The thresholds are the caveat.** At the platform's cut-points the model is far
+more sensitive than specific on external data: at 30 it catches 99% of referable
+eyes but also flags 39% of healthy ones. On DDR the same cut-point flags 5%.
+That is calibration drift between hospitals, and it is the reason limit 2 below
+says to read the operating points and not just the AUC. It cannot be fixed by
+tuning on the external sets without spending them; the right fix is a clean
+calibration set, which is what Messidor-2 would provide.
+
+Every number here is written into `dr_fundus_model.json` beside the weights it
+describes, with a bootstrap interval, so the claim and the model cannot drift
+apart.
 
 ### Against the published systems
 
@@ -203,17 +241,22 @@ PENDING — comparison table
 ## Limits to state honestly
 
 **1. It has never been tested on the people it would be used on.** Every dataset
-here is a diabetic screening population, where a third to a half of photographs
-are referable. Among insurance applicants the rate is a few percent. Sensitivity
+here is a diabetic screening population, where 44–63% of photographs are
+referable. Among insurance applicants the rate is a few percent. Sensitivity
 and specificity carry over; **the chance that a flagged applicant actually has
-retinopathy does not**, and will be far lower. This is a change of population
-*and* of purpose, the same limit SPEC §10 names for every arm.
+retinopathy does not**, and will be far lower. At DeepDRiD's operating point
+(99% sensitivity, 61% specificity) and a 3% prevalence, roughly thirteen of
+every fourteen applicants pushed into the moderate band would have healthy
+eyes. That is a change of population *and* of purpose, the same limit SPEC §10
+names for every arm, and it is why the score is a reason to look and never a
+reason to decide.
 
 **2. Thresholds travel worse than rankings.** AUC measures whether diseased eyes
-score above healthy ones, and that holds up across hospitals. The platform,
-though, acts at fixed scores of 30 and 65, and the same score does not mean the
-same thing on every camera. Read the operating points in the table above, not
-just the AUC.
+score above healthy ones, and that holds up across hospitals (0.945 external
+against 0.972 internal). The platform, though, acts at fixed scores of 30 and
+65, and the same score does not mean the same thing on every camera: the 30
+cut-point flags 5% of healthy eyes on DDR and 39% on DeepDRiD. Read the
+operating points in the table above, not just the AUC.
 
 **3. Mild retinopathy is the weak spot**, as it is for every system. One or two
 microaneurysms are a few pixels across. The score targets grade 2 and above

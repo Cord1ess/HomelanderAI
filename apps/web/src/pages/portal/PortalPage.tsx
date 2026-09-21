@@ -124,7 +124,7 @@ function Status({ status }: { status: PortalStatus }) {
   const step = STEP_FOR_STAGE[status.stage] ?? 1
   const decided = status.stage === 'decided'
   const waitingOnApplicant = status.stage === 'waiting_on_you'
-  // Once a case is decided or passed to a senior underwriter, the date given
+  // Once a case is decided or escalated for senior review, the date given
   // at intake no longer governs anything. Showing it would be a stale promise,
   // possibly one already in the past.
   const dateIsLive = !decided && status.stage !== 'senior_review'

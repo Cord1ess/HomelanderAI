@@ -178,7 +178,7 @@ export interface paths {
         put?: never;
         /**
          * Provision New Staff Operator
-         * @description Provision a new underwriter or senior underwriter within the tenant.
+         * @description Add a staff account to the caller's tenant. Administrators only.
          */
         post: operations["provision_staff_api_auth_users_post"];
         delete?: never;
@@ -496,7 +496,7 @@ export interface paths {
         head?: never;
         /**
          * Change this carrier's settings (admin only)
-         * @description Only an admin sets the default. The figure is what every future
+         * @description Only an administrator sets the default. The figure is what every future
          *     applicant is promised, which is a company decision rather than a case one.
          *     Applications already submitted keep the date they were given.
          */
@@ -1133,7 +1133,7 @@ export interface components {
         };
         /**
          * RegisterStaffSchema
-         * @description Payload for tenant admin provisioning a new underwriter or senior staff.
+         * @description A new staff account, added by an administrator of the same tenant.
          */
         RegisterStaffSchema: {
             /** Fullname */
@@ -1293,7 +1293,7 @@ export interface components {
          * @description Four actions, and deliberately no reject.
          *
          *     A model finding is grounds for a closer look, never for an automated
-         *     denial — escalation to a senior underwriter is how a hard case is handled
+         *     denial — escalation to a medical professional is how a hard case is handled
          *     (SPEC.md §1).
          * @enum {string}
          */
@@ -1323,10 +1323,17 @@ export interface components {
         };
         /**
          * UserRole
-         * @description User authorization roles.
+         * @description The three staff roles. There are no others.
+         *
+         *     Applicants are not in this list on purpose: they have no row in `users` and
+         *     no role. They read their own application through the client portal with a
+         *     generated portal ID and password (see `routers/portal.py`).
+         *
+         *     `medical_professional` was `senior_underwriter` until 2026-09-22 (migration
+         *     008); what it may do did not change.
          * @enum {string}
          */
-        UserRole: "underwriter" | "senior_underwriter" | "admin";
+        UserRole: "underwriter" | "medical_professional" | "admin";
         /**
          * UserSchema
          * @description User representation.

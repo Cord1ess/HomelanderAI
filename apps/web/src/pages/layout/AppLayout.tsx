@@ -37,13 +37,14 @@ import { NavLink as RouterLink, Outlet, useLocation, useNavigate } from 'react-r
 import { getNotifications } from '../../api/client'
 import { BrandIcon } from '../../components/BrandIcon'
 import { useAuth } from '../../context/AuthContext'
+import { ROLE_LABEL } from '../../types/auth'
 import type { UserRole } from '../../types/auth'
 
 /**
  * ERP-style shell for the authenticated dashboard.
  *
  * Role-aware: renders dedicated workspaces, customized navbars, and distinct
- * privilege badges for Underwriters, Senior Medical Officers, and Administrators.
+ * privilege badges for the three roles: Underwriter, Medical Professional and Administrator.
  */
 export function AppLayout() {
   const { user } = useAuth()
@@ -99,19 +100,9 @@ export function AppLayout() {
             <Text size="sm" fw={600}>
               {title}
             </Text>
-            {role === 'senior_underwriter' ? (
-              <Badge color="grape" variant="filled" size="xs">
-                Senior Medical Officer
-              </Badge>
-            ) : role === 'admin' ? (
-              <Badge color="orange" variant="filled" size="xs">
-                Carrier Admin
-              </Badge>
-            ) : (
-              <Badge color="clinical" variant="filled" size="xs">
-                Underwriter
-              </Badge>
-            )}
+            <Badge color={ROLE_COLOR[role]} variant="filled" size="xs">
+              {ROLE_LABEL[role]}
+            </Badge>
           </Group>
 
           <Group gap={6} wrap="nowrap">
@@ -183,8 +174,15 @@ export function AppLayout() {
   )
 }
 
+/** Badge colour per role. The name comes from ROLE_LABEL, shared with every other screen. */
+const ROLE_COLOR: Record<UserRole, string> = {
+  underwriter: 'clinical',
+  medical_professional: 'grape',
+  admin: 'orange',
+}
+
 function getNavForRole(role?: UserRole): { to: string; label: string; icon: () => JSX.Element }[] {
-  if (role === 'senior_underwriter') {
+  if (role === 'medical_professional') {
     return [
       { to: '/escalations', label: 'Escalations', icon: () => <IconFlame size={18} /> },
       { to: '/queue', label: 'Clinical queue', icon: () => <IconStethoscope size={18} /> },
@@ -202,7 +200,7 @@ function getNavForRole(role?: UserRole): { to: string; label: string; icon: () =
       { to: '/applications/new', label: 'New applicant intake', icon: () => <IconFilePlus size={18} /> },
       { to: '/pricing', label: 'Policy pricing', icon: () => <IconReceipt size={18} /> },
       { to: '/notifications', label: 'Notifications', icon: () => <IconBell size={18} /> },
-      { to: '/profile', label: 'Admin profile', icon: () => <IconUserCircle size={18} /> },
+      { to: '/profile', label: 'My profile', icon: () => <IconUserCircle size={18} /> },
     ]
   }
 
@@ -216,11 +214,11 @@ function getNavForRole(role?: UserRole): { to: string; label: string; icon: () =
   ]
 }
 
-function routeFor(path: string, role?: string) {
-  if (path === '/escalations') return { title: 'Senior Escalation Command Center' }
+function routeFor(path: string, role?: UserRole) {
+  if (path === '/escalations') return { title: 'Escalation Command Center' }
   if (path === '/admin/users') return { title: 'Carrier Staff & Access Governance' }
   if (path === '/queue') {
-    if (role === 'senior_underwriter') return { title: 'Clinical Review Queue' }
+    if (role === 'medical_professional') return { title: 'Clinical Review Queue' }
     if (role === 'admin') return { title: 'Carrier Submission Audit' }
     return { title: 'Underwriting Intake Queue' }
   }

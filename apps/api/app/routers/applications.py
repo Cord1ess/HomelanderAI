@@ -58,11 +58,13 @@ from app.models import (
     NotificationStatus,
     NotificationType,
     RequestedDocument,
+    RiskTier,
     SubScore,
     Tenant,
     UnderwriterDecision,
     UnderwriterDecisionType,
     User,
+    UserRole,
 )
 from app.pipeline import evaluate
 from app.schemas.application import (
@@ -1062,6 +1064,31 @@ async def record_decision(
                 "attributed to it. Sign in with a real account to decide."
             ),
         )
+
+    # An underwriter may not approve an elevated case; they escalate it and a
+    # medical professional decides. The review screen hides those buttons, but a
+    # rule that exists only in the browser is not a rule: the same request sent
+    # directly would have been accepted.
+    if principal.role == UserRole.UNDERWRITER.value and payload.decision in (
+        UnderwriterDecisionType.CONFIRMED_FAST_TRACK,
+        UnderwriterDecisionType.APPROVED_WITH_ADJUSTMENT,
+    ):
+        latest_score = (
+            await db.execute(
+                select(CompositeScore)
+                .where(CompositeScore.application_id == application.id)
+                .order_by(CompositeScore.version.desc())
+                .limit(1)
+            )
+        ).scalar_one_or_none()
+        if latest_score is not None and latest_score.tier == RiskTier.ELEVATED:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=(
+                    "This application is elevated risk. An underwriter can escalate it "
+                    "to a medical professional, but cannot approve it."
+                ),
+            )
 
     record = UnderwriterDecision(
         tenant_id=principal.tenant_id,

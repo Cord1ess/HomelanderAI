@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.db.session import get_db
 from app.deps import Principal, current_principal
 from app.models import Tenant
+from app.models.user import UserRole
 from app.schemas.application import TenantSettingsIn, TenantSettingsSchema
 
 router = APIRouter(prefix="/tenant", tags=["Tenant"])
@@ -49,10 +50,12 @@ async def update_settings(
     db: AsyncSession = Depends(get_db),
     principal: Principal = Depends(current_principal),
 ) -> TenantSettingsSchema:
-    """Only an admin sets the default. The figure is what every future
+    """Only an administrator sets the default. The figure is what every future
     applicant is promised, which is a company decision rather than a case one.
     Applications already submitted keep the date they were given."""
-    if principal.role != "admin":
+    # Compared through the enum, not a bare string: a string here survives a
+    # role rename silently and locks everyone out.
+    if principal.role != UserRole.ADMIN.value:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Only an administrator can change company settings.",

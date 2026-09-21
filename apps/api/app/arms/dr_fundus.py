@@ -22,11 +22,12 @@ underwriter to read, and does not set the score.
 
 **Which numbers are honest.** FLAIR's pretraining included DDR, APTOS and the
 IDRiD training set *with their grades*, so a result on any of those says nothing
-about a new patient — the backbone has seen the answers. Measured on a small
-pilot, that alone was worth five points of AUC (0.983 on all of IDRiD against
-0.934 on the part FLAIR never saw). Only results on data it never saw are
-reported as validation; see `_SPEC["validation"]`, which every screen that shows
-a score also shows.
+about a new patient — the backbone has seen the answers. Measured here, that
+alone is worth four points of AUC (0.983 on all of IDRiD against 0.946 on the
+103 photographs FLAIR never saw). Only results on data it never saw are reported
+as validation: DeepDRiD, 1,600 photographs from Shanghai, referable-DR AUC 0.945;
+and that IDRiD test split, 0.946. See `_SPEC["validation"]`, which every screen
+that shows a score also shows.
 
 This replaces `eyepacs_dr.py`, which described itself as a ResNet-50 validated
 at 0.942 AUC and was in fact a count of dark and bright pixels. Measured on ten

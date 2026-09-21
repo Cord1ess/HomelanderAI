@@ -28,8 +28,8 @@ import { ReviewPage } from './pages/review/ReviewPage'
  *
  * Guarded by ProtectedRoute -> AppLayout (the console):
  *   /queue                 Queue - role-tailored view
- *   /escalations           Senior Underwriter escalation inbox (unique)
- *   /admin/users           Carrier staff & operator governance (unique)
+ *   /escalations           Escalation inbox. Medical Professional and Administrator only
+ *   /admin/users           Staff accounts and carrier settings. Administrator only
  *   /applications/new      Intake form
  *   /applications/:id      Review workspace
  *   /notifications         Notification list
@@ -51,8 +51,25 @@ export function App() {
         }
       >
         <Route path="/queue" element={<QueuePage />} />
-        <Route path="/escalations" element={<EscalationsPage />} />
-        <Route path="/admin/users" element={<StaffManagementPage />} />
+        {/* The two screens that belong to one role. The API enforces the same
+            rules; these guards stop the screen being opened by typing its
+            address, which the role-specific navigation alone never did. */}
+        <Route
+          path="/escalations"
+          element={
+            <ProtectedRoute allowedRoles={['medical_professional', 'admin']}>
+              <EscalationsPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/admin/users"
+          element={
+            <ProtectedRoute allowedRoles={['admin']}>
+              <StaffManagementPage />
+            </ProtectedRoute>
+          }
+        />
         <Route path="/applications/new" element={<IntakePage />} />
         <Route path="/applications/:id" element={<ReviewPage />} />
         <Route path="/notifications" element={<NotificationsPage />} />

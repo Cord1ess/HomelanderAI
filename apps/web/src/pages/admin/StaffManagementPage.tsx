@@ -40,10 +40,11 @@ import { Link } from 'react-router-dom'
 import { getStaffUsers, provisionStaffUser } from '../../api/client'
 import { TurnaroundCard } from './TurnaroundCard'
 import { useAuth } from '../../context/AuthContext'
+import { ROLE_LABEL } from '../../types/auth'
 import type { UserRole } from '../../types/auth'
 
 /**
- * Carrier Administrator — Staff Governance & Access Control.
+ * Administrator — Staff Governance & Access Control.
  *
  * Dedicated admin workbench to provision underwriters, manage operator seats,
  * monitor account status, and enforce carrier underwriting compliance.
@@ -93,7 +94,7 @@ export function StaffManagementPage() {
 
   const staffList = staff ?? []
   const underwriterCount = staffList.filter((s) => s.role === 'underwriter').length
-  const seniorCount = staffList.filter((s) => s.role === 'senior_underwriter').length
+  const medicalCount = staffList.filter((s) => s.role === 'medical_professional').length
   const adminCount = staffList.filter((s) => s.role === 'admin').length
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -126,7 +127,7 @@ export function StaffManagementPage() {
               Carrier Staff & Access Governance
             </Text>
             <Badge color="orange" variant="filled" size="sm" leftSection={<IconShieldCheck size={12} />}>
-              Tenant Administrator
+              {ROLE_LABEL.admin}
             </Badge>
           </Group>
           <Text size="xs" c="dimmed">
@@ -189,10 +190,10 @@ export function StaffManagementPage() {
 
         <Card p="sm">
           <Text size="xs" c="dimmed" fw={600}>
-            Senior Medical Officers
+            Medical Professionals
           </Text>
           <Text fz="xl" fw={700} c="grape.4" mt={2}>
-            {seniorCount}
+            {medicalCount}
           </Text>
           <Text size="xs" c="dimmed">
             Mandatory Tier 3 escalation review authority
@@ -201,7 +202,7 @@ export function StaffManagementPage() {
 
         <Card p="sm">
           <Text size="xs" c="dimmed" fw={600}>
-            Tenant Administrators
+            Administrators
           </Text>
           <Text fz="xl" fw={700} c="orange.4" mt={2}>
             {adminCount}
@@ -265,19 +266,13 @@ export function StaffManagementPage() {
                       {member.email}
                     </Table.Td>
                     <Table.Td>
-                      {member.role === 'admin' ? (
-                        <Badge color="orange" variant="filled" size="sm">
-                          Administrator
-                        </Badge>
-                      ) : member.role === 'senior_underwriter' ? (
-                        <Badge color="grape" variant="filled" size="sm">
-                          Senior UW / Medical Officer
-                        </Badge>
-                      ) : (
-                        <Badge color="clinical" variant="light" size="sm">
-                          Underwriter
-                        </Badge>
-                      )}
+                      <Badge
+                        color={member.role === 'admin' ? 'orange' : member.role === 'medical_professional' ? 'grape' : 'clinical'}
+                        variant={member.role === 'underwriter' ? 'light' : 'filled'}
+                        size="sm"
+                      >
+                        {ROLE_LABEL[member.role]}
+                      </Badge>
                     </Table.Td>
                     <Table.Td fz="xs" ff="monospace">
                       {member.licenseNumber ?? '—'}
@@ -336,9 +331,9 @@ export function StaffManagementPage() {
               value={role}
               onChange={(v) => setRole((v as UserRole) || 'underwriter')}
               data={[
-                { value: 'underwriter', label: 'Underwriter (Intake & Tiers 1–2)' },
-                { value: 'senior_underwriter', label: 'Senior Underwriter / Medical Officer (Tier 3 Adjudication)' },
-                { value: 'admin', label: 'Administrator (Governance & Access)' },
+                { value: 'underwriter', label: 'Underwriter (intake, decides tiers 1 and 2)' },
+                { value: 'medical_professional', label: 'Medical Professional (decides escalated tier 3 cases)' },
+                { value: 'admin', label: 'Administrator (staff accounts and carrier settings)' },
               ]}
               leftSection={<IconUserCheck size={14} />}
             />

@@ -16,9 +16,8 @@ CREATE EXTENSION IF NOT EXISTS pgcrypto;  -- for gen_random_uuid()
 -- ============================================================================
 
 -- The three staff roles. Applicants have no role: they are not users.
--- Renamed by migration 008: 'medical_professional' was 'senior_underwriter',
--- 'dev' was 'admin'.
-CREATE TYPE user_role AS ENUM ('underwriter', 'medical_professional', 'dev');
+-- 'medical_professional' was 'senior_underwriter' until migration 008.
+CREATE TYPE user_role AS ENUM ('underwriter', 'medical_professional', 'admin');
 
 -- 'awaiting_evidence' is an underwriter asking the applicant for more, as
 -- distinct from 'insufficient_evidence', which is the model being unable to

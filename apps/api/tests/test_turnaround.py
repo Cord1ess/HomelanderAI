@@ -149,14 +149,13 @@ def test_the_carrier_default_is_admin_only_and_does_not_move_existing_promises(c
         created = submit(client)
         before = client.get(f"/api/applications/{created['id']}").json()["expectedBy"]
 
-        # A senior underwriter is not an admin.
+        # A medical professional is not an administrator.
         forbidden = client.patch("/api/tenant/settings", json={"turnaroundBusinessDays": 5})
         assert forbidden.status_code == 403
         assert client.get("/api/tenant/settings").json()["turnaroundBusinessDays"] == 2
 
-    # The seeded admin@dev.local is an admin of Tenant A. Use the built-in
-    # admin instead, whose tenant is also seeded, so this does not depend on
-    # Tenant A's state.
+    # Use the built-in admin account, whose tenant the API creates on sign-in, so
+    # this does not depend on any seeded tenant's state.
     with TestClient(app) as client:
         login = client.post("/api/auth/login", json={"email": "admin", "password": "admin123"})
         assert login.status_code == 200

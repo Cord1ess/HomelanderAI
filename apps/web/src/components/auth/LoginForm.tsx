@@ -5,17 +5,13 @@ import { useState } from 'react'
 import { useAuth } from '../../context/AuthContext'
 import type { LoginPayload } from '../../types/auth'
 
-interface LoginFormProps {
-  onSwitchToRegister?: () => void
-}
-
 /**
  * Sign-in form — clean white right panel style.
  * Labels and inputs are plain HTML with auth-* CSS classes to match the
  * screenshot design (no Mantine form controls, which carry console dark-mode
  * styling).
  */
-export function LoginForm({ onSwitchToRegister }: LoginFormProps) {
+export function LoginForm() {
   const { login } = useAuth()
   const [error, setError] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
@@ -102,29 +98,11 @@ export function LoginForm({ onSwitchToRegister }: LoginFormProps) {
         {submitting ? 'Signing in…' : 'Sign in →'}
       </button>
 
-      {/* Switch to register */}
-      {onSwitchToRegister && (
-        <p style={{ marginTop: '1.25rem', fontSize: '0.78rem', textAlign: 'center', color: 'rgba(15,26,20,0.45)' }}>
-          Need access?{' '}
-          <button
-            type="button"
-            onClick={onSwitchToRegister}
-            style={{
-              background: 'none',
-              border: 'none',
-              padding: 0,
-              fontSize: 'inherit',
-              cursor: 'pointer',
-              color: 'var(--neo-accent)',
-              fontWeight: 600,
-              textDecoration: 'underline',
-              textUnderlineOffset: '2px',
-            }}
-          >
-            Contact your workspace administrator
-          </button>
-        </p>
-      )}
+      {/* No way to create an account here on purpose: staff accounts are made
+          inside the console by an administrator. */}
+      <p style={{ marginTop: '1.25rem', fontSize: '0.78rem', textAlign: 'center', color: 'rgba(15,26,20,0.45)' }}>
+        Need access? Ask an administrator at your company.
+      </p>
     </form>
   )
 }

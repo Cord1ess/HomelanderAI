@@ -152,7 +152,7 @@ These four came through from `Idea.md` and are the architectural backbone. Every
 
 ### In
 
-- Tenant + user management, API keys, role-based access (Underwriter / Senior Underwriter / Tenant Admin).
+- Tenant + user management, API keys, role-based access. Three roles: Underwriter / Medical Professional / Administrator (Medical Professional was Senior Underwriter until 2026-09-22; duties unchanged). Applicants have no role and no account: they use a generated portal ID and password (§3).
 - Evidence package upload: DICOM and standard images, clinical text, structured JSON/CSV.
 - Async inference orchestration over the model arms (§6). **Phase 1 ships one
   arm only: chest radiograph screening for tuberculosis**, carried over from the

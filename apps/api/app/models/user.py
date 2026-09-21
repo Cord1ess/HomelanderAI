@@ -1,4 +1,4 @@
-"""User ORM model representing underwriters, senior underwriters, and tenant admins."""
+"""User ORM model: a member of a carrier's staff, in one of three roles."""
 
 import enum
 import uuid
@@ -22,16 +22,16 @@ class UserRole(enum.StrEnum):
     no role. They read their own application through the client portal with a
     generated portal ID and password (see `routers/portal.py`).
 
-    Renamed on 2026-09-22 (migration 008). `medical_professional` was
-    `senior_underwriter` and `dev` was `admin`; what each may do did not change.
+    `medical_professional` was `senior_underwriter` until 2026-09-22 (migration
+    008); what it may do did not change.
     """
 
     # Takes applications in and decides the ones the models call low or moderate.
     UNDERWRITER = "underwriter"
     # Reads the clinical evidence on escalated cases and decides them.
     MEDICAL_PROFESSIONAL = "medical_professional"
-    # Runs the workspace: staff accounts and carrier settings.
-    DEV = "dev"
+    # Runs the carrier's workspace: staff accounts and carrier settings.
+    ADMIN = "admin"
 
 
 class User(Base):

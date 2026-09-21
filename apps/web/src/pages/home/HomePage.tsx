@@ -75,7 +75,7 @@ const STEPS = [
 const TIERS = [
   { band: '0 to 30', name: 'Standard', action: 'Cleared at baseline rates', who: 'One-click confirmation' },
   { band: '30 to 65', name: 'Standard with adjustment', action: 'Approve with a rate adjustment', who: 'Underwriter sets the final rate' },
-  { band: 'Above 65', name: 'Senior review', action: 'Full evidence pack routed onward', who: 'Senior underwriter, never automated' },
+  { band: 'Above 65', name: 'Medical review', action: 'Full evidence pack routed onward', who: 'Medical professional, never automated' },
   { band: 'No score', name: 'Not assessable', action: 'More evidence requested', who: 'Underwriter asks for what is missing' },
 ]
 
@@ -109,6 +109,15 @@ const navLinkStyle: CSSProperties = {
 }
 
 const GROTESK = '"Space Grotesk Variable", "Space Grotesk", sans-serif'
+
+/** The secondary button: same shape as the filled one, quieter. */
+const outlineButtonStyle: CSSProperties = {
+  border: '1px solid var(--neo-border-mid)',
+  fontWeight: 600,
+  background: 'var(--neo-card)',
+  color: 'var(--neo-ink)',
+  fontFamily: GROTESK,
+}
 
 export function HomePage() {
   const { isAuthenticated } = useAuth()
@@ -144,10 +153,22 @@ export function HomePage() {
               <Anchor style={navLinkStyle} href="#limits">Limits</Anchor>
             </Group>
 
-            <Group gap="md">
-              <Anchor component={Link} to="/auth?as=client" style={navLinkStyle} visibleFrom="sm">
-                Client portal
-              </Anchor>
+            {/* Two audiences, two buttons. Staff sign in to the console; an
+                applicant checks their own application. Each goes to its own
+                sign-in, so neither has to find the right tab. */}
+            <Group gap="sm">
+              <Box className="neo-press">
+                <Button
+                  component={Link}
+                  to="/auth?as=client"
+                  variant="default"
+                  size="sm"
+                  radius={4}
+                  style={outlineButtonStyle}
+                >
+                  Check status
+                </Button>
+              </Box>
               <Box className="neo-press">
                 <Button
                   component={Link}
@@ -220,51 +241,50 @@ export function HomePage() {
                       color: '#FFFFFF',
                     }}
                   >
-                    Open the console
+                    {isAuthenticated ? 'Open console' : 'Sign in'}
                   </Button>
                 </Box>
                 <Box className="neo-press">
                   <Button
-                    component="a"
-                    href="#how"
+                    component={Link}
+                    to="/auth?as=client"
                     variant="default"
                     size="md"
                     radius={4}
-                    rightSection={<IconArrowRight size={15} />}
-                    style={{
-                      border: '1px solid var(--neo-border-mid)',
-                      fontWeight: 600,
-                      background: 'var(--neo-card)',
-                      color: 'var(--neo-ink)',
-                      fontFamily: GROTESK,
-                    }}
+                    style={outlineButtonStyle}
                   >
-                    See how it works
+                    Check status
                   </Button>
                 </Box>
               </Group>
 
-              {/* The other audience. A client who was emailed a portal link and
-                  lands here instead needs one obvious way through. */}
+              {/* Says which button is for whom, so an applicant who was sent
+                  here does not try the staff sign-in. */}
               <Text
                 size="sm"
                 className="home-rise home-rise-3"
-                style={{ color: 'var(--neo-accent-deep)', fontFamily: GROTESK }}
+                style={{ color: 'var(--neo-accent-deep)', fontFamily: GROTESK, maxWidth: 460 }}
               >
-                Applied through one of our carriers?{' '}
-                <Anchor
-                  component={Link}
-                  to="/auth?as=client"
-                  style={{
-                    color: 'var(--neo-forest)',
-                    fontWeight: 600,
-                    textDecoration: 'underline',
-                    textUnderlineOffset: 3,
-                  }}
-                >
-                  Check your application
-                </Anchor>
+                Staff sign in to the console. Applicants check their application
+                with the portal ID they were given.
               </Text>
+
+              <Anchor
+                href="#how"
+                className="home-rise home-rise-3"
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: 6,
+                  width: 'fit-content',
+                  color: 'var(--neo-forest)',
+                  fontWeight: 600,
+                  fontSize: '0.9rem',
+                  fontFamily: GROTESK,
+                }}
+              >
+                See how it works <IconArrowRight size={15} />
+              </Anchor>
             </Stack>
 
             <Group justify="center" className="home-rise home-rise-3">

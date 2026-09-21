@@ -62,7 +62,9 @@ def carrier():
                 full_name="Test Underwriter",
                 email=email,
                 password_hash=hash_password("testpassword123"),
-                role=UserRole.SENIOR_UNDERWRITER,
+                # The role that may decide any case, so tests can record any
+                # decision without caring about tier rules.
+                role=UserRole.MEDICAL_PROFESSIONAL,
             )
             db.add(user)
             await db.commit()

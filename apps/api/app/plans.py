@@ -55,12 +55,12 @@ PLANS: dict[str, Plan] = {
     ),
     "elevated": Plan(
         tier="elevated",
-        name="Senior review",
+        name="Medical review",
         # No rate is quoted here on purpose. Tier 3 is a routing decision, and
         # attaching a price to it would imply an outcome that has not been
         # decided. Never an automated denial (SPEC §7).
-        recommendation="Route to a senior underwriter with the full evidence pack",
-        human_step="Mandatory senior review — never an automated denial",
+        recommendation="Route to a medical professional with the full evidence pack",
+        human_step="Mandatory medical review — never an automated denial",
         base_monthly_bdt=None,
     ),
     "insufficient_evidence": Plan(

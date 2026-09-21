@@ -33,6 +33,7 @@ import { AppButton } from '../../components/AppButton'
 import { TierBadge, type Tier } from '../../components/TierBadge'
 import { useAuth } from '../../context/AuthContext'
 import type { UserRole } from '../../types/auth'
+import { ROLE_LABEL } from '../../types/auth'
 
 /**
  * Queue (home) — every application for the signed-in carrier, newest first.
@@ -109,7 +110,7 @@ export function QueuePage() {
   const rows = escalatedOnly ? rawRows.filter((r) => r.tier === 'elevated') : rawRows
 
   const isAdmin = user?.role === 'admin'
-  const isSenior = user?.role === 'senior_underwriter'
+  const isMedical = user?.role === 'medical_professional'
 
   const tier1Count = rawRows.filter((r) => r.tier === 'low').length
   const tier2Count = rawRows.filter((r) => r.tier === 'moderate').length
@@ -124,19 +125,19 @@ export function QueuePage() {
         <div>
           <Group gap="xs" align="center">
             <Text size="lg" fw={700}>
-              {isSenior
+              {isMedical
                 ? 'Clinical Review & Triage Queue'
                 : isAdmin
                 ? 'Carrier Submission Audit & Governance'
                 : 'Underwriter Intake & Review Queue'}
             </Text>
-            {isSenior ? (
+            {isMedical ? (
               <Badge color="grape" variant="filled" size="xs">
-                Senior Medical Officer
+                {ROLE_LABEL.medical_professional}
               </Badge>
             ) : isAdmin ? (
               <Badge color="orange" variant="filled" size="xs">
-                Carrier Administrator
+                {ROLE_LABEL.admin}
               </Badge>
             ) : (
               <Badge color="clinical" variant="filled" size="xs">
@@ -145,8 +146,8 @@ export function QueuePage() {
             )}
           </Group>
           <Text size="xs" c="dimmed">
-            {isSenior
-              ? 'Chief underwriting authority: audit Grad-CAM heatmaps, verify DenseNet findings, and adjudicate escalated cases.'
+            {isMedical
+              ? 'Clinical review authority: audit Grad-CAM heatmaps, verify DenseNet findings, and adjudicate escalated cases.'
               : isAdmin
               ? 'Carrier organization governance: monitor operator throughput, application lifecycles, and cryptographic audit trails.'
               : 'Frontline workspace: intake new clients and adjudicate Tier 1 & 2 policy applications.'}
@@ -154,7 +155,7 @@ export function QueuePage() {
         </div>
 
         <div>
-          {isSenior ? (
+          {isMedical ? (
             <Group gap="xs">
               <AppButton to="/applications/new" icon="plus" size="xs">
                 New Applicant Intake
@@ -195,7 +196,7 @@ export function QueuePage() {
       </Group>
 
       {/* ── Role-Specific KPI Metrics Strip ──────────────────── */}
-      {isSenior ? (
+      {isMedical ? (
         <SimpleGrid cols={{ base: 1, sm: 2, md: 4 }} spacing="xs">
           <Card p="xs" bd="1px solid rgba(240, 62, 62, 0.25)">
             <Text size="xs" c="dimmed" fw={600}>
@@ -293,7 +294,7 @@ export function QueuePage() {
           </Card>
           <Card p="xs">
             <Text size="xs" c="dimmed" fw={600}>
-              Tier 3 Awaiting Senior
+              Tier 3 Awaiting Medical Review
             </Text>
             <Text fz="lg" fw={700} c="red.4">
               {tier3Count}
@@ -302,18 +303,18 @@ export function QueuePage() {
         </SimpleGrid>
       )}
 
-      {/* Senior Underwriter Priority Triage Banner */}
-      {isSenior && elevatedCount > 0 && (
+      {/* Medical Professional priority triage banner */}
+      {isMedical && elevatedCount > 0 && (
         <Alert
           color="grape"
           variant="light"
           icon={<IconFlame size={16} />}
-          title="Senior Escalation Triage Active"
+          title="Medical Review Triage Active"
         >
           <Group justify="space-between" align="center" wrap="wrap" gap="xs">
             <Text size="xs">
               <strong>{elevatedCount}</strong> high-risk (Tier 3 Elevated) application
-              {elevatedCount > 1 ? 's' : ''} awaiting mandatory Senior Underwriter clinical review.
+              {elevatedCount > 1 ? 's' : ''} awaiting mandatory Medical Professional review.
             </Text>
             <Button
               size="compact-xs"
@@ -433,13 +434,13 @@ function Row({ row, userRole }: { row: QueueItem; userRole?: UserRole }) {
   const openable = row.status === 'scored' || row.status === 'decided' ||
     row.status === 'insufficient_evidence' || row.status === 'awaiting_evidence'
   const isElevated = row.tier === 'elevated'
-  const isSenior = userRole === 'senior_underwriter'
+  const isMedical = userRole === 'medical_professional'
   const isUnderwriter = userRole === 'underwriter'
 
   return (
     <Table.Tr
       style={
-        isElevated && isSenior
+        isElevated && isMedical
           ? { backgroundColor: 'rgba(174, 62, 201, 0.06)' }
           : undefined
       }
@@ -453,8 +454,8 @@ function Row({ row, userRole }: { row: QueueItem; userRole?: UserRole }) {
             <Tooltip
               label={
                 isUnderwriter
-                  ? 'Elevated risk — mandatory senior underwriter escalation'
-                  : 'Mandatory Senior Review case'
+                  ? 'Elevated risk — mandatory escalation to a medical professional'
+                  : 'Mandatory medical review case'
               }
               withArrow
             >
@@ -513,8 +514,8 @@ function Row({ row, userRole }: { row: QueueItem; userRole?: UserRole }) {
         {openable ? (
           <Tooltip
             label={
-              isElevated && isSenior
-                ? `Senior Review for ${row.reference}`
+              isElevated && isMedical
+                ? `Medical review for ${row.reference}`
                 : isElevated && isUnderwriter
                 ? `Review ${row.reference} (Escalation required)`
                 : `Review ${row.reference}`
@@ -523,12 +524,12 @@ function Row({ row, userRole }: { row: QueueItem; userRole?: UserRole }) {
           >
             <ActionIcon
               variant="light"
-              color={isElevated && isSenior ? 'grape' : 'clinical'}
+              color={isElevated && isMedical ? 'grape' : 'clinical'}
               component={Link}
               to={`/applications/${row.id}`}
               aria-label={`Review ${row.reference}`}
             >
-              {isElevated && isSenior ? (
+              {isElevated && isMedical ? (
                 <IconShieldCheck size={16} />
               ) : (
                 <IconVersions size={16} />

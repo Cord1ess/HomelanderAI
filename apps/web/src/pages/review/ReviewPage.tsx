@@ -63,7 +63,7 @@ import { useAuth } from '../../context/AuthContext'
 const DECISIONS: { value: DecisionType; label: string }[] = [
   { value: 'confirmed_fast_track', label: 'Confirm fast-track' },
   { value: 'approved_with_adjustment', label: 'Approve with adjustment' },
-  { value: 'escalated_senior_review', label: 'Escalate to senior underwriter' },
+  { value: 'escalated_senior_review', label: 'Escalate to a medical professional' },
   // "Request more evidence" is deliberately not here. Decisions are
   // write-once, so recording a request as one would decide the application
   // forever the moment a document was asked for. It has its own panel and
@@ -363,7 +363,7 @@ function Review({ data, state }: { data: ApplicationDetail; state: ReviewState }
   const { user } = useAuth()
   const isElevated = data.score?.tier === 'elevated'
   const isUnderwriter = user?.role === 'underwriter'
-  const isSenior = user?.role === 'senior_underwriter'
+  const isMedical = user?.role === 'medical_professional'
 
   return (
     <Stack gap="md">
@@ -747,9 +747,9 @@ function Review({ data, state }: { data: ApplicationDetail; state: ReviewState }
           <Text fw={600} size="sm">
             Decision
           </Text>
-          {isSenior ? (
+          {isMedical ? (
             <Badge color="grape" variant="light" size="xs">
-              Senior Adjudication Authority
+              Medical Professional Authority
             </Badge>
           ) : isUnderwriter ? (
             <Badge color="clinical" variant="light" size="xs">
@@ -758,17 +758,17 @@ function Review({ data, state }: { data: ApplicationDetail; state: ReviewState }
           ) : null}
         </Group>
 
-        {/* Senior Underwriter High-Risk Guidance */}
-        {isSenior && isElevated && !decided && (
+        {/* Medical Professional high-risk guidance */}
+        {isMedical && isElevated && !decided && (
           <Alert
             color="grape"
             variant="light"
             icon={<IconShieldCheck size={18} />}
-            title="Senior Underwriter Clinical Review"
+            title="Medical Professional Clinical Review"
             mb="sm"
           >
             <Text size="xs">
-              This application has been scored as <strong>Tier 3 (Elevated Risk)</strong>. As Senior Underwriter / Medical Officer,
+              This application has been scored as <strong>Tier 3 (Elevated Risk)</strong>. As a Medical Professional,
               you hold binding authority to audit sub-scores, review Grad-CAM heatmaps, apply actuarial rate adjustments, or finalize approval.
             </Text>
           </Alert>
@@ -780,11 +780,11 @@ function Review({ data, state }: { data: ApplicationDetail; state: ReviewState }
             color="red"
             variant="light"
             icon={<IconAlertTriangle size={18} />}
-            title="Mandatory Senior Escalation Required"
+            title="Mandatory Escalation Required"
             mb="sm"
           >
             <Text size="xs">
-              This application has an elevated risk score (Tier 3). Carrier governance requires mandatory escalation to a Senior Underwriter.
+              This application has an elevated risk score (Tier 3). Carrier governance requires mandatory escalation to a Medical Professional.
               Approval actions are disabled for junior underwriters on Tier 3 cases.
             </Text>
           </Alert>
@@ -825,7 +825,7 @@ function Review({ data, state }: { data: ApplicationDetail; state: ReviewState }
                       state.decision === d.value
                         ? isEscalate
                           ? 'orange'
-                          : isSenior
+                          : isMedical
                           ? 'grape'
                           : 'clinical'
                         : 'gray'
@@ -850,7 +850,7 @@ function Review({ data, state }: { data: ApplicationDetail; state: ReviewState }
                   return (
                     <Tooltip
                       key={d.value}
-                      label="Tier 3 applications require Senior Underwriter escalation"
+                      label="Tier 3 applications require escalation to a Medical Professional"
                       withArrow
                     >
                       <div>{btn}</div>
@@ -986,7 +986,7 @@ function PlanPanel({
           ? `Illustrative only: ${bdt(plan.baseMonthlyBdt)}/month at ${bdt(
               plan.referenceCoverBdt,
             )} of cover, scaled to the amount requested. Not an actuarial quote — you set the final rate.`
-          : 'No rate is quoted at this tier. A senior underwriter decides what, if anything, is offered.'}
+          : 'No rate is quoted at this tier. A medical professional decides what, if anything, is offered.'}
       </Text>
     </Paper>
   )

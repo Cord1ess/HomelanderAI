@@ -84,14 +84,14 @@ BUILT_IN_ACCOUNTS: tuple[BuiltInAccount, ...] = (
         "Medical Professional",
         UserRole.MEDICAL_PROFESSIONAL,
     ),
-    # Keeps the id the old `admin` account had, so everything that account
-    # already did (applications, decisions, audit entries) stays attributed to a
-    # real row. The `admin` and `senior` usernames themselves are gone.
+    # Same id as before this rework, so everything the account already did
+    # (applications, decisions, audit entries) stays attributed to it. The old
+    # `senior` username is gone.
     BuiltInAccount(
-        "dev",
+        "admin",
         UUID("00000000-0000-0000-0000-0000000000ad"),
-        "Dev",
-        UserRole.DEV,
+        "Administrator",
+        UserRole.ADMIN,
     ),
 )
 
@@ -161,8 +161,8 @@ async def _ensure_built_in_rows() -> None:
     other two accounts were broken in exactly that way.
 
     Runs in the background after a built-in sign-in, so it never delays one and
-    a missing database never fails one. It is an upsert: it also repairs a row
-    left over from the old `admin` account (same id, now `dev`).
+    a missing database never fails one. It is an upsert, so a row seeded
+    earlier is brought up to date rather than duplicated.
 
     The stored hash is of a random value that is thrown away. These accounts
     authenticate through `_is_demo_login` alone. If the rows held the real
@@ -633,7 +633,7 @@ async def provision_staff(
     session_token: str | None = Cookie(default=None, alias=COOKIE_NAME),
     db: AsyncSession = Depends(get_db),
 ) -> UserSchema:
-    """Add a staff account to the caller's tenant. Dev accounts only."""
+    """Add a staff account to the caller's tenant. Administrators only."""
     if not session_token:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -650,12 +650,12 @@ async def provision_staff(
     if token_data.get("fallback"):
         # This check used to be missing, so the built-in underwriter could add
         # staff.
-        if _require_built_in(token_data).role != UserRole.DEV:
+        if _require_built_in(token_data).role != UserRole.ADMIN:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
-                detail="Only a Dev account can add staff.",
+                detail="Only an administrator can add staff.",
             )
-        # With the database up, the built-in Dev has a real row: fall through
+        # With the database up, the built-in admin has a real row: fall through
         # and create the account for real, so the new person can sign in. Only
         # with no database is it kept in memory, so the screen still works in an
         # outage demo.
@@ -684,10 +684,10 @@ async def provision_staff(
             detail="Caller not found or deactivated.",
         )
 
-    if caller.role != UserRole.DEV:
+    if caller.role != UserRole.ADMIN:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Only a Dev account can add staff.",
+            detail="Only an administrator can add staff.",
         )
 
     # Check unique email

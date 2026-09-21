@@ -3,6 +3,7 @@ import { IconAlertTriangle } from '@tabler/icons-react'
 import type { ReactNode } from 'react'
 import { Navigate } from 'react-router-dom'
 import { useAuth } from '../../context/AuthContext'
+import { ROLE_LABEL } from '../../types/auth'
 import type { UserRole } from '../../types/auth'
 
 interface ProtectedRouteProps {
@@ -42,8 +43,8 @@ export function ProtectedRoute({ children, allowedRoles }: ProtectedRouteProps) 
           style={{ maxWidth: 450 }}
         >
           <Text size="sm">
-            Your account is set up as <strong>{user.role}</strong>, which cannot open
-            this page. Ask an administrator at your company if you need access.
+            Your account is set up as <strong>{ROLE_LABEL[user.role]}</strong>, which cannot
+            open this page. Ask an administrator at your company if you need access.
           </Text>
         </Alert>
       </Center>

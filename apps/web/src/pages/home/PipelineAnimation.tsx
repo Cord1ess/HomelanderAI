@@ -81,7 +81,7 @@ export function PipelineAnimation() {
           </div>
           <div className="pipe__decision">
             <span className="pipe__tick" aria-hidden="true" />
-            Senior underwriter review
+            Medical professional review
           </div>
         </div>
       </div>

@@ -16,7 +16,7 @@ class UnderwriterDecisionType(enum.StrEnum):
     """Four actions, and deliberately no reject.
 
     A model finding is grounds for a closer look, never for an automated
-    denial — escalation to a senior underwriter is how a hard case is handled
+    denial — escalation to a medical professional is how a hard case is handled
     (SPEC.md §1).
     """
 
