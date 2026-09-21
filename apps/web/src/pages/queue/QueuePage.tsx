@@ -470,6 +470,9 @@ function Row({ row, userRole }: { row: QueueItem; userRole?: UserRole }) {
         {/* How much is at stake, so triage is not done on risk alone. */}
         {row.coverageAmount ? `৳${Math.round(Number(row.coverageAmount)).toLocaleString('en-IN')}` : '—'}
       </Table.Td>
+      <Table.Td fz="sm" c="dimmed">
+        {relativeTime(row.submittedAt)}
+      </Table.Td>
       {/* The date the applicant was given. Red once it has passed while the
           carrier still holds the case, so a late file is visible from the
           queue and not only from inside it. */}
@@ -480,9 +483,6 @@ function Row({ row, userRole }: { row: QueueItem; userRole?: UserRole }) {
             Late
           </Badge>
         )}
-      </Table.Td>
-      <Table.Td fz="sm" c="dimmed">
-        {relativeTime(row.submittedAt)}
       </Table.Td>
       <Table.Td>
         <Badge color={meta?.color ?? 'gray'} variant="light" size="sm">

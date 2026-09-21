@@ -1,7 +1,9 @@
 """In-app notifications for staff.
 
-Phase 1 is in-app only: no email, no SMS. These go to underwriters, never to
-applicants — applicants are not users of this system.
+In-app only: no email, no SMS. These go to underwriters, never to applicants.
+Applicants are not users of the console. What they are sent (a portal sign-in,
+and a notice that a decision exists) goes out by email from `app/mailer.py` and
+never passes through this table.
 """
 
 from datetime import UTC, datetime

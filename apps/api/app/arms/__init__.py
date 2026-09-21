@@ -69,9 +69,9 @@ class Arm:
     available: Callable[[], bool]
 
 
-# Imported at the bottom on purpose: tb_xray and eyepacs_dr do `from app.arms
+# Imported at the bottom on purpose: tb_xray and dr_fundus do `from app.arms
 # import ArmResult`, and by this point ArmResult is defined, so there is no cycle.
-from app.arms import eyepacs_dr, tb_xray  # noqa: E402
+from app.arms import dr_fundus, tb_xray  # noqa: E402
 
 
 def arms_for(kind: EvidenceKind | str) -> list[Arm]:
@@ -107,16 +107,19 @@ ARMS: dict[str, Arm] = {
         run=tb_xray.run,
         available=tb_xray.available,
     ),
-    eyepacs_dr.NAME: Arm(
-        name=eyepacs_dr.NAME,
-        version=eyepacs_dr.VERSION,
+    dr_fundus.NAME: Arm(
+        name=dr_fundus.NAME,
+        version=dr_fundus.VERSION,
         arm_type="vision",
+        # The form's panel is still called `eyepacs`, after the dataset the
+        # original idea document named. It is an id stored on past applications,
+        # not a claim about the model, so it stays.
         intake_id="eyepacs",
         accepts=frozenset({EvidenceKind.FUNDUS}),
-        preprocessing_version=eyepacs_dr.PREPROCESSING_VERSION,
-        weight_hash=eyepacs_dr.WEIGHT_HASH,
-        validation=eyepacs_dr.VALIDATION,
-        run=eyepacs_dr.run,
-        available=eyepacs_dr.available,
+        preprocessing_version=dr_fundus.PREPROCESSING_VERSION,
+        weight_hash=dr_fundus.WEIGHT_HASH,
+        validation=dr_fundus.VALIDATION,
+        run=dr_fundus.run,
+        available=dr_fundus.available,
     ),
 }

@@ -39,11 +39,12 @@ dependencies = [
 # ─────────────────────────────────────────────────────────────────────────────
 # Optional extras. Skip these unless you are working on models.
 #
-#   uv sync --extra vision      the chest X-ray arm   (~2-3 GB, CPU wheels)
+#   uv sync --extra vision      the chest X-ray and retina arms   (~2-3 GB, CPU wheels)
 #
-# The API runs without it. `app/arms/tb_xray.py` reports itself unavailable when
-# torch is missing and the pipeline degrades instead of crashing, so anyone
-# working on the dashboard or the database never downloads torch.
+# The API runs without it. `app/arms/tb_xray.py` and `app/arms/dr_fundus.py`
+# report themselves unavailable when torch is missing and the pipeline degrades
+# instead of crashing, so anyone working on the dashboard or the database never
+# downloads torch.
 #
 # Later arms (tabular: scikit-learn + xgboost + shap; clinical NLP: spaCy +
 # scispaCy + transformers) get their own extras when their code is written —
@@ -56,6 +57,7 @@ vision = [
     "torchxrayvision>=1.3",         # pretrained chest X-ray classifiers
     "grad-cam>=1.5",                # imports as `pytorch_grad_cam`
     "scikit-learn>=1.9.0",
+    "safetensors>=0.4",             # reads the retina arm's FLAIR backbone weights
 ]
 nlp = [
     "spacy>=3.7.0,<3.8.0",

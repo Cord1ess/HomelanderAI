@@ -129,6 +129,7 @@ docs/
   SPEC.md               working specification — scope, decisions, roadmap
   DESIGN_POLICY.md      how we implement — read before writing code
   TB.md                 how TB screening works, start to finish
+  RETINA.md             how retinopathy screening works, and which numbers to trust
   DATABASE.md           schema changes needed (handoff)
   DASHBOARD.md          screens, intake form, API contract (handoff)
   PHASE1_PLAN.md        TB screening + scoring, in three commits
@@ -175,6 +176,20 @@ Then fetch the training data (~3.6 GB, gitignored):
 python scripts/fetch_tb_data.py          # Shenzhen + Montgomery
 python scripts/tb_experiment.py          # does the model actually detect TB?
 ```
+
+The retina arm has the same two scripts (about 13 GB, also gitignored; no
+account needed for any of it):
+
+```bash
+python scripts/fetch_dr_data.py          # DDR to train on; APTOS, IDRiD, DeepDRiD to test on
+python scripts/dr_experiment.py train flair    # fit the head, test it externally, write the model file
+```
+
+Its backbone weights (FLAIR, 533 MB) are not in the repository. The arm downloads
+them on first use and refuses a file that does not match its pinned hash;
+`python scripts/fetch_dr_data.py models` fetches them ahead of time. How the
+retina arm works, and which of its numbers can be trusted, is in
+[docs/RETINA.md](docs/RETINA.md).
 
 **Torch is pinned to CPU wheels** via a dedicated index in `pyproject.toml` — much smaller, and correct for the local-compute constraint. If you have an NVIDIA GPU, change that index URL to the matching `cuXXX` variant and re-sync.
 

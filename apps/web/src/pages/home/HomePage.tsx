@@ -145,8 +145,8 @@ export function HomePage() {
             </Group>
 
             <Group gap="md">
-              <Anchor component={Link} to="/auth" style={{ ...navLinkStyle, opacity: 0.4 }} visibleFrom="sm">
-                Sign in
+              <Anchor component={Link} to="/auth?as=client" style={navLinkStyle} visibleFrom="sm">
+                Client portal
               </Anchor>
               <Box className="neo-press">
                 <Button
@@ -243,6 +243,28 @@ export function HomePage() {
                   </Button>
                 </Box>
               </Group>
+
+              {/* The other audience. A client who was emailed a portal link and
+                  lands here instead needs one obvious way through. */}
+              <Text
+                size="sm"
+                className="home-rise home-rise-3"
+                style={{ color: 'var(--neo-accent-deep)', fontFamily: GROTESK }}
+              >
+                Applied through one of our carriers?{' '}
+                <Anchor
+                  component={Link}
+                  to="/auth?as=client"
+                  style={{
+                    color: 'var(--neo-forest)',
+                    fontWeight: 600,
+                    textDecoration: 'underline',
+                    textUnderlineOffset: 3,
+                  }}
+                >
+                  Check your application
+                </Anchor>
+              </Text>
             </Stack>
 
             <Group justify="center" className="home-rise home-rise-3">

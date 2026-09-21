@@ -503,6 +503,57 @@ export interface paths {
         patch: operations["update_settings_api_tenant_settings_patch"];
         trace?: never;
     };
+    "/api/portal/login": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Applicant sign-in */
+        post: operations["portal_login_api_portal_login_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/portal/me": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The applicant's own application */
+        get: operations["portal_me_api_portal_me_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/portal/logout": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Applicant sign-out */
+        post: operations["portal_logout_api_portal_logout_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -526,6 +577,8 @@ export interface components {
             dateOfBirth?: string | null;
             /** Sex */
             sex?: string | null;
+            /** Email */
+            email?: string | null;
         };
         /** ApplicationDetailSchema */
         ApplicationDetailSchema: {
@@ -923,6 +976,100 @@ export interface components {
             wellnessDiscountEligible: boolean;
         };
         /**
+         * PortalCredentialsSchema
+         * @description The applicant's portal sign-in, as created at intake.
+         *
+         *     `password` is present only when it could not be emailed, so the operator can
+         *     hand it over in person. It exists here once: only its hash is stored, and no
+         *     endpoint can return it again.
+         */
+        PortalCredentialsSchema: {
+            /** Portalid */
+            portalId: string;
+            /** Password */
+            password?: string | null;
+            /**
+             * Emailed
+             * @default false
+             */
+            emailed: boolean;
+            /** Email */
+            email?: string | null;
+        };
+        /**
+         * PortalDocumentSchema
+         * @description One thing the underwriter has asked for, in their words.
+         */
+        PortalDocumentSchema: {
+            /** Description */
+            description: string;
+            /**
+             * Requestedat
+             * Format: date-time
+             */
+            requestedAt: string;
+            /** Received */
+            received: boolean;
+        };
+        /** PortalLoginIn */
+        PortalLoginIn: {
+            /** Portalid */
+            portalId: string;
+            /** Password */
+            password: string;
+        };
+        /**
+         * PortalOfferSchema
+         * @description The outcome, once a person has recorded it. Never a prediction.
+         */
+        PortalOfferSchema: {
+            /** Outcome */
+            outcome: string;
+            /** Planname */
+            planName?: string | null;
+            /** Monthlypremiumbdt */
+            monthlyPremiumBdt?: string | null;
+            /**
+             * Decidedat
+             * Format: date-time
+             */
+            decidedAt: string;
+        };
+        /** PortalStatusSchema */
+        PortalStatusSchema: {
+            /** Reference */
+            reference: string;
+            /** Applicantname */
+            applicantName?: string | null;
+            /** Coveragetype */
+            coverageType?: string | null;
+            /** Coverageamount */
+            coverageAmount?: string | null;
+            /**
+             * Submittedat
+             * Format: date-time
+             */
+            submittedAt: string;
+            /** Stage */
+            stage: string;
+            /** Stagelabel */
+            stageLabel: string;
+            /** Stagedetail */
+            stageDetail: string;
+            /** Expectedby */
+            expectedBy?: string | null;
+            /** Expectedbynote */
+            expectedByNote?: string | null;
+            /**
+             * Overdue
+             * @default false
+             */
+            overdue: boolean;
+            /** Documents */
+            documents?: components["schemas"]["PortalDocumentSchema"][];
+            offer?: components["schemas"]["PortalOfferSchema"] | null;
+        };
+        /**
          * PricingSchema
          * @description The full plan table, with each tier's score band attached.
          *
@@ -1085,6 +1232,7 @@ export interface components {
             /** Reference */
             reference: string;
             status: components["schemas"]["ApplicationStatus"];
+            portal?: components["schemas"]["PortalCredentialsSchema"] | null;
         };
         /**
          * TenantSchema
@@ -2070,6 +2218,92 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    portal_login_api_portal_login_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PortalLoginIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PortalStatusSchema"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    portal_me_api_portal_me_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: {
+                portal_token?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PortalStatusSchema"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    portal_logout_api_portal_logout_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: string;
+                    };
                 };
             };
         };

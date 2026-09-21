@@ -3,6 +3,7 @@
 Uses Argon2id for password hashing and PyJWT for session tokens.
 """
 
+import secrets
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
@@ -34,6 +35,7 @@ def create_access_token(
     role: str,
     expires_delta: timedelta | None = None,
     fallback: bool = False,
+    kind: str = "staff",
 ) -> str:
     """Create signed JWT access token.
 
@@ -55,10 +57,36 @@ def create_access_token(
     }
     if fallback:
         payload["fallback"] = True
+    # "staff" or "portal". The two sign-ins use different cookies, but the claim
+    # is what actually separates them: a portal token copied into the staff
+    # cookie is refused because of this, not because of where it was found.
+    # Tokens issued before this existed carry no claim and are staff tokens.
+    if kind != "staff":
+        payload["kind"] = kind
 
     return jwt.encode(
         payload, settings.jwt_secret, algorithm=settings.jwt_algorithm
     )
+
+
+# Letters and digits that cannot be mistaken for each other when read aloud or
+# copied by hand off a screen: no 0/O, no 1/I/L.
+_PORTAL_ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789"
+
+
+def generate_portal_id() -> str:
+    """A random sign-in id such as `HC-7K3MQ9PX`.
+
+    Random rather than derived from the application reference, which is a
+    sequence: a sequence tells anyone holding one id how many others exist and
+    what they are.
+    """
+    return "HC-" + "".join(secrets.choice(_PORTAL_ALPHABET) for _ in range(8))
+
+
+def generate_password() -> str:
+    """A one-time generated password. Shown once, stored only as a hash."""
+    return secrets.token_urlsafe(9)
 
 
 def decode_access_token(token: str) -> dict[str, Any] | None:

@@ -18,34 +18,38 @@ from fastapi.responses import JSONResponse
 from sqlalchemy.exc import SQLAlchemyError
 
 from app.config import settings
-from app.routers import applications, auth, health, notifications, tenant
+from app.routers import applications, auth, health, notifications, portal, tenant
 
 log = logging.getLogger(__name__)
 
 
 def _warm_models() -> None:
-    """Load the vision backbone so the first real application is not the one
+    """Load the vision backbones so the first real application is not the one
     that pays for it.
 
     torchxrayvision fetches and unpickles the DenseNet weights on first use,
-    which takes 20-30 seconds. Left lazy, that cost lands on whoever submits the
-    first application after a restart — at a demo, that is the demo.
+    which takes 20-30 seconds, and the retina arm's backbone is a 533 MB file it
+    downloads if it is not already on disk. Left lazy, that cost lands on
+    whoever submits the first application after a restart — at a demo, that is
+    the demo.
 
-    On a thread, so the server accepts requests immediately and the model loads
+    On a thread, so the server accepts requests immediately and the models load
     while somebody is still signing in. Failure is not fatal: without torch
-    installed the arm reports itself unavailable and the pipeline degrades
-    exactly as it is designed to.
+    installed an arm reports itself unavailable and the pipeline degrades
+    exactly as it is designed to. Each arm is tried on its own, so one failing
+    to load does not cost the other.
     """
-    try:
-        from app.arms import tb_xray
+    from app.arms import dr_fundus, tb_xray
 
-        if not tb_xray.available():
-            log.info("Vision arm unavailable (no torch); skipping warm-up.")
-            return
-        tb_xray._get_model()
-        log.info("Vision arm ready.")
-    except Exception as exc:
-        log.warning("Could not warm the vision arm: %s", exc)
+    for label, arm in (("Chest X-ray", tb_xray), ("Retina", dr_fundus)):
+        try:
+            if not arm.available():
+                log.info("%s arm unavailable (no torch); skipping warm-up.", label)
+                continue
+            arm._get_model()
+            log.info("%s arm ready.", label)
+        except Exception as exc:
+            log.warning("Could not warm the %s arm: %s", label.lower(), exc)
 
 
 @asynccontextmanager
@@ -105,4 +109,5 @@ app.include_router(auth.router, prefix="/api")
 app.include_router(applications.router, prefix="/api")
 app.include_router(notifications.router, prefix="/api")
 app.include_router(tenant.router, prefix="/api")
+app.include_router(portal.router, prefix="/api")
 

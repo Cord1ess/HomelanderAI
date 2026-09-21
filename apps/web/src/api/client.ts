@@ -32,6 +32,8 @@ export type ClassifyResponse = Schemas['ClassifyResponseSchema']
 export type RequestedDocument = Schemas['RequestedDocumentSchema']
 export type TenantSettings = Schemas['TenantSettingsSchema']
 export type SubmitResponse = Schemas['SubmitResponseSchema']
+export type PortalStatus = Schemas['PortalStatusSchema']
+export type PortalCredentials = Schemas['PortalCredentialsSchema']
 
 // Relative, so the Vite dev proxy handles it and the production build works
 // from whatever origin serves the bundle.
@@ -192,6 +194,8 @@ export interface IntakePayload {
     phone: string
     dateOfBirth: string | null
     sex: string | null
+    /** Where the client's portal sign-in is sent. Without it the operator is shown it. */
+    email: string | null
   }
   coverage: {
     coverageType: string | null
@@ -307,3 +311,20 @@ export const getNotifications = () => request<AppNotification[]>('/notifications
 
 export const markNotificationRead = (id: string) =>
   request<AppNotification>(`/notifications/${id}/read`, { method: 'POST' })
+
+// ── client portal ────────────────────────────────────────────────────────────
+//
+// A separate sign-in from the staff console, with its own cookie. The response
+// type has no field for a score or a finding, so there is nothing clinical for
+// this side of the app to render by mistake.
+
+export const portalLogin = (body: { portalId: string; password: string }) =>
+  request<PortalStatus>('/portal/login', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  })
+
+export const getPortalStatus = () => request<PortalStatus>('/portal/me')
+
+export const portalLogout = () => request<{ status: 'ok' }>('/portal/logout', { method: 'POST' })

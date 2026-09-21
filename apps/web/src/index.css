@@ -995,3 +995,244 @@ body {
   .pipe__arc-fg { stroke-dashoffset: 42; }
   .pipe__tick { opacity: 1; transform: none; }
 }
+
+/* ── Client portal ─────────────────────────────────────────────────── */
+
+/* The applicant's page. It sits on .neo-shell, so it shares the landing
+   page's background, ink and type, and every colour below is one of the
+   --neo-* values already solved for contrast against --neo-bg. */
+
+.portal-bar {
+  border-bottom: 1px solid var(--neo-border);
+  background: var(--neo-bg);
+}
+
+.portal-bar__inner {
+  max-width: 760px;
+  margin: 0 auto;
+  padding: 1rem 1.25rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.portal-bar__brand {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  color: var(--neo-ink);
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  text-decoration: none;
+}
+
+.portal-bar__signout {
+  background: none;
+  border: 1px solid var(--neo-border-mid);
+  border-radius: 4px;
+  padding: 0.4rem 0.8rem;
+  font: inherit;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--neo-forest);
+  cursor: pointer;
+}
+
+.portal-bar__signout:hover {
+  background: var(--neo-forest-soft);
+}
+
+.portal-main {
+  max-width: 760px;
+  margin: 0 auto;
+  padding: 2.5rem 1.25rem 4rem;
+}
+
+.portal-eyebrow {
+  margin: 0;
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--neo-accent-deep);
+}
+
+.portal-title {
+  margin: 0.35rem 0 0.35rem;
+  font-size: clamp(1.7rem, 4vw, 2.3rem);
+  font-weight: 500;
+  letter-spacing: -0.02em;
+  line-height: 1.1;
+  color: var(--neo-forest);
+}
+
+.portal-sub {
+  margin: 0;
+  font-size: 0.92rem;
+  color: var(--neo-accent-deep);
+}
+
+.portal-card {
+  margin-top: 1.25rem;
+  padding: 1.4rem 1.5rem;
+  background: var(--neo-card);
+  border: 1px solid var(--neo-border-mid);
+  border-radius: 6px;
+}
+
+/* The one card that needs the applicant to do something. */
+.portal-card[data-attention='true'] {
+  border-color: var(--neo-forest);
+  box-shadow: 4px 4px 0 var(--neo-shadow);
+}
+
+.portal-card__label {
+  margin: 0 0 0.6rem;
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--neo-accent-deep);
+}
+
+.portal-card__headline {
+  margin: 0;
+  font-size: 1.3rem;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  color: var(--neo-ink);
+}
+
+.portal-card__body {
+  margin: 0.4rem 0 0;
+  font-size: 0.92rem;
+  line-height: 1.55;
+  color: var(--neo-ink);
+}
+
+.portal-card__note {
+  margin: 0.75rem 0 0;
+  padding-top: 0.75rem;
+  border-top: 1px solid var(--neo-border);
+  font-size: 0.84rem;
+  line-height: 1.5;
+  color: var(--neo-accent-deep);
+}
+
+/* Progress track: four steps, the reached ones filled. */
+.portal-track {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 0.5rem;
+  margin: 0 0 1.25rem;
+  padding: 0;
+  list-style: none;
+}
+
+.portal-track__step {
+  font-size: 0.74rem;
+  font-weight: 600;
+  color: var(--neo-accent-deep);
+  opacity: 0.55;
+}
+
+.portal-track__step::before {
+  content: '';
+  display: block;
+  height: 4px;
+  margin-bottom: 0.5rem;
+  border-radius: 2px;
+  background: var(--neo-border-mid);
+}
+
+.portal-track__step[data-reached='true'] {
+  opacity: 1;
+  color: var(--neo-forest);
+}
+
+.portal-track__step[data-reached='true']::before {
+  background: var(--neo-accent);
+}
+
+/* The step the application is on right now breathes, slowly. */
+.portal-track__step[data-current='true']::before {
+  animation: portal-breathe 2.4s ease-in-out infinite;
+}
+
+@keyframes portal-breathe {
+  0%, 100% { opacity: 1; }
+  50%      { opacity: 0.45; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .portal-track__step[data-current='true']::before { animation: none; }
+}
+
+.portal-docs {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.portal-docs__item {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.7rem 0;
+  border-top: 1px solid var(--neo-border);
+  font-size: 0.92rem;
+  color: var(--neo-ink);
+}
+
+.portal-docs__item:first-child {
+  border-top: none;
+  padding-top: 0;
+}
+
+.portal-docs__state {
+  flex-shrink: 0;
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--neo-accent-deep);
+}
+
+.portal-docs__state[data-received='false'] {
+  color: var(--neo-forest);
+}
+
+.portal-docs__item[data-received='true'] .portal-docs__text {
+  opacity: 0.55;
+  text-decoration: line-through;
+}
+
+.portal-offer {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 1rem;
+  margin: 1rem 0 0;
+}
+
+.portal-offer dt {
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--neo-accent-deep);
+}
+
+.portal-offer dd {
+  margin: 0.2rem 0 0;
+  font-size: 1.05rem;
+  font-weight: 600;
+  color: var(--neo-ink);
+}
+
+.portal-foot {
+  margin: 2rem 0 0;
+  font-size: 0.8rem;
+  line-height: 1.5;
+  color: var(--neo-accent-deep);
+}

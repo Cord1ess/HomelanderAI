@@ -216,7 +216,7 @@ def test_an_arm_never_sees_evidence_it_cannot_read():
     """
     from app.arms import ARMS
 
-    if "eyepacs_dr" not in ARMS:
+    if "dr_fundus" not in ARMS:
         pytest.skip("the retina arm is not registered")
 
     image = png()
@@ -225,6 +225,29 @@ def test_an_arm_never_sees_evidence_it_cannot_read():
     assert result.status == STATUS_SCORED
     ran = {r.arm_name for r in result.runs}
     assert ran == {"tb_xray"}, f"only the chest model should have run, got {ran}"
+
+
+def test_a_retinal_photograph_reaches_the_retina_model_and_only_it():
+    """The same guarantee from the other side, through the whole pipeline: a
+    real fundus photograph is de-identified, routed by its confirmed kind,
+    scored by the retina arm alone, and comes back with a heatmap filed under a
+    name the database knows."""
+    from app.arms import dr_fundus
+
+    sample = Path(__file__).resolve().parents[3] / "samples" / "retina" / "16_left.jpeg"
+    if not (dr_fundus.available() and dr_fundus.BACKBONE_PATH.exists() and sample.exists()):
+        pytest.skip("vision extra, FLAIR weights or sample photographs not present")
+
+    raw = sample.read_bytes()
+    kinds = {process_upload(raw, sample.name).content_hash: EvidenceKind.FUNDUS}
+    result = _evaluate([(raw, sample.name)], history(), kinds=kinds)
+
+    assert result.status == STATUS_SCORED
+    assert {r.arm_name for r in result.runs} == {"dr_fundus"}
+    # A proliferative eye. Not validation (FLAIR has seen EyePACS), but a score
+    # below the elevated band here would mean the arm is not really running.
+    assert result.tier == "elevated"
+    assert set(result.artifacts) == {"dr_fundus.gradcam"}
 
 
 def test_unclassified_evidence_is_stored_but_not_scored():

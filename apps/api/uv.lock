@@ -502,6 +502,7 @@ nlp = [
 ]
 vision = [
     { name = "grad-cam" },
+    { name = "safetensors" },
     { name = "scikit-learn" },
     { name = "torch", version = "2.13.0", source = { registry = "https://download.pytorch.org/whl/cpu" }, marker = "sys_platform == 'darwin'" },
     { name = "torch", version = "2.13.0+cpu", source = { registry = "https://download.pytorch.org/whl/cpu" }, marker = "sys_platform != 'darwin'" },
@@ -535,6 +536,7 @@ requires-dist = [
     { name = "pydicom", specifier = ">=3.0" },
     { name = "pyjwt", extras = ["crypto"], specifier = ">=2.10" },
     { name = "python-multipart", specifier = ">=0.0.32" },
+    { name = "safetensors", marker = "extra == 'vision'", specifier = ">=0.4" },
     { name = "scikit-learn", marker = "extra == 'vision'", specifier = ">=1.9.0" },
     { name = "scispacy", marker = "extra == 'nlp'", specifier = ">=0.5.5" },
     { name = "spacy", marker = "extra == 'nlp'", specifier = ">=3.7.0,<3.8.0" },

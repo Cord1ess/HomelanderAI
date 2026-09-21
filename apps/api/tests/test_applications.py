@@ -489,10 +489,11 @@ def test_the_form_is_told_which_models_actually_run(carrier):
     # The caveat travels with the model, not a document.
     assert "NOT externally validated" in by_id["cxr_lung"]["validation"]
 
-    # EyePACS retinal model is also active and validated
+    # The retinal arm runs too, and carries its own caveat the same way. The
+    # panel keeps the id `eyepacs`; the model behind it is `dr_fundus`.
     assert by_id["eyepacs"]["available"] is True
-    assert by_id["eyepacs"]["armName"] == "eyepacs_dr"
-    assert "EyePACS" in by_id["eyepacs"]["validation"]
+    assert by_id["eyepacs"]["armName"] == "dr_fundus"
+    assert "NOT clinically validated" in by_id["eyepacs"]["validation"]
 
     # Everything else is on the roadmap and says so.
     planned = [m["id"] for m in models if not m["available"]]

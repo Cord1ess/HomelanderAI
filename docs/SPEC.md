@@ -100,9 +100,40 @@ This is a real, well-posed insurance problem and it is the strongest part of the
 | Chief Risk / Underwriting Officers, Actuarial Directors | **LOCKED** as buyer persona | Drives the portfolio-level dashboard requirement |
 | Medical Underwriters | **LOCKED** as primary operator | The whole UI is built for this person |
 | Claims Adjusters | **CUT from v1** | Claims is a different product surface. Adding it doubles the domain model for no thesis gain. |
-| Applicants (self-service portal) | **CUT from v1** | An applicant-facing surface adds consent flows, auth, and an adverse-action UX you do not have time for. Applicants are affected parties, not users. |
+| Applicants (self-service portal) | ~~CUT from v1~~ **REVERSED 2026-09-22**, read-only | Originally cut: an applicant-facing surface adds consent flows, auth, and an adverse-action UX. A narrow read-only portal now exists; see the note below for what it is and is not. Applicants are still affected parties, not console users. |
 
 Keep applicants in the **ethics and compliance chapter** as the party whose interests you designed around — that is where they belong in a thesis.
+
+> **REVERSAL (2026-09-22) — by request of the product owner.** There is now a
+> **client portal** (`/portal`, API under `/api/portal`). It exists because an
+> applicant who has handed over medical documents and gone home has three
+> questions nobody was answering: where is my application, when will I hear, and
+> do you need anything else from me.
+>
+> The three objections that cut it still stand, so it is built around them:
+>
+> - **Auth.** A separate sign-in, not a console account. A random portal ID and a
+>   generated password are created at intake, stored only as an Argon2id hash,
+>   and emailed to the applicant, or shown once to the operator when there is no
+>   address or no mail server. The token carries `kind: "portal"` and uses its own
+>   cookie; staff endpoints refuse it and the portal refuses staff tokens. Both
+>   directions are tested.
+> - **Adverse-action UX.** Not needed, because the portal never shows what would
+>   require one. **No risk score, tier or model finding reaches the applicant.**
+>   The models are not diagnostic (§1, §10), and a score delivered by an insurance
+>   portal with no clinician present would be an unvalidated clinical impression
+>   presented as a result. The response model has no field for one, so this is
+>   structural rather than a filter, and a test asserts the payload contains none
+>   of those keys. The applicant sees the underwriter's recorded decision only,
+>   and the system has no reject (§1): escalation is shown as a normal step.
+> - **Consent flows.** Out of scope, unchanged. The carrier's operator enters the
+>   data with the applicant present; the portal collects nothing.
+>
+> It is **read-only**. No uploads (requested documents are listed, and the
+> applicant is told to bring them to the office), no messaging, no password
+> reset: a lost password means the operator takes a new application or an admin
+> intervenes by hand. The decision email says only that there is an update and
+> links to the portal, because email is not a confidential channel.
 
 ---
 
@@ -135,7 +166,7 @@ These four came through from `Idea.md` and are the architectural backbone. Every
 
 ### Out
 
-Kubernetes. Microservices. Billing and subscription management. Real-time streaming. Mobile apps. A trained-from-scratch model. Claims. Applicant portal. Blockchain anything. Federated learning. On-prem installer. SSO/SAML.
+Kubernetes. Microservices. Billing and subscription management. Real-time streaming. Mobile apps. A trained-from-scratch model. Claims. ~~Applicant portal.~~ (A read-only client portal was added on 2026-09-22; see §3.) Blockchain anything. Federated learning. On-prem installer. SSO/SAML.
 
 Each of these is a plausible sentence in a pitch deck and a month of your timeline.
 
@@ -577,7 +608,7 @@ Two rules that matter more than the schedule: **the mock-mode demo must never br
 - Don't write your own DICOM parser.
 - Don't stand up a separate model-serving tier, Kubernetes, or microservices.
 - Don't let PHI-shaped data into logs or error traces.
-- Don't build the applicant portal, claims module, or billing.
+- Don't build the claims module or billing. (The applicant portal was on this list; a read-only one was added on 2026-09-22, see §3. Do not grow it into uploads or messaging.)
 - Don't blockchain the audit log. A hash chain in Postgres is the same guarantee without the liability.
 - Don't sum uncalibrated model outputs and call the result a risk score.
 - Don't report a single aggregate AUROC as your result.

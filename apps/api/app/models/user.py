@@ -16,11 +16,22 @@ if TYPE_CHECKING:
 
 
 class UserRole(enum.StrEnum):
-    """User authorization roles."""
+    """The three staff roles. There are no others.
 
+    Applicants are not in this list on purpose: they have no row in `users` and
+    no role. They read their own application through the client portal with a
+    generated portal ID and password (see `routers/portal.py`).
+
+    Renamed on 2026-09-22 (migration 008). `medical_professional` was
+    `senior_underwriter` and `dev` was `admin`; what each may do did not change.
+    """
+
+    # Takes applications in and decides the ones the models call low or moderate.
     UNDERWRITER = "underwriter"
-    SENIOR_UNDERWRITER = "senior_underwriter"
-    ADMIN = "admin"
+    # Reads the clinical evidence on escalated cases and decides them.
+    MEDICAL_PROFESSIONAL = "medical_professional"
+    # Runs the workspace: staff accounts and carrier settings.
+    DEV = "dev"
 
 
 class User(Base):

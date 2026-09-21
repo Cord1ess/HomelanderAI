@@ -22,6 +22,9 @@ class ApplicantIn(BaseSchema):
     phone: str = Field(..., min_length=1, max_length=30)
     date_of_birth: date | None = None
     sex: str | None = None
+    # Where the portal sign-in is sent. Optional: without it the operator is
+    # shown the credentials to hand over in person.
+    email: str | None = Field(default=None, max_length=255)
 
 
 class CoverageIn(BaseSchema):
@@ -297,10 +300,25 @@ class ApplicationDetailSchema(BaseSchema):
     errors: list[str] = Field(default_factory=list)
 
 
+class PortalCredentialsSchema(BaseSchema):
+    """The applicant's portal sign-in, as created at intake.
+
+    `password` is present only when it could not be emailed, so the operator can
+    hand it over in person. It exists here once: only its hash is stored, and no
+    endpoint can return it again.
+    """
+
+    portal_id: str
+    password: str | None = None
+    emailed: bool = False
+    email: str | None = None
+
+
 class SubmitResponseSchema(BaseSchema):
     id: UUID
     reference: str
     status: ApplicationStatus
+    portal: PortalCredentialsSchema | None = None
 
 
 # ── decision ─────────────────────────────────────────────────────────────────

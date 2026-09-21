@@ -256,8 +256,13 @@ to its application and marks it read.
 Phase 1 needs only in-app notifications. **No email, no SMS** — the enum has
 those values for later.
 
-Note the notifications go to *staff*, not to applicants. The operator phones the
-client; the platform never contacts them directly.
+Note these in-app notifications go to *staff*, not to applicants.
+
+> **Changed 2026-09-22.** The platform used to never contact the applicant. It
+> now sends them two emails, when a mail server is configured: their client
+> portal sign-in at intake, and a notice that says only "there is an update"
+> when a decision is recorded. Those are sent by `app/mailer.py`, not through
+> the notifications table. See SPEC §3 and DEMO_SETUP "The client portal".
 
 ---
 
@@ -313,7 +318,9 @@ client sitting there.
 
 ## Out of scope for Phase 1
 
-Do not build: applicant-facing screens (applicants are not users), a DICOM
+Do not build: applicant-facing screens inside the console (applicants are not
+console users; their read-only portal at `/portal` is a separate page with its
+own sign-in, added 2026-09-22, see SPEC §3), a DICOM
 viewer, charts and analytics, bulk upload, export/print, dark-mode toggle (dark
 is already the default), user management UI, or password reset.
 

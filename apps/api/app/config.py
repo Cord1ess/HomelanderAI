@@ -55,29 +55,35 @@ class Settings(BaseSettings):
     # (docs/DESIGN_POLICY.md §9). Already gitignored.
     data_dir: Path = _REPO_ROOT / "data"
 
+    # ── Outgoing mail ─────────────────────────────────────────
+    # Used to send applicants their portal sign-in and a note when a decision
+    # is recorded. Leave SMTP_HOST empty and nothing is sent: the message is
+    # logged with the password removed, and the operator is shown the
+    # credentials instead. A Gmail app password works with the defaults.
+    smtp_host: str = ""
+    smtp_port: int = 587
+    smtp_user: str = ""
+    smtp_password: str = ""
+    smtp_from: str = "HomelanderAI <no-reply@homelander.local>"
+    smtp_starttls: bool = True
+    # Where the portal link in those emails points.
+    portal_url: str = "http://localhost:5173/portal"
+
     # ── Auth ──────────────────────────────────────────────────
     jwt_secret: str = "dev-only-do-not-use-in-any-real-deployment"
     jwt_algorithm: str = "HS256"
     access_token_ttl_minutes: int = 30
 
-    # ── Built-in admin sign-in ────────────────────────────────
-    # Username `admin`, password `admin123`. Works with no database at all, so
-    # a demo survives the database machine being unreachable.
+    # ── Built-in accounts ─────────────────────────────────────
+    # Three of them, one per staff role: `underwriter`, `medical` and `dev`.
+    # They are defined in routers/auth.py (BUILT_IN_ACCOUNTS) and all share this
+    # one password. They work with no database at all, so a demo survives the
+    # database machine being unreachable.
     #
-    # Ready to use in development with no setup. It is ignored entirely outside
-    # development, and clearing ADMIN_PASSWORD switches it off.
-    admin_username: str = "admin"
+    # Ready to use in development with no setup. They are ignored entirely
+    # outside development, and clearing ADMIN_PASSWORD switches all three off.
     admin_password: str = "admin123"
-    admin_display_name: str = "Administrator"
     admin_company_name: str = "Demo Insurance Co."
-
-    senior_username: str = "senior"
-    senior_password: str = "admin123"
-    senior_display_name: str = "Senior Underwriter"
-
-    underwriter_username: str = "underwriter"
-    underwriter_password: str = "admin123"
-    underwriter_display_name: str = "Underwriter"
 
     @property
     def cors_origin_list(self) -> list[str]:

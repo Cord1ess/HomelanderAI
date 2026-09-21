@@ -35,9 +35,10 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app import audit as audit_chain
-from app import catalogue, persistence, plans, storage, triage, turnaround
+from app import catalogue, mailer, persistence, plans, storage, triage, turnaround
 from app import evidence as evidence_kinds
 from app.arms import arm_for_intake, arms_for
+from app.core.security import generate_password, generate_portal_id, hash_password
 from app.db.session import AsyncSessionLocal, get_db
 from app.deps import Principal, current_principal
 from app.evidence import EvidenceKind
@@ -82,6 +83,7 @@ from app.schemas.application import (
     ModelInfoSchema,
     ModelSchema,
     PlanSchema,
+    PortalCredentialsSchema,
     PricingSchema,
     QueueItemSchema,
     QueueSchema,
@@ -283,12 +285,26 @@ async def submit_application(
             detail="Each uploaded file must say which model it belongs to.",
         )
 
+    email = (intake.applicant.email or "").strip().lower() or None
+    if email and "@" not in email:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="That email address does not look right.",
+        )
+
+    # The applicant's portal sign-in. The password exists in this request only:
+    # its hash is stored, and it is emailed or handed to the operator below.
+    portal_password = generate_password()
+
     applicant = Applicant(
         tenant_id=principal.tenant_id,
         name=intake.applicant.name.strip(),
         phone=intake.applicant.phone.strip(),
         date_of_birth=intake.applicant.date_of_birth,
         sex=intake.applicant.sex,
+        email=email,
+        portal_id=generate_portal_id(),
+        password_hash=hash_password(portal_password),
     )
     db.add(applicant)
     # The reference comes from a BEFORE INSERT trigger, so it only exists after
@@ -379,10 +395,31 @@ async def submit_application(
     if stored:
         background.add_task(score_application, application.id)
 
+    # Emailed when there is an address and a mail server; otherwise handed to
+    # the operator here, once, because the client is sitting in front of them.
+    # Sending runs on a worker thread so a slow mail server cannot stall the
+    # event loop, and a failure to send is never a failure to submit.
+    emailed = False
+    if applicant.email:
+        emailed = await asyncio.to_thread(
+            mailer.send_credentials,
+            applicant.email,
+            applicant.name or "",
+            applicant.external_ref,
+            applicant.portal_id,
+            portal_password,
+        )
+
     return SubmitResponseSchema(
         id=application.id,
         reference=applicant.external_ref,
         status=application.status,
+        portal=PortalCredentialsSchema(
+            portal_id=applicant.portal_id,
+            password=None if emailed else portal_password,
+            emailed=emailed,
+            email=applicant.email,
+        ),
     )
 
 
@@ -984,6 +1021,7 @@ async def _load_owned(
     summary="Record the underwriter's decision (write-once)",
 )
 async def record_decision(
+    background: BackgroundTasks,
     application_id: UUID,
     payload: DecisionIn,
     db: AsyncSession = Depends(get_db),
@@ -994,7 +1032,7 @@ async def record_decision(
     The built-in admin cannot decide: `underwriter_id` is a real foreign key,
     and a decision has to be attributable to a person who can be held to it.
     """
-    application, _ = await _load_owned(db, application_id, principal)
+    application, applicant = await _load_owned(db, application_id, principal)
 
     # Asking for documents is a pause, not an outcome. Decisions are
     # write-once, so recording it here would decide the application forever
@@ -1063,6 +1101,19 @@ async def record_decision(
         ) from exc
 
     await db.refresh(record)
+
+    # Tell the applicant there is something to see. The message carries no
+    # outcome, because email is not a confidential channel; it links to the
+    # portal. Sent after the response so a slow mail server never delays the
+    # underwriter.
+    if applicant.email:
+        background.add_task(
+            mailer.send_decision_notice,
+            applicant.email,
+            applicant.name or "",
+            applicant.external_ref,
+        )
+
     return DecisionSchema(
         decision=record.decision,
         final_premium=record.final_premium,

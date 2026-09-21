@@ -242,6 +242,60 @@ see. That is the argument for the whole product, and it is the thing to show.
 
 ---
 
+## The client portal
+
+An applicant can sign in to see where their application stands, when to expect
+an answer, which documents are still needed, and the offer once one is recorded.
+They never see a risk score or a model finding (SPEC §3 explains why).
+
+### Showing it in a demo
+
+1. Take an application as usual. The **Email** field on the intake form is
+   optional.
+2. On the confirmation screen you get the client's **portal ID** and
+   **password**. With no mail server configured, which is the default, they are
+   always shown here. Copy both before leaving the page: only a hash of the
+   password is stored, so it cannot be shown again.
+3. Open a private window (so the staff session does not get in the way), go to
+   the sign-in page, choose the **Client** tab, and sign in.
+4. Back in the console, request a document or record a decision. The portal
+   picks the change up on its own within a minute, or on refresh.
+
+The staff and client sign-ins are separate sessions with separate cookies. Both
+can be open in one browser, but a private window makes the demo easier to follow.
+
+### Sending real email
+
+Leave `SMTP_HOST` empty and nothing is sent; the message is written to the API
+log with the password removed. To send for real, set these in `.env` and restart
+the API:
+
+```
+SMTP_HOST=smtp.gmail.com
+SMTP_PORT=587
+SMTP_USER=you@gmail.com
+SMTP_PASSWORD=<a Gmail app password, not your account password>
+SMTP_FROM=HomelanderAI <you@gmail.com>
+PORTAL_URL=http://localhost:5173/portal
+```
+
+When the email goes out, the password is **not** shown to the operator. If
+sending fails for any reason, the application is still submitted and the
+operator is shown the sign-in instead.
+
+Two messages exist: the sign-in at intake, and a notice when a decision is
+recorded. The notice says only that there is an update and links to the portal,
+because email is not a confidential channel.
+
+### Carrier registration
+
+The public sign-in page no longer offers "Create account". Staff accounts are
+made by a carrier admin under **Staff governance** in the console. The form that onboards a
+whole new carrier still exists at `/auth/register-carrier`, but nothing links to
+it.
+
+---
+
 ## Quick reference
 
 | | Command |

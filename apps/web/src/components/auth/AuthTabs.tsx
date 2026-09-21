@@ -1,15 +1,27 @@
-import { useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useSearchParams } from 'react-router-dom'
+import { ClientLoginForm } from './ClientLoginForm'
 import { LoginForm } from './LoginForm'
-import { RegisterTenantForm } from './RegisterTenantForm'
 import { BrandIcon } from '../BrandIcon'
 
 /**
  * Tab switcher for the auth right panel.
  * Renders its own logo, heading, and custom tab row — no Mantine Tabs.
+ *
+ * Two ways in, and no way to create an account. This is a B2B product: staff
+ * accounts are made by a carrier's admin inside the console, and an applicant's
+ * sign-in is generated when their application is taken. The carrier
+ * registration form still exists at /auth/register-carrier, but nothing public
+ * links to it.
+ *
+ * The tab lives in the URL (`/auth?as=client`) so the landing page can link
+ * straight to the client side.
  */
 export function AuthTabs() {
-  const [activeTab, setActiveTab] = useState<'login' | 'register'>('login')
+  const [params, setParams] = useSearchParams()
+  const activeTab = params.get('as') === 'client' ? 'client' : 'staff'
+
+  const show = (tab: 'staff' | 'client') =>
+    setParams(tab === 'client' ? { as: 'client' } : {}, { replace: true })
 
   return (
     <div>
@@ -26,28 +38,23 @@ export function AuthTabs() {
         <button
           type="button"
           className="auth-tab"
-          data-active={activeTab === 'login'}
-          onClick={() => setActiveTab('login')}
+          data-active={activeTab === 'staff'}
+          onClick={() => show('staff')}
         >
-          Sign in
+          Staff
         </button>
         <button
           type="button"
           className="auth-tab"
-          data-active={activeTab === 'register'}
-          onClick={() => setActiveTab('register')}
+          data-active={activeTab === 'client'}
+          onClick={() => show('client')}
         >
-          Create account
+          Client
         </button>
       </div>
 
       {/* Forms */}
-      {activeTab === 'login' ? (
-        <LoginForm onSwitchToRegister={() => setActiveTab('register')} />
-      ) : (
-        <RegisterTenantForm onSwitchToLogin={() => setActiveTab('login')} />
-      )}
+      {activeTab === 'staff' ? <LoginForm /> : <ClientLoginForm />}
     </div>
   )
 }
-

@@ -5,6 +5,7 @@ import {
   Box,
   Button,
   Checkbox,
+  CopyButton,
   Divider,
   Group,
   Loader,
@@ -30,6 +31,7 @@ import {
   getModels,
   submitApplication,
   type ClassifyResponse,
+  type PortalCredentials,
   type SubmitResponse,
 } from '../../api/client'
 import { EvidenceReview } from './EvidenceReview'
@@ -272,6 +274,7 @@ interface IntakeForm {
   reference: string
   name: string
   phone: string
+  email: string
   dob: string
   sex: string | null
   coverageType: string | null
@@ -346,12 +349,78 @@ function bool(v: Scalar | undefined) {
   return v === true
 }
 
+/**
+ * The client's portal sign-in, on the confirmation screen.
+ *
+ * When it was emailed there is nothing to hand over, so only the id is shown.
+ * When it was not, this is the one moment the password exists on a screen: the
+ * API keeps only its hash and no endpoint can return it again, so the operator
+ * gives it to the client who is sitting opposite them.
+ */
+function PortalSignIn({ portal }: { portal: PortalCredentials }) {
+  if (portal.emailed) {
+    return (
+      <Paper p="md" bd="1px solid var(--mantine-color-default-border)">
+        <Text size="sm" fw={600}>Client portal sign-in sent</Text>
+        <Text size="sm" c="dimmed" mt={4}>
+          Emailed to {portal.email}. Their portal ID is{' '}
+          <Text span ff="monospace" fw={600} c="bright">{portal.portalId}</Text>.
+        </Text>
+      </Paper>
+    )
+  }
+
+  const rows = [
+    { label: 'Portal ID', value: portal.portalId },
+    { label: 'Password', value: portal.password ?? '' },
+  ]
+
+  return (
+    <Paper p="md" bd="1px solid var(--mantine-color-yellow-filled)">
+      <Text size="sm" fw={600}>Give the client their portal sign-in now</Text>
+      <Text size="sm" c="dimmed" mt={4}>
+        {portal.email
+          ? `It could not be emailed to ${portal.email}.`
+          : 'No email address was given.'}{' '}
+        The password is not stored and cannot be shown again after you leave this page.
+      </Text>
+      <Table mt="sm" withRowBorders={false} verticalSpacing={4}>
+        <Table.Tbody>
+          {rows.map((row) => (
+            <Table.Tr key={row.label}>
+              <Table.Td w={90}>
+                <Text size="xs" c="dimmed">{row.label}</Text>
+              </Table.Td>
+              <Table.Td>
+                <Text ff="monospace" fw={600}>{row.value}</Text>
+              </Table.Td>
+              <Table.Td w={80} ta="right">
+                <CopyButton value={row.value}>
+                  {({ copied, copy }) => (
+                    <Button size="compact-xs" variant="light" onClick={copy}>
+                      {copied ? 'Copied' : 'Copy'}
+                    </Button>
+                  )}
+                </CopyButton>
+              </Table.Td>
+            </Table.Tr>
+          ))}
+        </Table.Tbody>
+      </Table>
+      <Text size="xs" c="dimmed" mt="sm">
+        They sign in from the Client tab on the sign-in page.
+      </Text>
+    </Paper>
+  )
+}
+
 export function IntakePage() {
   const form = useForm<IntakeForm>({
     initialValues: {
       reference: '',
       name: '',
       phone: '',
+      email: '',
       dob: '',
       sex: null,
       coverageType: null,
@@ -577,6 +646,7 @@ export function IntakePage() {
             phone: form.values.phone.trim(),
             dateOfBirth: form.values.dob || null,
             sex: form.values.sex,
+            email: form.values.email.trim() || null,
           },
           coverage: {
             coverageType: form.values.coverageType,
@@ -610,6 +680,7 @@ export function IntakePage() {
             updates on its own when the result lands.
           </Text>
         </Alert>
+        {submitted.portal && <PortalSignIn portal={submitted.portal} />}
         <Group>
           <Button size="xs" onClick={() => navigate('/queue')}>
             Back to queue
@@ -678,6 +749,13 @@ export function IntakePage() {
               <TextInput label="Name" required placeholder="Client name" {...form.getInputProps('name')} />
               <TextInput label="Phone" required placeholder="+880 1XXXXXXXXX" {...form.getInputProps('phone')} />
             </Group>
+            <TextInput
+              label="Email"
+              type="email"
+              placeholder="client@example.com"
+              description="Optional. Their portal sign-in is sent here. Without it, you are shown the sign-in to hand over."
+              {...form.getInputProps('email')}
+            />
             <Group grow align="flex-start">
               <TextInput label="Date of birth" type="date" {...form.getInputProps('dob')} />
               <Select

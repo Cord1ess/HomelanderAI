@@ -15,7 +15,10 @@ CREATE EXTENSION IF NOT EXISTS pgcrypto;  -- for gen_random_uuid()
 -- ENUM TYPES
 -- ============================================================================
 
-CREATE TYPE user_role AS ENUM ('underwriter', 'senior_underwriter', 'admin');
+-- The three staff roles. Applicants have no role: they are not users.
+-- Renamed by migration 008: 'medical_professional' was 'senior_underwriter',
+-- 'dev' was 'admin'.
+CREATE TYPE user_role AS ENUM ('underwriter', 'medical_professional', 'dev');
 
 -- 'awaiting_evidence' is an underwriter asking the applicant for more, as
 -- distinct from 'insufficient_evidence', which is the model being unable to
@@ -126,6 +129,13 @@ CREATE TABLE applicants (
     height_cm      NUMERIC(5,2),     -- feeds the XGBoost (tabular) BMI feature
     weight_kg      NUMERIC(5,2),
     face_photo_path VARCHAR(500),    -- identity photo; NO model reads this
+    -- Client portal sign-in. portal_id is random, not the HL- reference: the
+    -- reference is a sequence, so it reveals how many applications exist and is
+    -- known to staff, which makes it a poor login name. The password is
+    -- generated at intake and stored only as an Argon2id hash.
+    portal_id       VARCHAR(20) UNIQUE,
+    email           VARCHAR(255),
+    password_hash   VARCHAR(255),
     created_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
     CONSTRAINT uq_applicants_tenant_external_ref UNIQUE (tenant_id, external_ref)
 );

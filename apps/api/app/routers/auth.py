@@ -5,11 +5,23 @@ and current user session verification.
 """
 
 import logging
+import secrets
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from uuid import UUID, uuid4
 
-from fastapi import APIRouter, Cookie, Depends, HTTPException, Response, status
+from fastapi import (
+    APIRouter,
+    BackgroundTasks,
+    Cookie,
+    Depends,
+    HTTPException,
+    Response,
+    status,
+)
 from sqlalchemy import select
+from sqlalchemy.dialects.postgresql import insert as pg_insert
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
@@ -19,7 +31,7 @@ from app.core.security import (
     hash_password,
     verify_password,
 )
-from app.db.session import get_db
+from app.db.session import AsyncSessionLocal, get_db
 from app.models.tenant import Tenant
 from app.models.user import User, UserRole
 from app.schemas.auth import (
@@ -39,48 +51,76 @@ COOKIE_NAME = "session_token"
 
 log = logging.getLogger(__name__)
 
-# ── Built-in admin sign-in ───────────────────────────────────────────────────
+# ── Built-in accounts ────────────────────────────────────────────────────────
 #
-# Username `admin`, password `admin123`. Works with no database at all, so a
-# demo survives the database machine being unreachable. Development only —
-# see settings.admin_login_enabled.
+# Three accounts, one per staff role, all with the password in
+# `settings.admin_password`. They work with no database at all, so a demo
+# survives the database machine being unreachable. Development only — see
+# settings.admin_login_enabled.
 #
-# Fixed IDs so the session is recognisable in logs and can never collide with a
+# Fixed IDs so a session is recognisable in logs and can never collide with a
 # real row.
-ADMIN_USER_ID = UUID("00000000-0000-0000-0000-0000000000ad")
-SENIOR_USER_ID = UUID("00000000-0000-0000-0000-0000000000b2")
-UNDERWRITER_USER_ID = UUID("00000000-0000-0000-0000-0000000000b1")
 ADMIN_TENANT_ID = UUID("00000000-0000-0000-0000-0000000000c0")
 
 
-def _demo_session(user_id: str | None = None, username: str | None = None) -> AuthResponseSchema:
-    """The user and company this account presents as. Never stored anywhere."""
-    now = datetime.now(UTC)
+@dataclass(frozen=True)
+class BuiltInAccount:
+    username: str
+    user_id: UUID
+    full_name: str
+    role: UserRole
+
+
+BUILT_IN_ACCOUNTS: tuple[BuiltInAccount, ...] = (
+    BuiltInAccount(
+        "underwriter",
+        UUID("00000000-0000-0000-0000-0000000000b1"),
+        "Underwriter",
+        UserRole.UNDERWRITER,
+    ),
+    BuiltInAccount(
+        "medical",
+        UUID("00000000-0000-0000-0000-0000000000b2"),
+        "Medical Professional",
+        UserRole.MEDICAL_PROFESSIONAL,
+    ),
+    # Keeps the id the old `admin` account had, so everything that account
+    # already did (applications, decisions, audit entries) stays attributed to a
+    # real row. The `admin` and `senior` usernames themselves are gone.
+    BuiltInAccount(
+        "dev",
+        UUID("00000000-0000-0000-0000-0000000000ad"),
+        "Dev",
+        UserRole.DEV,
+    ),
+)
+
+
+def _built_in(user_id: str | None = None, username: str | None = None) -> BuiltInAccount | None:
+    """Find a built-in account by token subject or by what was typed at sign-in.
+
+    Returns None when nothing matches. It used to fall through to the admin
+    account, which handed the most powerful identity to any unrecognised token.
+    """
     uname = username.strip().lower() if username else None
+    for account in BUILT_IN_ACCOUNTS:
+        if user_id is not None and user_id == str(account.user_id):
+            return account
+        if uname is not None and uname == account.username:
+            return account
+    return None
 
-    if user_id == str(SENIOR_USER_ID) or uname == settings.senior_username.lower():
-        uid = SENIOR_USER_ID
-        full_name = settings.senior_display_name
-        email = settings.senior_username
-        role = UserRole.SENIOR_UNDERWRITER
-    elif user_id == str(UNDERWRITER_USER_ID) or uname == settings.underwriter_username.lower():
-        uid = UNDERWRITER_USER_ID
-        full_name = settings.underwriter_display_name
-        email = settings.underwriter_username
-        role = UserRole.UNDERWRITER
-    else:
-        uid = ADMIN_USER_ID
-        full_name = settings.admin_display_name
-        email = settings.admin_username
-        role = UserRole.ADMIN
 
+def _demo_session(account: BuiltInAccount) -> AuthResponseSchema:
+    """The user and company this account presents as. Built fresh on each call."""
+    now = datetime.now(UTC)
     return AuthResponseSchema(
         user=UserSchema(
-            id=uid,
+            id=account.user_id,
             tenant_id=ADMIN_TENANT_ID,
-            full_name=full_name,
-            email=email,
-            role=role,
+            full_name=account.full_name,
+            email=account.username,
+            role=account.role,
             license_number=None,
             created_at=now,
         ),
@@ -96,16 +136,79 @@ def _demo_session(user_id: str | None = None, username: str | None = None) -> Au
 def _is_demo_login(username: str, password: str) -> bool:
     if not settings.admin_login_enabled:
         return False
+    if _built_in(username=username) is None:
+        return False
+    return secrets.compare_digest(password.encode(), settings.admin_password.encode())
 
-    uname = username.strip().lower()
-    return (
-        (uname == settings.admin_username.lower() and password == settings.admin_password)
-        or (uname == settings.senior_username.lower() and password == settings.senior_password)
-        or (
-            uname == settings.underwriter_username.lower()
-            and password == settings.underwriter_password
+
+def _require_built_in(token_data: dict) -> BuiltInAccount:
+    """The built-in account behind a fallback token, or a 401."""
+    account = _built_in(user_id=token_data.get("sub")) if settings.admin_login_enabled else None
+    if account is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="The built-in sign-in is no longer enabled. Sign in again.",
         )
-    )
+    return account
+
+
+async def _ensure_built_in_rows() -> None:
+    """Give the built-in accounts real rows, so what they do can be attributed.
+
+    A decision's `underwriter_id` and an audit entry's actor are foreign keys.
+    Without a row, a built-in account can sign in and look around but is refused
+    the moment it decides anything. Only the old `admin` was ever seeded, so the
+    other two accounts were broken in exactly that way.
+
+    Runs in the background after a built-in sign-in, so it never delays one and
+    a missing database never fails one. It is an upsert: it also repairs a row
+    left over from the old `admin` account (same id, now `dev`).
+
+    The stored hash is of a random value that is thrown away. These accounts
+    authenticate through `_is_demo_login` alone. If the rows held the real
+    password, clearing ADMIN_PASSWORD would not switch them off: the ordinary
+    database sign-in would still accept it.
+    """
+    try:
+        unusable = hash_password(secrets.token_urlsafe(32))
+        async with AsyncSessionLocal() as db:
+            await db.execute(
+                pg_insert(Tenant)
+                .values(
+                    id=ADMIN_TENANT_ID,
+                    name=settings.admin_company_name,
+                    subscription_tier="demo",
+                )
+                .on_conflict_do_nothing(index_elements=[Tenant.id])
+            )
+            for account in BUILT_IN_ACCOUNTS:
+                row = {
+                    "full_name": account.full_name,
+                    "email": account.username,
+                    "role": account.role,
+                    "password_hash": unusable,
+                    "is_active": True,
+                }
+                await db.execute(
+                    pg_insert(User)
+                    .values(id=account.user_id, tenant_id=ADMIN_TENANT_ID, **row)
+                    .on_conflict_do_update(index_elements=[User.id], set_=row)
+                )
+            await db.commit()
+    except (SQLAlchemyError, OSError) as exc:
+        log.warning(
+            "Could not create rows for the built-in accounts (%s). They can sign in, "
+            "but cannot record a decision until the database is reachable.",
+            exc,
+        )
+
+
+async def _built_in_row(db: AsyncSession, user_id: str) -> User | None:
+    """A built-in account's own row, or None with no database or no row yet."""
+    try:
+        return await db.get(User, UUID(user_id))
+    except (SQLAlchemyError, OSError, ValueError):
+        return None
 
 
 def _set_auth_cookie(response: Response, token: str) -> None:
@@ -184,6 +287,7 @@ async def register_tenant(
 async def login(
     payload: UserLoginSchema,
     response: Response,
+    background: BackgroundTasks,
     db: AsyncSession = Depends(get_db),
 ) -> AuthResponseSchema:
     """Authenticate user with email and password, setting an httpOnly session cookie."""
@@ -194,7 +298,10 @@ async def login(
             "Built-in demo sign-in used. This bypasses the database and is only "
             "available in development."
         )
-        session = _demo_session(username=payload.email)
+        account = _built_in(username=payload.email)
+        assert account is not None  # _is_demo_login just matched it
+        session = _demo_session(account)
+        background.add_task(_ensure_built_in_rows)
         _set_auth_cookie(
             response,
             create_access_token(
@@ -206,7 +313,7 @@ async def login(
         )
         return session
 
-    # Anything that is not the built-in admin needs the database. Say so
+    # Anything that is not a built-in account needs the database. Say so
     # plainly rather than surfacing a driver traceback as a 500.
     try:
         result = await db.execute(
@@ -289,13 +396,9 @@ async def get_me(
         )
 
     if payload.get("fallback"):
-        if not settings.admin_login_enabled:
-            # The switch was turned off while a cookie was still live.
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="The built-in demo sign-in is no longer enabled.",
-            )
-        return _demo_session(user_id=payload.get("sub"))
+        # 401 when the switch was turned off while a cookie was still live, or
+        # when the token names an account that no longer exists (`senior`).
+        return _demo_session(_require_built_in(payload))
 
     user_id = payload["sub"]
     try:
@@ -365,7 +468,7 @@ async def update_profile(
         )
 
     if token_data.get("fallback"):
-        session = _demo_session()
+        session = _demo_session(_require_built_in(token_data))
         if payload.full_name is not None and payload.full_name.strip():
             session.user.full_name = payload.full_name.strip()
         if payload.license_number is not None:
@@ -447,44 +550,23 @@ async def change_password(
 
 
 def _demo_staff() -> list[UserSchema]:
+    """The staff list when there is no database: the three built-in accounts.
+
+    It used to include three invented people. A staff screen should never show
+    someone who cannot sign in.
+    """
     now = datetime.now(UTC)
     return [
         UserSchema(
-            id=ADMIN_USER_ID,
+            id=account.user_id,
             tenant_id=ADMIN_TENANT_ID,
-            full_name=settings.admin_display_name,
-            email=settings.admin_username,
-            role=UserRole.ADMIN,
-            license_number="ADM-001-HQ",
+            full_name=account.full_name,
+            email=account.username,
+            role=account.role,
+            license_number=None,
             created_at=now,
-        ),
-        UserSchema(
-            id=UUID("00000000-0000-0000-0000-0000000000b1"),
-            tenant_id=ADMIN_TENANT_ID,
-            full_name="Dr. Aris Thorne",
-            email="aris.thorne@homelander.ai",
-            role=UserRole.SENIOR_UNDERWRITER,
-            license_number="HL-MED-2026-SR",
-            created_at=now,
-        ),
-        UserSchema(
-            id=UUID("00000000-0000-0000-0000-0000000000c2"),
-            tenant_id=ADMIN_TENANT_ID,
-            full_name="Fatima Al-Zahra",
-            email="fatima.zahra@homelander.ai",
-            role=UserRole.UNDERWRITER,
-            license_number="HL-UW-REG-4412",
-            created_at=now,
-        ),
-        UserSchema(
-            id=UUID("00000000-0000-0000-0000-0000000000d3"),
-            tenant_id=ADMIN_TENANT_ID,
-            full_name="Rahim Chowdhury",
-            email="rahim.c@homelander.ai",
-            role=UserRole.UNDERWRITER,
-            license_number="HL-UW-REG-9821",
-            created_at=now,
-        ),
+        )
+        for account in BUILT_IN_ACCOUNTS
     ]
 
 
@@ -515,10 +597,15 @@ async def list_tenant_staff(
         )
 
     if token_data.get("fallback"):
-        global _demo_staff_cache
-        if not _demo_staff_cache:
-            _demo_staff_cache = _demo_staff()
-        return _demo_staff_cache
+        _require_built_in(token_data)
+        # With the database up, a built-in account has a real row and sees the
+        # real staff of its tenant. The in-memory list is only for when there
+        # is no database to ask.
+        if await _built_in_row(db, token_data["sub"]) is None:
+            global _demo_staff_cache
+            if not _demo_staff_cache:
+                _demo_staff_cache = _demo_staff()
+            return _demo_staff_cache
 
     user_id = token_data["sub"]
     user_result = await db.execute(select(User).where(User.id == user_id))
@@ -546,7 +633,7 @@ async def provision_staff(
     session_token: str | None = Cookie(default=None, alias=COOKIE_NAME),
     db: AsyncSession = Depends(get_db),
 ) -> UserSchema:
-    """Provision a new underwriter or senior underwriter within the tenant."""
+    """Add a staff account to the caller's tenant. Dev accounts only."""
     if not session_token:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -561,20 +648,32 @@ async def provision_staff(
         )
 
     if token_data.get("fallback"):
-        global _demo_staff_cache
-        if not _demo_staff_cache:
-            _demo_staff_cache = _demo_staff()
-        new_operator = UserSchema(
-            id=uuid4(),
-            tenant_id=ADMIN_TENANT_ID,
-            full_name=payload.full_name.strip(),
-            email=payload.email.strip().lower(),
-            role=payload.role,
-            license_number=payload.license_number.strip() if payload.license_number else None,
-            created_at=datetime.now(UTC),
-        )
-        _demo_staff_cache.insert(0, new_operator)
-        return new_operator
+        # This check used to be missing, so the built-in underwriter could add
+        # staff.
+        if _require_built_in(token_data).role != UserRole.DEV:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Only a Dev account can add staff.",
+            )
+        # With the database up, the built-in Dev has a real row: fall through
+        # and create the account for real, so the new person can sign in. Only
+        # with no database is it kept in memory, so the screen still works in an
+        # outage demo.
+        if await _built_in_row(db, token_data["sub"]) is None:
+            global _demo_staff_cache
+            if not _demo_staff_cache:
+                _demo_staff_cache = _demo_staff()
+            new_operator = UserSchema(
+                id=uuid4(),
+                tenant_id=ADMIN_TENANT_ID,
+                full_name=payload.full_name.strip(),
+                email=payload.email.strip().lower(),
+                role=payload.role,
+                license_number=payload.license_number.strip() if payload.license_number else None,
+                created_at=datetime.now(UTC),
+            )
+            _demo_staff_cache.insert(0, new_operator)
+            return new_operator
 
     caller_id = token_data["sub"]
     caller_result = await db.execute(select(User).where(User.id == caller_id))
@@ -585,10 +684,10 @@ async def provision_staff(
             detail="Caller not found or deactivated.",
         )
 
-    if caller.role != UserRole.ADMIN:
+    if caller.role != UserRole.DEV:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Only administrators may provision staff operators.",
+            detail="Only a Dev account can add staff.",
         )
 
     # Check unique email
