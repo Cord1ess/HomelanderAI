@@ -156,7 +156,7 @@ export function EscalationsPage() {
             <Text size="xs" c="dimmed" fw={600}>
               Regulatory Stance
             </Text>
-            <IconShieldCheck size={16} color="#61a5a1" />
+            <IconShieldCheck size={16} color="var(--mantine-color-clinical-3)" />
           </Group>
           <Text fz="sm" fw={600} mt={6}>
             Zero Auto-Rejection

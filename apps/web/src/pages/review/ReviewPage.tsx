@@ -105,7 +105,7 @@ function FindingBar({ finding, scale }: { finding: Finding; scale: number }) {
           style={{
             width: `${Math.min(width, 100)}%`,
             backgroundColor: toward
-              ? 'var(--mantine-color-clinical-5)'
+              ? 'var(--mantine-color-clinical-3)'
               : 'var(--mantine-color-dark-3)',
             borderRadius: 3,
           }}

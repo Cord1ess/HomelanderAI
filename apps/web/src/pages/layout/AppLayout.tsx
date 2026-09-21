@@ -264,11 +264,11 @@ function NavItem({
         style={
           active
             ? {
-                backgroundColor: '#15803d',
-                color: '#ffffff',
+                backgroundColor: 'var(--mantine-color-clinical-2)',
+                color: 'var(--mantine-color-dark-7)',
               }
             : {
-                color: '#94a3b8',
+                color: 'var(--mantine-color-dark-3)',
               }
         }
       >

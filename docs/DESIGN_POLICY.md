@@ -487,6 +487,49 @@ Test the actual behavior.
 
 ---
 
+## Colour
+
+The brand is a **hue**, not a hex list: yellow-green at **68.5°**, where all
+three reference colours sit (`#3D4127` 69.2°, `#636B2F` 68.0°, `#D4DE95` 68.2°).
+Hue and saturation carry the identity. Lightness is the free variable, because
+lightness is what contrast is made of.
+
+Every value in `apps/web/src/theme.ts` and the `--neo-*` block of `index.css`
+was therefore **solved, not picked**: given a surface and a contrast target,
+find the lightness in our hue that just clears it. The numbers look arbitrary
+because each one is the point where a requirement is met. Nudging one by eye
+silently breaks the guarantee it was chosen for — re-solve instead.
+
+**The ramp is split by scheme.** `clinical[0..5]` are solved against the dark
+card `#1E1F16`; `clinical[6..9]` against the light page `#F8F9F3`. A single
+shade cannot serve both: the lightness that reads on near-black is the one that
+vanishes on near-white. Hence `primaryShade: { light: 6, dark: 3 }`. Using a
+light-half step on a dark surface is the easiest mistake to make here — it was
+made once already, putting a 3.46:1 label on the active nav item.
+
+Key steps, with what they are for:
+
+| Step | Hex | On | Use |
+|---|---|---|---|
+| `clinical[2]` | `#CED98C` | 11.03:1 dark | Active nav, key figures |
+| `clinical[3]` | `#A0B13E` | 7.01:1 dark | **Primary on dark** |
+| `clinical[4]` | `#7F8C34` | 4.52:1 dark | Text floor on dark |
+| `clinical[5]` | `#646E2B` | 3.01:1 dark | Boundaries, large text only |
+| `clinical[6]` | `#6D7826` | 4.54:1 light | **Primary on light** |
+| `clinical[8]` | `#3D4127` | 10.00:1 light | Structural dark olive |
+
+**Filled buttons on dark take dark ink.** The dark primary is a *light* olive,
+so Mantine's default white label would be 2.37:1. The theme overrides
+`[data-variant="filled"]` to `dark-7`, which is 8.17:1.
+
+**Risk tiers are not brand colours.** `TierBadge` stays teal / yellow / red /
+gray. It is a traffic light an underwriter reads at a glance, and the brand is
+yellow-green: an olive "low" beside a yellow "moderate" would be nearly the same
+hue on the one chip where confusion is most expensive. Status colour stays
+independent of the accent so a rebrand cannot make two risk levels look alike.
+
+---
+
 # Claude's Decision Rule
 
 When choosing between two implementations, prefer the one that:

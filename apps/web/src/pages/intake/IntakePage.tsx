@@ -688,7 +688,7 @@ export function IntakePage() {
                   withBorder
                   bd={
                     on
-                      ? '1px solid var(--mantine-color-clinical-6)'
+                      ? '1px solid var(--mantine-color-clinical-3)'
                       : '1px solid var(--mantine-color-default-border)'
                   }
                   style={{
@@ -949,7 +949,7 @@ function PanelUpload({
       >
         <Group justify="center" gap="xl" py="sm" style={{ pointerEvents: 'none' }}>
           <Dropzone.Accept>
-            <IconFileUpload size={24} color="var(--mantine-color-clinical-5)" />
+            <IconFileUpload size={24} color="var(--mantine-color-clinical-3)" />
           </Dropzone.Accept>
           <Dropzone.Reject>
             <IconAlertCircle size={24} color="var(--mantine-color-red-5)" />

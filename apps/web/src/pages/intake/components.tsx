@@ -19,8 +19,8 @@ export function Section({
   return (
     <Box
       style={{
-        backgroundColor: '#13261c',
-        border: '1px solid rgba(255, 255, 255, 0.12)',
+        backgroundColor: 'var(--mantine-color-dark-6)',
+        border: '1px solid rgba(212, 222, 149, 0.14)',
         borderRadius: '8px',
         padding: '1.25rem',
         boxShadow: '0 4px 20px rgba(0, 0, 0, 0.28)',
@@ -37,7 +37,7 @@ export function Section({
             <Badge color="clinical" variant="filled" radius="sm" size="sm">
               Section {n}
             </Badge>
-            <Text fw={700} size="sm" c="#ffffff">
+            <Text fw={700} size="sm" c="var(--mantine-color-dark-0)">
               {title}
             </Text>
           </Group>
