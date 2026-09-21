@@ -151,13 +151,46 @@ RULES: list[Rule] = [
         key="smoker",
         points=5.0,
         reason="Current or former smoker — widens the differential toward malignancy",
-        applies=lambda d, age: _has(d, "smoker"),
+        applies=lambda d, age: _has(d, "smoker") or bool(d.get("smoker")),
     ),
     Rule(
         key="age_over_60",
         points=5.0,
         reason="Age over 60 — widens the differential toward malignancy",
         applies=lambda d, age: age is not None and age > 60,
+    ),
+    Rule(
+        key="diabetes_duration_over_10_years",
+        points=15.0,
+        reason=(
+            "Diabetes duration over 10 years — high risk factor for "
+            "accelerated microvascular progression"
+        ),
+        applies=lambda d, age: (
+            d.get("diabetes_duration") == "Over 10 years"
+            or (d.get("eyepacs") or {}).get("diabetes_duration") == "Over 10 years"
+        ),
+    ),
+    Rule(
+        key="diabetes_duration_5_to_10_years",
+        points=8.0,
+        reason="Diabetes duration 5–10 years — established microvascular risk",
+        applies=lambda d, age: (
+            d.get("diabetes_duration") == "5–10 years"
+            or (d.get("eyepacs") or {}).get("diabetes_duration") == "5–10 years"
+        ),
+    ),
+    Rule(
+        key="diabetes_with_hypertension",
+        points=10.0,
+        reason=(
+            "Comorbid hypertension — compounds vascular stress and "
+            "accelerates retinal capillary damage"
+        ),
+        applies=lambda d, age: bool(
+            d.get("hypertension")
+            or (d.get("eyepacs") or {}).get("hypertension")
+        ),
     ),
 ]
 

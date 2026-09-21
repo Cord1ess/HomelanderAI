@@ -398,7 +398,13 @@ async def score_application(application_id: UUID) -> None:
             ]
 
             applicant = await db.get(Applicant, application.applicant_id)
-            declared = (application.declared_history or {}).get(SCORING_ARM, {})
+            raw_declared = application.declared_history or {}
+            declared = dict(raw_declared.get(SCORING_ARM, {}))
+            for k, v in raw_declared.items():
+                if isinstance(v, dict):
+                    declared.update(v)
+                else:
+                    declared[k] = v
 
             # Inference is CPU-bound and takes seconds. Left on the event loop it
             # would block every other request for the duration, so it runs on a

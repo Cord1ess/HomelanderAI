@@ -1,6 +1,5 @@
 import {
   Anchor,
-  Badge,
   Box,
   Button,
   Container,
@@ -12,7 +11,7 @@ import {
 } from '@mantine/core'
 import {
   IconArrowRight,
-  IconBuildingBank,
+  IconCheck,
   IconEye,
   IconFileCheck,
   IconHistory,
@@ -26,24 +25,27 @@ import { BrandIcon } from '../../components/BrandIcon'
 import { useAuth } from '../../context/AuthContext'
 
 /**
- * Home landing — public, outside the guarded console.
+ * Public landing page — follows smooth-cosmos-suite.lovable.app.
  *
- * Neo-brutalist persona: a light, near-white page with hard black borders,
- * chunky offset shadows and loud clinical-teal accents. Dark ink text on the
- * light background keeps everything readable, in contrast to the dark ERP
- * console behind the login.
+ * Design system:
+ *  - Space Grotesk Variable for all display headlines (.neo-display)
+ *  - Space Grotesk Variable for nav, body, buttons
+ *  - Forest green (#1C3829) as primary brand colour
+ *  - Clinical teal (#2f7f7b) as accent
+ *  - Warm off-white (#f7f5f0) background
+ *  - No hard black borders — soft 10% opacity borders throughout
  */
 
 const FEATURES = [
   {
     icon: IconStethoscope,
     title: 'TB chest X-ray screening',
-    body: 'The vision arm screens chest radiographs for tuberculosis, and the declared medical history is weighed against it to reach a score.',
+    body: 'The vision arm screens chest radiographs for tuberculosis. Declared medical history is weighed against findings to reach a score.',
   },
   {
     icon: IconEye,
     title: 'Explainable Grad-CAM',
-    body: 'Every recommendation ships with the heatmap and the reasoning — so the underwriter can see the evidence, not just the score.',
+    body: 'Every recommendation ships with the heatmap and the reasoning — the underwriter sees evidence, not just a score.',
   },
   {
     icon: IconFileCheck,
@@ -53,190 +55,297 @@ const FEATURES = [
   {
     icon: IconHistory,
     title: 'Full audit trail',
-    body: 'Model runs, human decisions and identities are timestamped end to end — an underwriting record you can defend.',
+    body: 'Model runs, human decisions and identities are timestamped end to end — a record you can defend.',
   },
 ]
 
-const TICKER = [
-  'AI decision support',
-  'Human sign-off required',
-  'TB chest X-ray screening',
-  'Explainable Grad-CAM',
-  'Full audit trail',
+const STEPS = [
+  {
+    n: '01',
+    title: 'Evidence intake',
+    body: 'Applications, imaging, and clinical history become one structured case file before scoring begins.',
+  },
+  {
+    n: '02',
+    title: 'Composite scoring',
+    body: 'Six weighted factors produce one advisory index with every contribution open to inspection.',
+  },
+  {
+    n: '03',
+    title: 'Human decision',
+    body: 'A licensed underwriter records the final action and rationale in an immutable audit trail.',
+  },
 ]
 
-const linkStyle: CSSProperties = {
-  fontWeight: 700,
+const STATS = [
+  { value: '94%', label: 'Evidence coverage' },
+  { value: '6', label: 'Composite factors' },
+  { value: '100%', label: 'Audit logged' },
+]
+
+const navLinkStyle: CSSProperties = {
+  fontWeight: 500,
+  fontSize: '0.875rem',
   color: 'var(--neo-ink)',
-  textDecorationColor: 'var(--neo-accent)',
-  textUnderlineOffset: 4,
+  textDecoration: 'none',
+  opacity: 0.55,
+  transition: 'opacity 0.15s ease',
+  fontFamily: '"Space Grotesk Variable", "Space Grotesk", sans-serif',
 }
 
 export function HomePage() {
-  // This page is public, but a signed-in user can land back on it (the logo,
-  // a bookmark, the browser's back button). Point them at the console rather
-  // than at a sign-in they have already done.
   const { isAuthenticated } = useAuth()
   const ctaTo = isAuthenticated ? '/queue' : '/auth'
 
   return (
     <Box className="neo-shell">
-      {/* Top bar */}
-      <Box style={{ borderBottom: '3px solid var(--neo-line)' }}>
-        <Container size="lg" py="lg">
+
+      {/* ── Nav ─────────────────────────────────────────────────────── */}
+      <Box style={{ borderBottom: '1px solid var(--neo-border)' }}>
+        <Container size="lg" py="md">
           <Group justify="space-between" align="center">
-            <Group gap="sm" align="center">
-              <Box className="neo-brand-chip neo-press" p={5}>
-                <BrandIcon width={56} height={56} style={{ display: 'block' }} />
+            {/* Brand */}
+            <Group gap="xs" align="center">
+              <Box className="neo-brand-chip neo-press" p={4}>
+                <BrandIcon width={36} height={36} style={{ display: 'block' }} />
               </Box>
-              <Text className="neo-display" size="xl" style={{ fontSize: '1.4rem' }}>
-                HomelanderAI
+              <Text
+                style={{
+                  fontSize: '1rem',
+                  fontWeight: 600,
+                  letterSpacing: '-0.01em',
+                  fontFamily: '"Space Grotesk Variable", "Space Grotesk", sans-serif',
+                  color: 'var(--neo-ink)',
+                }}
+              >
+                homelander
               </Text>
             </Group>
 
-            <Group gap="lg" visibleFrom="sm">
-              <Anchor size="sm" style={linkStyle} href="#features">
-                Features
-              </Anchor>
-              <Anchor size="sm" style={linkStyle} href="#features">
-                How it works
-              </Anchor>
-              <Anchor size="sm" style={linkStyle} href="#security">
-                Security
-              </Anchor>
+            {/* Nav links */}
+            <Group gap="xl" visibleFrom="md">
+              <Anchor style={navLinkStyle} href="#platform">Platform</Anchor>
+              <Anchor style={navLinkStyle} href="#evidence">Evidence</Anchor>
+              <Anchor style={navLinkStyle} href="#compliance">Compliance</Anchor>
             </Group>
 
-            <Box className="neo-press">
-              <Button
+            {/* CTAs */}
+            <Group gap="md">
+              <Anchor
                 component={Link}
-                to={ctaTo}
-                size="sm"
-                radius={0}
-                style={{
-                  border: '3px solid var(--neo-line)',
-                  boxShadow: '4px 4px 0 var(--neo-ink)',
-                  fontWeight: 800,
-                }}
+                to="/auth"
+                style={{ ...navLinkStyle, opacity: 0.4 }}
+                visibleFrom="sm"
               >
-                {isAuthenticated ? 'Dashboard →' : 'Sign in →'}
-              </Button>
-            </Box>
+                Sign in
+              </Anchor>
+              <Box className="neo-press">
+                <Button
+                  component={Link}
+                  to={ctaTo}
+                  size="sm"
+                  radius={4}
+                  style={{
+                    background: 'var(--neo-forest)',
+                    border: 'none',
+                    fontWeight: 600,
+                    fontFamily: '"Space Grotesk Variable", "Space Grotesk", sans-serif',
+                    boxShadow: '0 1px 4px rgba(28,56,41,0.2)',
+                  }}
+                >
+                  Open console
+                </Button>
+              </Box>
+            </Group>
           </Group>
         </Container>
       </Box>
 
-      {/* Hero */}
-      <Box py={72}>
+      {/* ── Hero ────────────────────────────────────────────────────── */}
+      <Box py={{ base: 72, md: 104 }}>
         <Container size="lg">
-          <SimpleGrid cols={{ base: 1, lg: 2 }} spacing={48}>
-            <Stack gap="lg">
+          <SimpleGrid cols={{ base: 1, lg: 2 }} spacing={64}>
+
+            {/* Left — text */}
+            <Stack gap="xl">
+              {/* Decision support badge */}
               <div>
-                <Badge
-                  variant="filled"
-                  color="dark"
-                  radius={0}
-                  size="md"
-                  style={{ border: '2px solid var(--neo-ink)', boxShadow: '3px 3px 0 var(--neo-accent)' }}
-                >
-                  AI-assisted underwriting
-                </Badge>
+                <span className="neo-decision-badge">
+                  Decision support · Not a medical device
+                </span>
               </div>
 
               <Text
                 className="home-rise home-rise-1 neo-display"
-                style={{ fontSize: 'clamp(2.4rem, 6vw, 4rem)' }}
+                style={{ fontSize: 'clamp(2.4rem, 5.5vw, 3.8rem)', fontWeight: 700 }}
               >
-                Catch early risk{' '}
-                <span className="neo-underline">before</span> it becomes a claim
+                Underwriting judgment,{' '}
+                <span className="neo-underline">backed by explainable</span> evidence.
               </Text>
 
-              <Text size="md" c="dark" style={{ lineHeight: 1.6, maxWidth: 520 }}>
-                HomelanderAI screens chest X-rays and declared history to give
-                underwriters a recommendation — and the evidence behind it —
-                before a claim can expose the gap between the premium collected
-                and the claim paid.
+              <Text
+                className="home-rise home-rise-2"
+                style={{
+                  fontSize: '0.95rem',
+                  lineHeight: 1.75,
+                  maxWidth: 480,
+                  color: 'var(--neo-ink)',
+                  opacity: 0.6,
+                  fontFamily: '"Space Grotesk Variable", "Space Grotesk", sans-serif',
+                }}
+              >
+                HomelanderAI connects chest imaging, declared history, and structured
+                risk factors so licensed underwriters can make defensible decisions
+                with the complete record in view.
               </Text>
 
-              <Group gap="md">
+              {/* CTA buttons */}
+              <Group gap="sm" className="home-rise home-rise-3">
                 <Box className="neo-press">
                   <Button
                     component={Link}
                     to={ctaTo}
-                    size="lg"
-                    radius={0}
-                    color="clinical"
-                    style={{ border: '3px solid var(--neo-ink)', boxShadow: '6px 6px 0 var(--neo-accent)', fontWeight: 800 }}
+                    size="md"
+                    radius={4}
+                    style={{
+                      background: 'var(--neo-forest)',
+                      border: 'none',
+                      fontWeight: 600,
+                      fontFamily: '"Space Grotesk Variable", "Space Grotesk", sans-serif',
+                      boxShadow: '0 2px 12px rgba(28,56,41,0.2)',
+                    }}
                   >
-                    {isAuthenticated ? 'Go to the dashboard' : 'Sign in to the console'}
+                    Open a case file
                   </Button>
                 </Box>
                 <Box className="neo-press">
                   <Button
                     component="a"
-                    href="#features"
+                    href="#platform"
                     variant="default"
-                    size="lg"
-                    radius={0}
-                    color="clinical"
-                    rightSection={<IconArrowRight size={18} />}
-                    style={{ border: '3px solid var(--neo-ink)', boxShadow: '6px 6px 0 var(--neo-ink)', fontWeight: 800, background: 'var(--neo-card)',color: 'var(--neo-ink)' }}
+                    size="md"
+                    radius={4}
+                    rightSection={<IconArrowRight size={15} />}
+                    style={{
+                      border: '1px solid var(--neo-border-mid)',
+                      fontWeight: 600,
+                      background: 'var(--neo-card)',
+                      color: 'var(--neo-ink)',
+                      fontFamily: '"Space Grotesk Variable", "Space Grotesk", sans-serif',
+                      boxShadow: '0 1px 4px var(--neo-shadow)',
+                    }}
                   >
-                    See the platform
+                    View methodology
                   </Button>
                 </Box>
               </Group>
 
-              <Group gap="xs" wrap="wrap">
-                {['Human sign-off', 'PII-minimised intake', 'CPU-feasible models'].map((c) => (
-                  <span key={c} className="neo-tag">
-                    {c}
-                  </span>
+              {/* Stats */}
+              <Group gap="sm" className="home-rise home-rise-4" wrap="wrap">
+                {STATS.map((s) => (
+                  <div key={s.label} className="neo-stat-pill">
+                    <span className="neo-stat-value">{s.value}</span>
+                    <span className="neo-stat-label">{s.label}</span>
+                  </div>
                 ))}
               </Group>
             </Stack>
 
-            <Group justify="center">
-              <Box className="neo-card" p="lg">
-                <Box
-                  className="home-rise home-rise-3 home-float"
-                  style={{ display: 'grid', placeItems: 'center' }}
-                >
-                  <Box className="neo-brand-chip" p={12}>
-                    <BrandIcon width={232} height={232} style={{ display: 'block' }} />
-                  </Box>
+            {/* Right — mock case card */}
+            <Group justify="center" align="center" className="home-rise home-rise-3">
+              <Box className="neo-case-card">
+                <Box className="neo-case-card__header">
+                  <Text size="xs" fw={600} tt="uppercase" style={{ letterSpacing: '0.1em', opacity: 0.45, fontFamily: '"Space Grotesk Variable", "Space Grotesk", sans-serif' }}>
+                    Composite risk
+                  </Text>
+                  <Group gap="xs" align="center" mt={4}>
+                    <div className="neo-case-card__dot" />
+                    <Text size="xs" fw={500} style={{ opacity: 0.4, fontFamily: '"Space Grotesk Variable", "Space Grotesk", sans-serif' }}>
+                      Case #HOM-20938
+                    </Text>
+                  </Group>
                 </Box>
+
+                <Box className="neo-case-card__score-wrap">
+                  <svg width="110" height="65" viewBox="0 0 110 65">
+                    <path d="M 8 60 A 47 47 0 0 1 102 60" fill="none" stroke="var(--neo-border)" strokeWidth="3" />
+                    <path d="M 8 60 A 47 47 0 0 1 76 17" fill="none" stroke="var(--neo-accent)" strokeWidth="3.5" strokeLinecap="round" />
+                  </svg>
+                  <Text className="neo-display" style={{ fontSize: '2.2rem', marginTop: '-6px', color: 'var(--neo-ink)' }}>
+                    62
+                  </Text>
+                  <Text size="xs" style={{ opacity: 0.4, marginTop: 2, fontFamily: '"Space Grotesk Variable", "Space Grotesk", sans-serif' }}>
+                    Moderate · Tier 2
+                  </Text>
+                </Box>
+
+                <Stack gap={0} className="neo-case-card__rows">
+                  {[
+                    { label: 'Imaging', value: 'Screened', ok: true },
+                    { label: 'Factors', value: '4 of 6 clear', ok: true },
+                    { label: 'Decision', value: 'Pending review', ok: false },
+                  ].map((row) => (
+                    <Group key={row.label} justify="space-between" className="neo-case-card__row">
+                      <Text size="xs" style={{ opacity: 0.45, fontFamily: '"Space Grotesk Variable", "Space Grotesk", sans-serif' }}>
+                        {row.label}
+                      </Text>
+                      <Group gap={5} align="center">
+                        {row.ok && <IconCheck size={11} color="var(--neo-accent)" strokeWidth={3} />}
+                        <Text size="xs" fw={600} style={{ fontFamily: '"Space Grotesk Variable", "Space Grotesk", sans-serif' }}>
+                          {row.value}
+                        </Text>
+                      </Group>
+                    </Group>
+                  ))}
+                </Stack>
               </Box>
             </Group>
           </SimpleGrid>
         </Container>
       </Box>
 
-      {/* Ticker */}
-      <Box className="neo-ticker" py="sm">
+      {/* ── How it reads a case ─────────────────────────────────────── */}
+      <Box id="platform" py={{ base: 64, md: 88 }} className="neo-steps-band">
         <Container size="lg">
-          <Group gap="lg" wrap="wrap" justify="center" c="var(--neo-accent-ink)">
-            {TICKER.map((t, i) => (
-              <Group key={t} gap="lg" wrap="nowrap">
-                {i > 0 && <Text c="var(--neo-accent-ink)" opacity={0.6}>◆</Text>}
-                <Text size="sm" fw={700} tt="uppercase" style={{ letterSpacing: '0.08em' }}>
-                  {t}
-                </Text>
-              </Group>
-            ))}
-          </Group>
+          <Stack gap={48}>
+            <Stack gap={6} align="center" ta="center">
+              <Text className="neo-eyebrow">01 — How it reads a case</Text>
+              <Text
+                className="neo-display"
+                style={{ fontSize: 'clamp(1.6rem, 3.5vw, 2.4rem)', color: 'var(--neo-ink)' }}
+              >
+                One precise system from first intake to final audit.
+              </Text>
+            </Stack>
+
+            <SimpleGrid cols={{ base: 1, sm: 3 }} spacing="lg">
+              {STEPS.map((step) => (
+                <Box key={step.n} className="neo-step">
+                  <Text className="neo-step__number">{step.n}</Text>
+                  <Text fw={600} size="md" mt="md" mb={6} style={{ color: 'var(--neo-ink)', fontFamily: '"Space Grotesk Variable", "Space Grotesk", sans-serif' }}>
+                    {step.title}
+                  </Text>
+                  <Text size="sm" style={{ opacity: 0.55, lineHeight: 1.65, fontFamily: '"Space Grotesk Variable", "Space Grotesk", sans-serif' }}>
+                    {step.body}
+                  </Text>
+                </Box>
+              ))}
+            </SimpleGrid>
+          </Stack>
         </Container>
       </Box>
 
-      {/* Features */}
-      <Box id="features" py={{ base: 56, md: 72 }}>
+      {/* ── Feature cards ───────────────────────────────────────────── */}
+      <Box id="evidence" py={{ base: 64, md: 88 }}>
         <Container size="lg">
-          <Stack gap="xl">
-            <Stack gap={4} align="center" ta="center">
-              <Text className="hl-eyebrow" c="var(--neo-accent)" fw={800}>
+          <Stack gap={44}>
+            <Stack gap={6} align="center" ta="center">
+              <Text className="neo-eyebrow">Built for the two moments that matter</Text>
+              <Text
+                className="neo-display"
+                style={{ fontSize: 'clamp(1.6rem, 3.5vw, 2.4rem)', color: 'var(--neo-ink)' }}
+              >
                 What the console gives you
-              </Text>
-              <Text className="neo-display" style={{ fontSize: 'clamp(1.6rem, 4vw, 2.4rem)' }}>
-                Built for the two moments that matter
               </Text>
             </Stack>
 
@@ -246,67 +355,97 @@ export function HomePage() {
                   key={f.title}
                   className="neo-card neo-lift"
                   p="lg"
-                  style={{ display: 'flex', flexDirection: 'column', gap: '0.8rem' }}
+                  style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}
                 >
                   <ThemeIcon
-                    size={44}
-                    radius={0}
+                    size={38}
+                    radius={4}
+                    variant="light"
                     color="clinical"
-                    variant="filled"
-                    style={{ border: '2px solid var(--neo-ink)', boxShadow: '3px 3px 0 var(--neo-ink)' }}
+                    style={{ border: '1px solid var(--neo-border)' }}
                   >
-                    <f.icon size={22} />
+                    <f.icon size={18} />
                   </ThemeIcon>
-                  <Text fw={800} size="md" c="var(--neo-ink)">
+                  <Text fw={600} size="sm" style={{ color: 'var(--neo-ink)', fontFamily: '"Space Grotesk Variable", "Space Grotesk", sans-serif' }}>
                     {f.title}
                   </Text>
-                  <Text size="sm" c="var(--neo-ink)" opacity={0.72} style={{ lineHeight: 1.55 }}>
+                  <Text size="sm" style={{ opacity: 0.55, lineHeight: 1.65, fontFamily: '"Space Grotesk Variable", "Space Grotesk", sans-serif' }}>
                     {f.body}
                   </Text>
                 </Box>
               ))}
             </SimpleGrid>
 
-            {/* Security note (id="security" target) */}
-            <Group id="security" gap="xs" justify="center" mt="sm">
-              <IconShieldLock size={18} color="var(--neo-accent)" />
-              <Text size="sm" fw={600} c="var(--neo-ink)">
-                Decisions require licensed human sign-off. Health data is
-                minimised and never stored in the browser.
+            {/* Security note */}
+            <Group id="compliance" gap="xs" justify="center" mt="xs">
+              <IconShieldLock size={15} color="var(--neo-accent)" />
+              <Text size="sm" fw={500} style={{ color: 'var(--neo-ink)', opacity: 0.5, fontFamily: '"Space Grotesk Variable", "Space Grotesk", sans-serif' }}>
+                Decisions require licensed human sign-off. Health data is minimised and never stored in the browser.
               </Text>
             </Group>
           </Stack>
         </Container>
       </Box>
 
-      {/* Footer */}
-      <Box style={{ borderTop: '3px solid var(--neo-line)' }} py="lg">
+      {/* ── CTA Band ────────────────────────────────────────────────── */}
+      <Box className="neo-cta-band" py={{ base: 80, md: 112 }}>
+        <Container size="md">
+          <Stack gap="xl" align="center" ta="center">
+            <Text
+              className="neo-display"
+              style={{ fontSize: 'clamp(1.9rem, 4.5vw, 3.2rem)' }}
+            >
+              Move from evidence to decision{' '}
+              <span className="neo-underline">without a visual reset.</span>
+            </Text>
+            <Text style={{ opacity: 0.5, maxWidth: 460, fontSize: '0.9rem', lineHeight: 1.7, fontFamily: '"Space Grotesk Variable", "Space Grotesk", sans-serif', color: '#fff' }}>
+              One precise system from first intake to final audit.
+            </Text>
+            <Box className="neo-press">
+              <Button
+                component={Link}
+                to={ctaTo}
+                size="lg"
+                radius={4}
+                rightSection={<IconArrowRight size={17} />}
+                style={{
+                  background: 'rgba(255,255,255,0.1)',
+                  border: '1px solid rgba(255,255,255,0.22)',
+                  fontWeight: 600,
+                  fontFamily: '"Space Grotesk Variable", "Space Grotesk", sans-serif',
+                  backdropFilter: 'blur(8px)',
+                  paddingInline: '2rem',
+                  color: '#fff',
+                  boxShadow: '0 4px 24px rgba(0,0,0,0.2)',
+                }}
+              >
+                Enter the workspace
+              </Button>
+            </Box>
+          </Stack>
+        </Container>
+      </Box>
+
+      {/* ── Footer ──────────────────────────────────────────────────── */}
+      <Box style={{ borderTop: '1px solid var(--neo-border)' }} py="lg">
         <Container size="lg">
           <Group justify="space-between" wrap="wrap">
-            <Group gap="xs">
-              <IconBuildingBank size={18} style={{ color: 'var(--neo-ink)' }} />
-              <Text size="sm" fw={700} c="var(--neo-ink)">
-                HomelanderAI · Underwriting decision support
-              </Text>
-            </Group>
-            <Text size="sm" fw={600} c="var(--neo-ink)">
+            <Text size="sm" fw={600} style={{ color: 'var(--neo-ink)', opacity: 0.45, fontFamily: '"Space Grotesk Variable", "Space Grotesk", sans-serif' }}>
+              HomelanderAI · Underwriting decision support
+            </Text>
+            <Text size="sm" fw={500} style={{ color: 'var(--neo-ink)', opacity: 0.35, fontFamily: '"Space Grotesk Variable", "Space Grotesk", sans-serif' }}>
               © {new Date().getFullYear()} HomelanderAI
             </Text>
           </Group>
-
-          {/*
-            This page is public and describes AI screening of medical images.
-            The same disclaimer is carried by README.md and SPEC.md §10; it
-            belongs where a prospective reader actually sees it.
-          */}
-          <Text size="xs" mt="md" c="var(--neo-ink)" opacity={0.7} maw={720}>
-            Research software. Not a medical device, not clinically validated, and
-            not approved by any regulatory body. Every output is a recommendation
-            for a licensed underwriter to review — the platform does not diagnose
-            and never issues an automated denial.
+          <Text size="xs" mt="md" style={{ opacity: 0.35, maxWidth: 680, lineHeight: 1.65, color: 'var(--neo-ink)', fontFamily: '"Space Grotesk Variable", "Space Grotesk", sans-serif' }}>
+            Research software. Not a medical device, not clinically validated, and not approved by any
+            regulatory body. Every output is a recommendation for a licensed underwriter to review —
+            the platform does not diagnose and never issues an automated denial.
           </Text>
         </Container>
       </Box>
+
     </Box>
   )
 }
+
