@@ -27,6 +27,8 @@ export type AppNotification = Schemas['NotificationSchema']
 export type Plan = Schemas['PlanSchema']
 export type ModelInfo = Schemas['ModelSchema']
 export type Pricing = Schemas['PricingSchema']
+export type ClassifiedFile = Schemas['ClassifiedFileSchema']
+export type ClassifyResponse = Schemas['ClassifyResponseSchema']
 export type SubmitResponse = Schemas['SubmitResponseSchema']
 
 // Relative, so the Vite dev proxy handles it and the production build works
@@ -160,6 +162,19 @@ export const getApplication = (id: string) => request<ApplicationDetail>(`/appli
 export const getModels = () => request<ModelInfo[]>('/models')
 
 /**
+ * Work out what each dropped file is, before anything is submitted.
+ *
+ * Stores nothing and creates no application: this runs while the operator is
+ * still filling in the form, so the review screen is instant when they submit.
+ * What comes back is a proposal the operator confirms or corrects.
+ */
+export function classifyEvidence(files: File[]): Promise<ClassifyResponse> {
+  const form = new FormData()
+  for (const file of files) form.append('files', file)
+  return request<ClassifyResponse>('/evidence/classify', { method: 'POST', body: form })
+}
+
+/**
  * The plan for every tier, priced for a given sum assured.
  *
  * The rates and the tier cut-points both come from the API — the dashboard must
@@ -199,15 +214,20 @@ export interface IntakePayload {
  */
 export function submitApplication(input: {
   payload: IntakePayload
-  files: { file: File; arm: string }[]
+  files: { file: File; arm: string; kind: string }[]
   facePhoto?: File | null
 }): Promise<SubmitResponse> {
   const form = new FormData()
   form.append('payload', JSON.stringify(input.payload))
 
-  for (const { file, arm } of input.files) {
+  // `files`, `file_arms` and `file_kinds` are parallel. FormData preserves the
+  // order of repeated fields, so the three stay paired across the round trip.
+  // `file_kinds` is what the operator confirmed on the review screen, and it is
+  // what decides which model reads each file.
+  for (const { file, arm, kind } of input.files) {
     form.append('files', file)
     form.append('file_arms', arm)
+    form.append('file_kinds', kind)
   }
 
   if (input.facePhoto) form.append('face_photo', input.facePhoto)

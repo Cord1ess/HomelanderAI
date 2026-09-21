@@ -197,6 +197,11 @@ CREATE TABLE evidence_files (
     -- Which arm this file is for. Nullable: a generic report attached to the
     -- application belongs to no single arm (DATABASE.md §C).
     model_arm_id        UUID REFERENCES model_arms(id) ON DELETE SET NULL,
+    -- What the evidence is, as confirmed by the operator at intake. Distinct
+    -- from file_type, which is the container (dicom, image, document); this is
+    -- the content, and it decides which model may read the file. NULL means
+    -- nobody established it, in which case no model runs on it.
+    evidence_kind       VARCHAR(30),
     uploaded_at         TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 

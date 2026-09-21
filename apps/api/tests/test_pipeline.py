@@ -3,6 +3,7 @@
 No database, no HTTP — the pipeline is deliberately independent of both.
 """
 
+import contextlib
 from io import BytesIO
 from pathlib import Path
 
@@ -10,7 +11,10 @@ import pytest
 from PIL import Image
 
 from app.arms import tb_xray
-from app.pipeline import STATUS_INSUFFICIENT, STATUS_SCORED, evaluate
+from app.evidence import EvidenceKind
+from app.intake import process_upload
+from app.pipeline import STATUS_INSUFFICIENT, STATUS_SCORED
+from app.pipeline import evaluate as _evaluate
 from app.scoring import INSUFFICIENT, Thresholds
 
 SAMPLES = (
@@ -35,6 +39,28 @@ def history(**flags) -> dict:
     from tests.test_scoring import history as build
 
     return build(**flags)
+
+
+def evaluate(files, *args, kinds=None, **kwargs):
+    """`pipeline.evaluate` with every file declared a chest X-ray.
+
+    The real pipeline will not score evidence whose kind is unknown, because an
+    unclassified file handed to an arbitrary model is how a retina model comes
+    to report 98.8 on a lung. These tests are about the pipeline's plumbing
+    rather than about routing, so they declare the kind up front; the routing
+    itself is covered by its own tests.
+
+    Files that fail intake never reach an arm, so they are simply absent from
+    the map, which is what the pipeline expects.
+    """
+    if kinds is None:
+        kinds = {}
+        for raw, name in files:
+            # A file that fails intake never reaches an arm, so leaving it out
+            # of the map is exactly right.
+            with contextlib.suppress(Exception):
+                kinds[process_upload(raw, name).content_hash] = EvidenceKind.CHEST_XRAY
+    return _evaluate(files, *args, kinds=kinds, **kwargs)
 
 
 # ── nothing usable ───────────────────────────────────────────────────────────
@@ -173,3 +199,56 @@ def test_pipeline_never_denies():
     for flags in (history(), history(hiv=True, haemoptysis=True, diabetes=True)):
         result = evaluate([(png(), "chest.png")], flags, age=80)
         assert result.tier in ("low", "moderate", "elevated", INSUFFICIENT)
+
+
+# ── evidence only reaches the models that can read it ────────────────────────
+
+
+@needs_vision
+def test_an_arm_never_sees_evidence_it_cannot_read():
+    """The bug this prevents, stated plainly.
+
+    Every arm used to run over every file. The retina model handed a chest
+    X-ray returns 98.8 out of 100 with no error, because it has never seen a
+    lung and has no way to say so. Since the highest score governs, that
+    fabricated number won on every application containing a chest film: a
+    healthy chest correctly scored 1.23 by the chest model was reported as 81.
+    """
+    from app.arms import ARMS
+
+    if "eyepacs_dr" not in ARMS:
+        pytest.skip("the retina arm is not registered")
+
+    image = png()
+    result = evaluate([(image, "chest.png")], history())
+
+    assert result.status == STATUS_SCORED
+    ran = {r.arm_name for r in result.runs}
+    assert ran == {"tb_xray"}, f"only the chest model should have run, got {ran}"
+
+
+def test_unclassified_evidence_is_stored_but_not_scored():
+    """A file whose kind was never established must not be handed to whichever
+    model happens to be registered. Storing it unread is the honest outcome."""
+    result = evaluate([(png(), "mystery.png")], history(), kinds={})
+
+    assert result.status == STATUS_INSUFFICIENT
+    assert result.runs == []
+    # The processed file still exists, so nothing the client handed over is lost.
+    assert len(result.processed_files) == 1
+    assert any("not classified" in e for e in result.errors)
+
+
+def test_evidence_no_model_reads_is_reported_not_dropped():
+    """Lab reports and notes have no arm yet. The underwriter is told they
+    exist and were not read, rather than the platform pretending otherwise."""
+    image = png()
+    processed = process_upload(image, "bloods.png")
+    result = evaluate(
+        [(image, "bloods.png")],
+        history(),
+        kinds={processed.content_hash: EvidenceKind.DOCUMENT},
+    )
+
+    assert result.runs == []
+    assert any("no model reads this" in e for e in result.errors)

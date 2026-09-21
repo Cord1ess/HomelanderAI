@@ -35,10 +35,12 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app import audit as audit_chain
-from app import catalogue, persistence, plans, storage
-from app.arms import arm_for_intake
+from app import catalogue, persistence, plans, storage, triage
+from app import evidence as evidence_kinds
+from app.arms import arm_for_intake, arms_for
 from app.db.session import AsyncSessionLocal, get_db
 from app.deps import Principal, current_principal
+from app.evidence import EvidenceKind
 from app.intake import IntakeError, process_upload
 from app.models import (
     Applicant,
@@ -65,9 +67,12 @@ from app.schemas.application import (
     ApplicationDetailSchema,
     AuditEntrySchema,
     AuditTrailSchema,
+    ClassifiedFileSchema,
+    ClassifyResponseSchema,
     CoverageIn,
     DecisionIn,
     DecisionSchema,
+    EvidenceChoiceSchema,
     FileSchema,
     FindingSchema,
     IntakeIn,
@@ -123,6 +128,97 @@ async def get_pricing(
     )
 
 
+@router.post(
+    "/evidence/classify",
+    response_model=ClassifyResponseSchema,
+    summary="Work out what each uploaded file is, before anything is scored",
+)
+async def classify_evidence(
+    files: list[UploadFile] = File(default=[]),
+    _: Principal = Depends(current_principal),
+) -> ClassifyResponseSchema:
+    """Identify dropped files so the operator can confirm where each one goes.
+
+    Stores nothing and creates no application: this runs while the operator is
+    still filling in the form, so the review screen is instant when they submit.
+    The kinds it proposes are only acted on after the operator confirms them.
+    """
+    classified: list[ClassifiedFileSchema] = []
+
+    for upload in files:
+        if not upload.filename:
+            continue
+        raw = await upload.read()
+
+        # De-identify first. Classification reads pixels, and the original
+        # bytes carry the DICOM header we make a point of never storing.
+        tags: dict = {}
+        thumbnail = None
+        try:
+            processed = process_upload(raw, upload.filename)
+            tags = processed.clinical_tags
+            thumbnail = _thumbnail(processed.data)
+            pixels = processed.data
+        except IntakeError:
+            # Unreadable as an image. Still classified, because a PDF is
+            # recognised by its name and is a perfectly good document.
+            pixels = raw
+
+        verdict = triage.classify(pixels, upload.filename, tags)
+        readers = arms_for(verdict.kind)
+
+        classified.append(
+            ClassifiedFileSchema(
+                filename=upload.filename,
+                kind=verdict.kind.value,
+                kind_label=evidence_kinds.label(verdict.kind),
+                reason=verdict.reason,
+                arms=[a.name for a in readers],
+                needs_choice=not verdict.certain,
+                thumbnail=thumbnail,
+            )
+        )
+
+    return ClassifyResponseSchema(
+        files=classified,
+        choices=[
+            EvidenceChoiceSchema(
+                kind=kind.value,
+                label=evidence_kinds.label(kind),
+                arms=[a.name for a in arms_for(kind)],
+            )
+            for kind in EvidenceKind
+            if kind is not EvidenceKind.UNKNOWN
+        ],
+    )
+
+
+def _thumbnail(png_bytes: bytes, size: int = 96) -> str | None:
+    """A small data URI, so the operator confirms a document and not a filename.
+
+    Inline rather than a stored file with a URL: these are previews of evidence
+    that has not been submitted yet, so there is nothing to serve them from and
+    nothing to clean up if the operator abandons the form.
+    """
+    from base64 import b64encode
+    from io import BytesIO
+
+    from PIL import Image
+
+    try:
+        image = Image.open(BytesIO(png_bytes))
+        image.load()
+        image.thumbnail((size, size))
+        buffer = BytesIO()
+        image.convert("L" if image.mode in ("L", "1") else "RGB").save(
+            buffer, format="JPEG", quality=70
+        )
+        return "data:image/jpeg;base64," + b64encode(buffer.getvalue()).decode()
+    except Exception:
+        # A missing preview is a worse review screen, not a failed upload.
+        return None
+
+
 @router.get(
     "/models",
     response_model=list[ModelSchema],
@@ -153,6 +249,10 @@ async def submit_application(
     payload: str = Form(..., description="JSON matching IntakeIn"),
     files: list[UploadFile] = File(default=[]),
     file_arms: list[str] = Form(default=[]),
+    # What the operator confirmed each file is, on the review screen. Parallel
+    # to `files`. Takes precedence over `file_arms`, which only says which form
+    # panel it was attached to.
+    file_kinds: list[str] = Form(default=[]),
     face_photo: UploadFile | None = File(default=None),
     db: AsyncSession = Depends(get_db),
     principal: Principal = Depends(current_principal),
@@ -231,7 +331,9 @@ async def submit_application(
 
     _apply_measurements(applicant, intake.declared_history)
 
-    stored, rejected = await _store_evidence(db, principal, application, files, file_arms)
+    stored, rejected = await _store_evidence(
+        db, principal, application, files, file_arms, file_kinds
+    )
 
     if not stored:
         # Nothing scoreable arrived. Say so on the row rather than leaving it
@@ -307,6 +409,7 @@ async def _store_evidence(
     application: Application,
     files: list[UploadFile],
     file_arms: list[str],
+    file_kinds: list[str] | None = None,
 ) -> tuple[list[str], list[str]]:
     """De-identify each upload and save it. Returns (stored, rejected).
 
@@ -344,6 +447,22 @@ async def _store_evidence(
         arm = arm_for_intake(intake_id) if intake_id else None
         arm_row = await persistence.register_arm(db, arm) if arm else None
 
+        # What the operator confirmed this is. Falls back to what the arm
+        # accepts, so a caller that predates the review screen still works.
+        kind: str | None = None
+        if file_kinds and index < len(file_kinds):
+            try:
+                kind = EvidenceKind(file_kinds[index]).value
+            except ValueError:
+                log.warning("Ignoring unknown evidence kind %r", file_kinds[index])
+        if kind is None and arm is not None:
+            accepted = next(iter(arm.accepts), None)
+            kind = accepted.value if accepted else None
+        # UNKNOWN is stored as nothing: no model should read a file whose kind
+        # was never established.
+        if kind == EvidenceKind.UNKNOWN.value:
+            kind = None
+
         db.add(
             EvidenceFile(
                 tenant_id=principal.tenant_id,
@@ -359,6 +478,7 @@ async def _store_evidence(
                 size_bytes=len(processed.data),
                 content_hash=processed.content_hash,
                 deidentified_at=datetime.now(UTC) if processed.deidentified else None,
+                evidence_kind=kind,
                 model_arm_id=arm_row.id if arm_row else None,
             )
         )
@@ -392,10 +512,28 @@ async def score_application(application_id: UUID) -> None:
             evidence = await db.execute(
                 select(EvidenceFile).where(EvidenceFile.application_id == application_id)
             )
+            rows = evidence.scalars().all()
             payloads = [
                 (storage.read(row.storage_path), row.original_filename or "evidence.png")
-                for row in evidence.scalars().all()
+                for row in rows
             ]
+
+            # What each file is, as confirmed by the operator at intake. A file
+            # with no kind is deliberately absent from this map: the pipeline
+            # stores it and records that nothing read it, rather than handing it
+            # to a model that will answer regardless.
+            kinds: dict[str, EvidenceKind] = {}
+            for row in rows:
+                if not row.evidence_kind or not row.content_hash:
+                    continue
+                try:
+                    kinds[row.content_hash] = EvidenceKind(row.evidence_kind)
+                except ValueError:
+                    log.warning(
+                        "Evidence %s has an unrecognised kind %r; not scoring it",
+                        row.id,
+                        row.evidence_kind,
+                    )
 
             applicant = await db.get(Applicant, application.applicant_id)
             raw_declared = application.declared_history or {}
@@ -414,6 +552,8 @@ async def score_application(application_id: UUID) -> None:
                 payloads,
                 declared,
                 _age_from(applicant.date_of_birth if applicant else None),
+                None,
+                kinds,
             )
 
             await persistence.save_evaluation(db, application, evaluation, started_at)

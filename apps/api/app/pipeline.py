@@ -11,7 +11,8 @@ land, a thin layer writes `Evaluation` into `model_runs`, `sub_scores`,
 
 from dataclasses import dataclass, field
 
-from app.arms import ARMS, ArmResult
+from app.arms import ArmResult, arms_for
+from app.evidence import EvidenceKind, label
 from app.intake import IntakeError, ProcessedFile, process_upload
 from app.scoring import INSUFFICIENT, Adjustment, ScoreResult, Thresholds, score
 
@@ -60,13 +61,20 @@ def evaluate(
     declared_history: dict | None = None,
     age: int | None = None,
     thresholds: Thresholds | None = None,
+    kinds: dict[str, EvidenceKind] | None = None,
 ) -> Evaluation:
     """Run the pipeline over uploaded evidence.
 
-    `files` is a list of (raw bytes, filename). Never raises — every failure
-    becomes an `insufficient_evidence` evaluation carrying the reason, because
-    an underwriter with an error page is worse off than one with an honest
-    "cannot assess".
+    `files` is a list of (raw bytes, filename).
+
+    `kinds` maps a processed file's content hash to what the evidence is, as
+    confirmed by the operator on the intake review screen. Files missing from
+    it are stored but not scored: an unclassified file handed to an arbitrary
+    model is how a retina model comes to report 98.8 on a chest X-ray.
+
+    Never raises. Every failure becomes an `insufficient_evidence` evaluation
+    carrying the reason, because an underwriter with an error page is worse off
+    than one with an honest "cannot assess".
     """
     t = thresholds or Thresholds()
     errors: list[str] = []
@@ -84,14 +92,37 @@ def evaluate(
         errors.append("No readable evidence was provided")
         return _insufficient(errors, t, processed)
 
-    # 2. Run the vision arm over every image. Phase 1 has one arm; the loop is
-    #    over the registry so adding an arm needs no change here.
+    # 2. Run each arm over the evidence it can actually read.
+    #
+    # This used to be every arm over every file, which is the same thing as
+    # asking an eye specialist to read a chest X-ray. They do not decline: the
+    # retina model returns 98.8 out of 100 on a lung, with no error, because it
+    # has never seen one and has no way to say so. Since the highest score
+    # governs, that fabricated number won on every application containing a
+    # chest film.
+    #
+    # `kinds` is what the operator confirmed on the review screen. When it is
+    # absent — an older caller, or a file whose kind was never established —
+    # the arm is skipped rather than guessed at, and the reason is recorded.
     runs: list[ArmRun] = []
-    for arm in ARMS.values():
-        if not arm.available():
-            errors.append(f"{arm.name}: unavailable")
+    for item in processed:
+        kind = kinds.get(item.content_hash) if kinds else None
+
+        if kind is None:
+            errors.append("Evidence was not classified, so no model was run on it")
             continue
-        for item in processed:
+
+        readers = arms_for(kind)
+        if not readers:
+            # Ordinary for a lab report or a note: stored, shown to the
+            # underwriter, and read by a person until a model exists for it.
+            errors.append(f"{label(kind)}: no model reads this kind of evidence yet")
+            continue
+
+        for arm in readers:
+            if not arm.available():
+                errors.append(f"{arm.name}: unavailable")
+                continue
             result = arm.run(item.data)
             runs.append(
                 ArmRun(

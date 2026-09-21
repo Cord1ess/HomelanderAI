@@ -607,3 +607,132 @@ def test_height_and_weight_reach_their_columns(carrier):
     height, weight = asyncio.run(stored())
     assert float(height) == 168
     assert float(weight) == 74.5
+
+
+# ── triage: what each file is decides which model reads it ───────────────────
+
+
+def test_classify_proposes_a_kind_and_a_destination(carrier):
+    """The review screen's data. Each file states what it is, why, and which
+    model would read it."""
+    account = asyncio.run(carrier())
+
+    with TestClient(app) as client:
+        sign_in(client, account)
+        response = client.post(
+            "/api/evidence/classify",
+            files=[
+                ("files", ("scan.png", a_chest_xray(), "image/png")),
+                ("files", ("bloods.pdf", b"%PDF-1.4 x", "application/pdf")),
+            ],
+        )
+
+    assert response.status_code == 200, response.text
+    body = response.json()
+    by_name = {f["filename"]: f for f in body["files"]}
+
+    scan = by_name["scan.png"]
+    assert scan["kind"] == "chest_xray"
+    assert scan["arms"] == ["tb_xray"]
+    assert scan["reason"], "the operator has to be able to judge the proposal"
+    assert scan["thumbnail"], "confirming a filename is not confirming a document"
+
+    # No model reads a lab report yet, and saying so is the honest answer.
+    report = by_name["bloods.pdf"]
+    assert report["kind"] == "document"
+    assert report["arms"] == []
+
+    # Every kind the operator may correct a row to.
+    assert {c["kind"] for c in body["choices"]} >= {"chest_xray", "fundus", "document"}
+
+
+def test_classify_stores_nothing(carrier):
+    """It runs while the operator is still filling in the form, so it must not
+    create an application or leave evidence behind."""
+    account = asyncio.run(carrier())
+
+    with TestClient(app) as client:
+        sign_in(client, account)
+        before = client.get("/api/applications").json()["total"]
+        client.post(
+            "/api/evidence/classify",
+            files=[("files", ("scan.png", a_chest_xray(), "image/png"))],
+        )
+        assert client.get("/api/applications").json()["total"] == before
+
+
+def test_the_confirmed_kind_decides_which_model_runs(carrier):
+    """The operator's confirmation is authoritative. They can see the thumbnail;
+    the classifier cannot."""
+    from sqlalchemy import select
+
+    from app.db.session import AsyncSessionLocal
+    from app.models import EvidenceFile
+
+    account = asyncio.run(carrier())
+
+    with TestClient(app) as client:
+        sign_in(client, account)
+        response = client.post(
+            "/api/applications",
+            data={
+                "payload": intake_payload(),
+                "file_arms": ["cxr_lung"],
+                "file_kinds": ["chest_xray"],
+            },
+            files={"files": ("xray.png", a_chest_xray(), "image/png")},
+        )
+        assert response.status_code == 201, response.text
+        created = response.json()
+
+    async def stored_kind():
+        async with AsyncSessionLocal() as db:
+            row = (
+                await db.execute(
+                    select(EvidenceFile).where(EvidenceFile.application_id == created["id"])
+                )
+            ).scalar_one()
+            return row.evidence_kind
+
+    assert asyncio.run(stored_kind()) == "chest_xray"
+
+
+def test_an_unconfirmed_file_is_stored_but_never_scored(carrier):
+    """A file whose kind nobody established must not be handed to whichever
+    model happens to be registered."""
+    from sqlalchemy import select
+
+    from app.db.session import AsyncSessionLocal
+    from app.models import EvidenceFile
+
+    account = asyncio.run(carrier())
+
+    with TestClient(app) as client:
+        sign_in(client, account)
+        response = client.post(
+            "/api/applications",
+            data={
+                "payload": intake_payload(),
+                "file_arms": [""],
+                "file_kinds": ["unknown"],
+            },
+            files={"files": ("mystery.png", a_chest_xray(), "image/png")},
+        )
+        assert response.status_code == 201, response.text
+        created = response.json()
+        detail = client.get(f"/api/applications/{created['id']}").json()
+
+    async def stored_kind():
+        async with AsyncSessionLocal() as db:
+            row = (
+                await db.execute(
+                    select(EvidenceFile).where(EvidenceFile.application_id == created["id"])
+                )
+            ).scalar_one()
+            return row.evidence_kind
+
+    # Stored, so nothing the client handed over is lost.
+    assert asyncio.run(stored_kind()) is None
+    # But never scored.
+    assert detail["status"] == "insufficient_evidence"
+    assert detail["findings"] == []

@@ -123,6 +123,70 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/auth/profile": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Update Profile Details
+         * @description Update authenticated operator profile attributes.
+         */
+        patch: operations["update_profile_api_auth_profile_patch"];
+        trace?: never;
+    };
+    "/api/auth/profile/change-password": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Change Account Password
+         * @description Change authenticated operator password with current credential verification.
+         */
+        post: operations["change_password_api_auth_profile_change_password_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/auth/users": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Carrier Tenant Staff
+         * @description Retrieve all staff members associated with the caller's carrier tenant.
+         */
+        get: operations["list_tenant_staff_api_auth_users_get"];
+        put?: never;
+        /**
+         * Provision New Staff Operator
+         * @description Provision a new underwriter or senior underwriter within the tenant.
+         */
+        post: operations["provision_staff_api_auth_users_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/pricing": {
         parameters: {
             query?: never;
@@ -140,6 +204,30 @@ export interface paths {
         get: operations["get_pricing_api_pricing_get"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/evidence/classify": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Work out what each uploaded file is, before anything is scored
+         * @description Identify dropped files so the operator can confirm where each one goes.
+         *
+         *     Stores nothing and creates no application: this runs while the operator is
+         *     still filling in the form, so the review screen is instant when they submit.
+         *     The kinds it proposes are only acted on after the operator confirms them.
+         */
+        post: operations["classify_evidence_api_evidence_classify_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -424,6 +512,14 @@ export interface components {
             user: components["schemas"]["UserSchema"];
             tenant: components["schemas"]["TenantSchema"];
         };
+        /** Body_classify_evidence_api_evidence_classify_post */
+        Body_classify_evidence_api_evidence_classify_post: {
+            /**
+             * Files
+             * @default []
+             */
+            files: string[];
+        };
         /** Body_submit_application_api_applications_post */
         Body_submit_application_api_applications_post: {
             /**
@@ -441,8 +537,57 @@ export interface components {
              * @default []
              */
             file_arms: string[];
+            /**
+             * File Kinds
+             * @default []
+             */
+            file_kinds: string[];
             /** Face Photo */
             face_photo?: string | null;
+        };
+        /**
+         * ChangePasswordSchema
+         * @description Payload for updating user password with current credential verification.
+         */
+        ChangePasswordSchema: {
+            /** Currentpassword */
+            currentPassword: string;
+            /** Newpassword */
+            newPassword: string;
+        };
+        /**
+         * ClassifiedFileSchema
+         * @description One file as triage sees it, for the intake review screen.
+         *
+         *     `kind` is a proposal, not a decision. The operator confirms or corrects it
+         *     before anything is scored, and `reason` is what lets them judge whether the
+         *     proposal is sensible.
+         */
+        ClassifiedFileSchema: {
+            /** Filename */
+            filename: string;
+            /** Kind */
+            kind: string;
+            /** Kindlabel */
+            kindLabel: string;
+            /** Reason */
+            reason: string;
+            /** Arms */
+            arms?: string[];
+            /**
+             * Needschoice
+             * @default false
+             */
+            needsChoice: boolean;
+            /** Thumbnail */
+            thumbnail?: string | null;
+        };
+        /** ClassifyResponseSchema */
+        ClassifyResponseSchema: {
+            /** Files */
+            files: components["schemas"]["ClassifiedFileSchema"][];
+            /** Choices */
+            choices?: components["schemas"]["EvidenceChoiceSchema"][];
         };
         /** CoverageIn */
         CoverageIn: {
@@ -491,6 +636,18 @@ export interface components {
             decidedAt: string;
             /** Underwritername */
             underwriterName?: string | null;
+        };
+        /**
+         * EvidenceChoiceSchema
+         * @description One option in the correction dropdown on the review screen.
+         */
+        EvidenceChoiceSchema: {
+            /** Kind */
+            kind: string;
+            /** Label */
+            label: string;
+            /** Arms */
+            arms?: string[];
         };
         /** FileSchema */
         FileSchema: {
@@ -714,6 +871,22 @@ export interface components {
             };
         };
         /**
+         * RegisterStaffSchema
+         * @description Payload for tenant admin provisioning a new underwriter or senior staff.
+         */
+        RegisterStaffSchema: {
+            /** Fullname */
+            fullName: string;
+            /** Email */
+            email: string;
+            /** Password */
+            password: string;
+            /** @default underwriter */
+            role: components["schemas"]["UserRole"];
+            /** Licensenumber */
+            licenseNumber?: string | null;
+        };
+        /**
          * RegisterTenantSchema
          * @description Payload for onboarding a new carrier tenant + tenant admin.
          */
@@ -797,6 +970,16 @@ export interface components {
          * @enum {string}
          */
         UnderwriterDecisionType: "confirmed_fast_track" | "approved_with_adjustment" | "escalated_senior_review" | "requested_additional_evidence";
+        /**
+         * UpdateProfileSchema
+         * @description Payload for updating operator profile details.
+         */
+        UpdateProfileSchema: {
+            /** Fullname */
+            fullName?: string | null;
+            /** Licensenumber */
+            licenseNumber?: string | null;
+        };
         /**
          * UserLoginSchema
          * @description Sign-in details.
@@ -1025,6 +1208,144 @@ export interface operations {
             };
         };
     };
+    update_profile_api_auth_profile_patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: {
+                session_token?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateProfileSchema"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UserSchema"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    change_password_api_auth_profile_change_password_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: {
+                session_token?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ChangePasswordSchema"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: string;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_tenant_staff_api_auth_users_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: {
+                session_token?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UserSchema"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    provision_staff_api_auth_users_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: {
+                session_token?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RegisterStaffSchema"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UserSchema"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     get_pricing_api_pricing_get: {
         parameters: {
             query?: {
@@ -1046,6 +1367,41 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["PricingSchema"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    classify_evidence_api_evidence_classify_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: {
+                session_token?: string | null;
+            };
+        };
+        requestBody?: {
+            content: {
+                "multipart/form-data": components["schemas"]["Body_classify_evidence_api_evidence_classify_post"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ClassifyResponseSchema"];
                 };
             };
             /** @description Validation Error */

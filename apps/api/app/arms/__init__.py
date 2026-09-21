@@ -12,6 +12,8 @@ indirection (docs/DESIGN_POLICY.md §2, §7).
 from collections.abc import Callable
 from dataclasses import dataclass, field
 
+from app.evidence import EvidenceKind
+
 
 @dataclass
 class ArmResult:
@@ -45,6 +47,17 @@ class Arm:
     # never drift apart silently, which is exactly what happened when the router
     # matched a form id against this dict's keys and quietly found nothing.
     intake_id: str
+    # The kinds of evidence this arm can actually read, as EvidenceKind values.
+    #
+    # An arm has no way to recognise a document it was never trained on: the
+    # retina model handed a chest X-ray returns 98.8 out of 100, with no error,
+    # because it has never seen a lung and cannot say so. The pipeline runs
+    # every arm over every file, so without this the highest score on any
+    # application was whichever model was most confidently wrong.
+    #
+    # This is the backstop. Even if routing sends the wrong file to the wrong
+    # arm, the arm refuses rather than inventing a number.
+    accepts: frozenset[str]
     # Everything the model_arms row needs, so the registry in code is the one
     # source of truth and a seed file cannot drift out of sync with it.
     preprocessing_version: str
@@ -59,6 +72,17 @@ class Arm:
 # Imported at the bottom on purpose: tb_xray and eyepacs_dr do `from app.arms
 # import ArmResult`, and by this point ArmResult is defined, so there is no cycle.
 from app.arms import eyepacs_dr, tb_xray  # noqa: E402
+
+
+def arms_for(kind: EvidenceKind | str) -> list[Arm]:
+    """Every arm that can read this kind of evidence.
+
+    A list, not one arm: a chest X-ray could feed both a tuberculosis screen and
+    a cardiovascular one later, and nothing about that should need a change
+    here. Returns empty for kinds nothing reads yet, which is an ordinary
+    answer rather than an error.
+    """
+    return [a for a in ARMS.values() if kind in a.accepts]
 
 
 def arm_for_intake(intake_id: str) -> Arm | None:
@@ -76,6 +100,7 @@ ARMS: dict[str, Arm] = {
         version=tb_xray.VERSION,
         arm_type="vision",
         intake_id="cxr_lung",
+        accepts=frozenset({EvidenceKind.CHEST_XRAY}),
         preprocessing_version=tb_xray.PREPROCESSING_VERSION,
         weight_hash=tb_xray.WEIGHT_HASH,
         validation=tb_xray.VALIDATION,
@@ -87,6 +112,7 @@ ARMS: dict[str, Arm] = {
         version=eyepacs_dr.VERSION,
         arm_type="vision",
         intake_id="eyepacs",
+        accepts=frozenset({EvidenceKind.FUNDUS}),
         preprocessing_version=eyepacs_dr.PREPROCESSING_VERSION,
         weight_hash=eyepacs_dr.WEIGHT_HASH,
         validation=eyepacs_dr.VALIDATION,

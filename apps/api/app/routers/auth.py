@@ -365,7 +365,7 @@ async def update_profile(
         )
 
     if token_data.get("fallback"):
-        session = _admin_session()
+        session = _demo_session()
         if payload.full_name is not None and payload.full_name.strip():
             session.user.full_name = payload.full_name.strip()
         if payload.license_number is not None:

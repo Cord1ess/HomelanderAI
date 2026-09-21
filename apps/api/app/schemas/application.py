@@ -109,6 +109,44 @@ class ModelInfoSchema(BaseSchema):
     cv_auc: float | None = None
 
 
+class ClassifiedFileSchema(BaseSchema):
+    """One file as triage sees it, for the intake review screen.
+
+    `kind` is a proposal, not a decision. The operator confirms or corrects it
+    before anything is scored, and `reason` is what lets them judge whether the
+    proposal is sensible.
+    """
+
+    filename: str
+    kind: str
+    kind_label: str
+    reason: str
+    # Empty when nothing reads this kind yet, which is an ordinary outcome for
+    # a lab report and is shown as such rather than as a failure.
+    arms: list[str] = Field(default_factory=list)
+    # Blocks submission until the operator chooses. An unrecognised file that
+    # can be waved through is the whole safeguard undone.
+    needs_choice: bool = False
+    # A small preview so the operator checks a document, not a filename.
+    thumbnail: str | None = None
+
+
+class EvidenceChoiceSchema(BaseSchema):
+    """One option in the correction dropdown on the review screen."""
+
+    kind: str
+    label: str
+    arms: list[str] = Field(default_factory=list)
+
+
+class ClassifyResponseSchema(BaseSchema):
+    files: list[ClassifiedFileSchema]
+    # Every kind the operator may pick from when correcting a row. A typed
+    # model rather than a bare dict, so the generated TypeScript keeps its
+    # shape and the dashboard cannot read a field that does not exist.
+    choices: list[EvidenceChoiceSchema] = Field(default_factory=list)
+
+
 class PlanSchema(BaseSchema):
     """The policy recommendation for a tier, priced for this application.
 

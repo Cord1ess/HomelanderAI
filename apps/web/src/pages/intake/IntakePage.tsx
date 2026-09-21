@@ -25,7 +25,14 @@ import { useQuery } from '@tanstack/react-query'
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 
-import { getModels, submitApplication, type SubmitResponse } from '../../api/client'
+import {
+  classifyEvidence,
+  getModels,
+  submitApplication,
+  type ClassifyResponse,
+  type SubmitResponse,
+} from '../../api/client'
+import { EvidenceReview } from './EvidenceReview'
 import { Section } from './components'
 
 /**
@@ -370,6 +377,13 @@ export function IntakePage() {
   const [facePhoto, setFacePhoto] = useState<File | null>(null)
   const [facePreview, setFacePreview] = useState<string | null>(null)
   const [rejectNote, setRejectNote] = useState<Record<string, string | null>>({})
+  // The review step between pressing submit and anything being scored.
+  // `classified` is null until the API answers; `overrides` holds the
+  // operator's corrections, keyed by filename.
+  const [reviewOpen, setReviewOpen] = useState(false)
+  const [classified, setClassified] = useState<ClassifyResponse | null>(null)
+  const [overrides, setOverrides] = useState<Record<string, string>>({})
+
   const [submitting, setSubmitting] = useState(false)
   const [submitted, setSubmitted] = useState<SubmitResponse | null>(null)
   const [submitError, setSubmitError] = useState<string | null>(null)
@@ -419,6 +433,19 @@ export function IntakePage() {
       file: f,
     }))
     setModelFiles((prev) => ({ ...prev, [modelId]: [...(prev[modelId] ?? []), ...added] }))
+
+    // Classify as the file lands rather than at submit. By the time the
+    // operator finishes the form the answer is already cached, so the review
+    // screen opens instantly instead of making them wait with a client
+    // watching. A failure here is silent: submit re-classifies anyway, and an
+    // error about a background request would mean nothing to the operator.
+    void classifyEvidence(dropped)
+      .then((result) => {
+        setClassified((prev) =>
+          prev ? { ...prev, files: [...prev.files, ...result.files] } : result,
+        )
+      })
+      .catch(() => {})
   }
 
   const addModelReject = (modelId: string, rejects: { file: File }[]) => {
@@ -431,11 +458,24 @@ export function IntakePage() {
     }))
   }
 
-  const removeModelFile = (modelId: string, id: string) =>
+  const removeModelFile = (modelId: string, id: string) => {
+    const gone = (modelFiles[modelId] ?? []).find((f) => f.id === id)
     setModelFiles((prev) => ({
       ...prev,
       [modelId]: (prev[modelId] ?? []).filter((f) => f.id !== id),
     }))
+    // Drop its classification as well. A row left behind for a file that is no
+    // longer attached would sit unresolved and block submit forever.
+    if (gone) {
+      setClassified((prev) =>
+        prev ? { ...prev, files: prev.files.filter((f) => f.filename !== gone.name) } : prev,
+      )
+      setOverrides((prev) => {
+        const { [gone.name]: _removed, ...rest } = prev
+        return rest
+      })
+    }
+  }
 
   const setFace = (file: File | null) => {
     if (facePreview) URL.revokeObjectURL(facePreview)
@@ -493,16 +533,41 @@ export function IntakePage() {
 
   const canSubmit = sections[0] && sections[1] && modelsSectionComplete
 
+  /** Every attached file, paired with the model panel it came from. */
+  const uploads = selected.flatMap((m) =>
+    (modelFiles[m.id] ?? []).map((f) => ({ file: f.file, arm: m.id })),
+  )
+
+  /**
+   * Submit opens the review step rather than sending. Nothing is scored until
+   * the operator has confirmed what each document is, because a model given the
+   * wrong kind of file answers confidently instead of failing.
+   */
   const handleSubmit = async () => {
     if (!canSubmit) return
+    setSubmitError(null)
+    setReviewOpen(true)
+
+    // Normally already done as the files landed. This covers the case where
+    // that background request failed or is still in flight.
+    if (!classified || classified.files.length !== uploads.length) {
+      try {
+        setClassified(await classifyEvidence(uploads.map((u) => u.file)))
+      } catch {
+        setClassified({ files: [], choices: [] })
+      }
+    }
+  }
+
+  /** Called from the review step, once every file has a confirmed kind. */
+  const sendApplication = async () => {
     setSubmitting(true)
     setSubmitError(null)
 
-    // Every selected model's uploads, paired with the arm they belong to. The
-    // pairing is what tells the API which model each file is evidence for.
-    const uploads = selected.flatMap((m) =>
-      (modelFiles[m.id] ?? []).map((f) => ({ file: f.file, arm: m.id })),
-    )
+    const kindFor = (file: File) => {
+      const proposed = classified?.files.find((f) => f.filename === file.name)
+      return overrides[file.name] ?? proposed?.kind ?? 'unknown'
+    }
 
     try {
       const result = await submitApplication({
@@ -521,9 +586,10 @@ export function IntakePage() {
           modelsRequested: form.values.selectedModels,
           declaredHistory: declaredHistory(form.values.selectedModels, form.values.modelFields),
         },
-        files: uploads,
+        files: uploads.map((u) => ({ ...u, kind: kindFor(u.file) })),
         facePhoto: facePhoto,
       })
+      setReviewOpen(false)
       setSubmitted(result)
     } catch (err) {
       // Keep the form exactly as it was. The operator has a client sitting
@@ -819,6 +885,18 @@ export function IntakePage() {
           Submit application
         </Button>
       </Group>
+      <EvidenceReview
+        opened={reviewOpen}
+        result={classified}
+        overrides={overrides}
+        onOverride={(filename, kind) =>
+          setOverrides((prev) => ({ ...prev, [filename]: kind }))
+        }
+        onConfirm={() => void sendApplication()}
+        onCancel={() => setReviewOpen(false)}
+        submitting={submitting}
+      />
+
       {submitting && (
         <Group gap="xs" c="dimmed">
           <Loader size={14} />
