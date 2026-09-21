@@ -1,23 +1,6 @@
-import {
-  Alert,
-  Anchor,
-  Button,
-  Grid,
-  PasswordInput,
-  Select,
-  Stack,
-  Text,
-  TextInput,
-} from '@mantine/core'
+import { Alert } from '@mantine/core'
 import { isEmail, useForm } from '@mantine/form'
-import {
-  IconAlertCircle,
-  IconBadge,
-  IconBuilding,
-  IconLock,
-  IconMail,
-  IconUser,
-} from '@tabler/icons-react'
+import { IconAlertCircle } from '@tabler/icons-react'
 import { useState } from 'react'
 import { useAuth } from '../../context/AuthContext'
 import type { RegisterTenantPayload, UserRole } from '../../types/auth'
@@ -26,6 +9,10 @@ interface RegisterTenantFormProps {
   onSwitchToLogin?: () => void
 }
 
+/**
+ * Carrier registration form — same clean white panel style as LoginForm.
+ * Uses plain HTML inputs with auth-* CSS classes.
+ */
 export function RegisterTenantForm({ onSwitchToLogin }: RegisterTenantFormProps) {
   const { registerTenant } = useAuth()
   const [error, setError] = useState<string | null>(null)
@@ -55,121 +42,150 @@ export function RegisterTenantForm({ onSwitchToLogin }: RegisterTenantFormProps)
     try {
       await registerTenant(values)
     } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : 'Registration failed. Please check input values.'
-      setError(message)
+      setError(err instanceof Error ? err.message : 'Registration failed. Please check your inputs.')
     } finally {
       setSubmitting(false)
     }
   }
 
+  const field = (
+    id: string,
+    label: string,
+    type: 'text' | 'email' | 'password',
+    placeholder: string,
+    inputProps: object,
+    error?: string | null,
+    required = true,
+  ) => (
+    <div style={{ marginBottom: '0.85rem' }}>
+      <label className="auth-label" htmlFor={id}>
+        {label}{required && <span style={{ color: 'var(--neo-accent)', marginLeft: 2 }}>*</span>}
+      </label>
+      <input
+        id={id}
+        type={type}
+        className="auth-input"
+        placeholder={placeholder}
+        {...inputProps}
+      />
+      {error && (
+        <p style={{ margin: '0.2rem 0 0', fontSize: '0.7rem', color: '#c0392b' }}>{error}</p>
+      )}
+    </div>
+  )
+
   return (
     <form onSubmit={form.onSubmit(handleSubmit)}>
-      <Stack gap="sm">
-        {error && (
-          <Alert color="red" variant="light" icon={<IconAlertCircle size={16} />} title="Registration Error">
-            {error}
-          </Alert>
-        )}
+      <h2 className="auth-heading">Create an account.</h2>
+      <p className="auth-subheading">
+        Register your <em>carrier</em> and set up the admin account.
+      </p>
 
-        <Text size="xs" fw={700} tt="uppercase" c="dimmed" lts={0.5}>
-          1. Subscribing Carrier Information
-        </Text>
+      {error && (
+        <Alert
+          color="red"
+          variant="light"
+          icon={<IconAlertCircle size={15} />}
+          mb="md"
+          p="xs"
+          style={{ fontSize: '0.8rem' }}
+        >
+          {error}
+        </Alert>
+      )}
 
-        <Grid>
-          <Grid.Col span={{ base: 12, sm: 7 }}>
-            <TextInput
-              required
-              label="Company name"
-              placeholder="e.g. Apex Life Assurance"
-              leftSection={<IconBuilding size={16} />}
-              {...form.getInputProps('tenantName')}
-            />
-          </Grid.Col>
-          <Grid.Col span={{ base: 12, sm: 5 }}>
-            <Select
-              required
-              label="Plan"
-              data={[
-                { value: 'pilot', label: 'Trial' },
-                { value: 'standard', label: 'Standard' },
-                { value: 'enterprise', label: 'Enterprise' },
-              ]}
-              {...form.getInputProps('subscriptionTier')}
-            />
-          </Grid.Col>
-        </Grid>
+      {/* Section 1 — Carrier */}
+      <p style={{ fontSize: '0.68rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', color: 'rgba(15,26,20,0.4)', marginBottom: '0.65rem' }}>
+        1. Carrier
+      </p>
 
-        <Text size="xs" fw={700} tt="uppercase" c="dimmed" lts={0.5} mt="xs">
-          2. Initial Tenant Admin Account
-        </Text>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: '0.65rem', marginBottom: '0.85rem' }}>
+        <div>
+          <label className="auth-label" htmlFor="reg-company">
+            Company name<span style={{ color: 'var(--neo-accent)', marginLeft: 2 }}>*</span>
+          </label>
+          <input
+            id="reg-company"
+            type="text"
+            className="auth-input"
+            placeholder="Apex Life Assurance"
+            {...form.getInputProps('tenantName')}
+          />
+          {form.errors.tenantName && (
+            <p style={{ margin: '0.2rem 0 0', fontSize: '0.7rem', color: '#c0392b' }}>{form.errors.tenantName}</p>
+          )}
+        </div>
+        <div>
+          <label className="auth-label" htmlFor="reg-plan">Plan</label>
+          <select
+            id="reg-plan"
+            className="auth-input"
+            style={{ cursor: 'pointer' }}
+            value={form.values.subscriptionTier}
+            onChange={(e) => form.setFieldValue('subscriptionTier', e.target.value as RegisterTenantPayload['subscriptionTier'])}
+          >
+            <option value="pilot">Trial</option>
+            <option value="standard">Standard</option>
+            <option value="enterprise">Enterprise</option>
+          </select>
+        </div>
+      </div>
 
-        <Grid>
-          <Grid.Col span={{ base: 12, sm: 6 }}>
-            <TextInput
-              required
-              label="Your full name"
-              placeholder="Dr. Sarah Jenkins"
-              leftSection={<IconUser size={16} />}
-              {...form.getInputProps('adminFullName')}
-            />
-          </Grid.Col>
+      {/* Section 2 — Admin account */}
+      <p style={{ fontSize: '0.68rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', color: 'rgba(15,26,20,0.4)', marginBottom: '0.65rem', marginTop: '0.25rem' }}>
+        2. Admin account
+      </p>
 
-          <Grid.Col span={{ base: 12, sm: 6 }}>
-            <TextInput
-              required
-              label="Email"
-              placeholder="sarah.jenkins@apexlife.com"
-              leftSection={<IconMail size={16} />}
-              {...form.getInputProps('adminEmail')}
-            />
-          </Grid.Col>
-        </Grid>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.65rem' }}>
+        {field('reg-name', 'Full name', 'text', 'Dr. Sarah Jenkins', form.getInputProps('adminFullName'), form.errors.adminFullName as string)}
+        {field('reg-email', 'Work email', 'email', 'sarah@apexlife.com', form.getInputProps('adminEmail'), form.errors.adminEmail as string)}
+        {field('reg-password', 'Password', 'password', 'Min. 8 characters', form.getInputProps('adminPassword'), form.errors.adminPassword as string)}
+        {field('reg-license', 'Licence number', 'text', 'FALU-98214 (optional)', form.getInputProps('licenseNumber'), null, false)}
+      </div>
 
-        <Grid>
-          <Grid.Col span={{ base: 12, sm: 6 }}>
-            <PasswordInput
-              required
-              label="Password"
-              placeholder="Min. 8 characters"
-              leftSection={<IconLock size={16} />}
-              {...form.getInputProps('adminPassword')}
-            />
-          </Grid.Col>
-
-          <Grid.Col span={{ base: 12, sm: 6 }}>
-            <TextInput
-              label="Underwriter licence number (optional)"
-              placeholder="e.g. FALU-98214 (optional)"
-              leftSection={<IconBadge size={16} />}
-              {...form.getInputProps('licenseNumber')}
-            />
-          </Grid.Col>
-        </Grid>
-
-        <Select
-          label="Your role"
-          data={[
-            { value: 'admin', label: 'Administrator — manages people and settings' },
-            { value: 'senior_underwriter', label: 'Senior underwriter — signs off decisions' },
-            { value: 'underwriter', label: 'Underwriter — reviews applications' },
-          ]}
+      {/* Role */}
+      <div style={{ marginBottom: '1.5rem', marginTop: '0.85rem' }}>
+        <label className="auth-label" htmlFor="reg-role">Your role</label>
+        <select
+          id="reg-role"
+          className="auth-input"
+          style={{ cursor: 'pointer' }}
           value={form.values.role}
-          onChange={(val) => form.setFieldValue('role', (val as UserRole) || 'admin')}
-        />
+          onChange={(e) => form.setFieldValue('role', e.target.value as UserRole)}
+        >
+          <option value="admin">Administrator — manages people and settings</option>
+          <option value="senior_underwriter">Senior underwriter — signs off decisions</option>
+          <option value="underwriter">Underwriter — reviews applications</option>
+        </select>
+      </div>
 
-        <Button type="submit" loading={submitting} color="clinical" fullWidth radius="md" mt="md">
-          Create account
-        </Button>
+      <button type="submit" className="auth-btn-primary" disabled={submitting}>
+        {submitting ? 'Creating account…' : 'Create account →'}
+      </button>
 
-        {onSwitchToLogin && (
-          <Text size="xs" ta="center" c="dimmed" mt="xs">
-            Already have a carrier account?{' '}
-            <Anchor component="button" type="button" size="xs" onClick={onSwitchToLogin} fw={600}>
-              Sign In
-            </Anchor>
-          </Text>
-        )}
-      </Stack>
+      {onSwitchToLogin && (
+        <p style={{ marginTop: '1.25rem', fontSize: '0.78rem', textAlign: 'center', color: 'rgba(15,26,20,0.45)' }}>
+          Already have an account?{' '}
+          <button
+            type="button"
+            onClick={onSwitchToLogin}
+            style={{
+              background: 'none',
+              border: 'none',
+              padding: 0,
+              fontSize: 'inherit',
+              cursor: 'pointer',
+              color: 'var(--neo-accent)',
+              fontWeight: 600,
+              textDecoration: 'underline',
+              textUnderlineOffset: '2px',
+            }}
+          >
+            Sign in
+          </button>
+        </p>
+      )}
     </form>
   )
 }
+

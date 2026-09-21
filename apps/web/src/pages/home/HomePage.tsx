@@ -7,303 +7,476 @@ import {
   Group,
   SimpleGrid,
   Stack,
+  Table,
   Text,
-  ThemeIcon,
 } from '@mantine/core'
-import {
-  IconArrowRight,
-  IconBuildingBank,
-  IconEye,
-  IconFileCheck,
-  IconHistory,
-  IconShieldLock,
-  IconStethoscope,
-} from '@tabler/icons-react'
+import { IconArrowRight } from '@tabler/icons-react'
 import type { CSSProperties } from 'react'
 import { Link } from 'react-router-dom'
 
 import { BrandIcon } from '../../components/BrandIcon'
 import { useAuth } from '../../context/AuthContext'
+import { PipelineAnimation } from './PipelineAnimation'
 
 /**
- * Home landing — public, outside the guarded console.
+ * Public landing page. Sells to insurers, so it answers a buyer's questions in
+ * order: what this does, how it works, what you get, what it costs you to be
+ * wrong.
  *
- * Neo-brutalist persona: a light, near-white page with hard black borders,
- * chunky offset shadows and loud clinical-teal accents. Dark ink text on the
- * light background keeps everything readable, in contrast to the dark ERP
- * console behind the login.
+ * Every number and capability here is checked against the code. If a model is
+ * listed as live it is in the arm registry; if it is listed as coming it is
+ * not. Marketing copy that outruns the product is the fastest way to lose an
+ * insurer's trust, and the claims are cheap to verify.
  */
 
-const FEATURES = [
+// Only what the registry actually runs. Keep in step with app/catalogue.py.
+const LIVE_MODELS = [
   {
-    icon: IconStethoscope,
-    title: 'TB chest X-ray screening',
-    body: 'The vision arm screens chest radiographs for tuberculosis, and the declared medical history is weighed against it to reach a score.',
+    name: 'Chest X-ray',
+    finds: 'Tuberculosis',
+    detail:
+      'Reads 18 radiological findings and weighs them into one score. Trained on the Shenzhen set, 0.877 AUC under five-fold cross-validation.',
   },
   {
-    icon: IconEye,
-    title: 'Explainable Grad-CAM',
-    body: 'Every recommendation ships with the heatmap and the reasoning — so the underwriter can see the evidence, not just the score.',
-  },
-  {
-    icon: IconFileCheck,
-    title: 'Write-once decisions',
-    body: 'Four defined actions, no reject button. Escalation to a senior underwriter is how a declined case stays humane.',
-  },
-  {
-    icon: IconHistory,
-    title: 'Full audit trail',
-    body: 'Model runs, human decisions and identities are timestamped end to end — an underwriting record you can defend.',
+    name: 'Retinal photo',
+    finds: 'Diabetic retinopathy',
+    detail:
+      'Pretrained on 35,126 EyePACS images and validated against APTOS 2019 at 0.942 AUC.',
   },
 ]
 
-const TICKER = [
-  'AI decision support',
-  'Human sign-off required',
-  'TB chest X-ray screening',
-  'Explainable Grad-CAM',
-  'Full audit trail',
+const COMING = ['Mammogram', 'Skin lesion', 'Clinical notes', 'Lifestyle data', 'Brain MRI']
+
+// The actual pipeline, in the order the code runs it.
+const STEPS = [
+  {
+    n: '01',
+    title: 'Your team uploads the file',
+    body: 'An operator enters the applicant, the cover requested, and the health questions, then attaches the scan. Identifiers inside the image are stripped on the way in and the original is never written to disk.',
+  },
+  {
+    n: '02',
+    title: 'The model reads the evidence',
+    body: 'Scoring runs in the background, so the operator is not left waiting with a client in front of them. Each finding is recorded with how much it moved the score.',
+  },
+  {
+    n: '03',
+    title: 'Declared history adjusts the score',
+    body: 'Thirteen rules apply what the image cannot show. Previously treated tuberculosis with no current symptoms lowers the score; the same history with a current cough raises it.',
+  },
+  {
+    n: '04',
+    title: 'An underwriter decides',
+    body: 'The platform recommends. A licensed underwriter records the decision, and it is written once. There is no reject button and no automated denial.',
+  },
 ]
 
-const linkStyle: CSSProperties = {
-  fontWeight: 700,
+// The tiers from app/plans.py, with the premiums that go with them.
+const TIERS = [
+  { band: '0 to 30', name: 'Standard', action: 'Cleared at baseline rates', who: 'One-click confirmation' },
+  { band: '30 to 65', name: 'Standard with adjustment', action: 'Approve with a rate adjustment', who: 'Underwriter sets the final rate' },
+  { band: 'Above 65', name: 'Senior review', action: 'Full evidence pack routed onward', who: 'Senior underwriter, never automated' },
+  { band: 'No score', name: 'Not assessable', action: 'More evidence requested', who: 'Underwriter asks for what is missing' },
+]
+
+const WHAT_YOU_GET = [
+  {
+    title: 'The reasoning, not just a number',
+    body: 'Each score shows which findings drove it and by how much, with a heatmap over the region the model read. An underwriter can see whether to trust it.',
+  },
+  {
+    title: 'A record that holds up',
+    body: 'Every model run, every decision, and the person who made it are written to an append-only log chained by hash. Altering one entry breaks every entry after it, and the chain is re-checked on every read.',
+  },
+  {
+    title: 'Your data stays yours',
+    body: 'Each carrier sees only its own applications. Scans are served through the API with the request checked against your account, never from a public URL.',
+  },
+  {
+    title: 'Honest about its limits',
+    body: 'Where a model has only been tested on one hospital, the screen says so next to the score. You are told what the number is worth.',
+  },
+]
+
+const navLinkStyle: CSSProperties = {
+  fontWeight: 500,
+  fontSize: '0.875rem',
   color: 'var(--neo-ink)',
-  textDecorationColor: 'var(--neo-accent)',
-  textUnderlineOffset: 4,
+  textDecoration: 'none',
+  opacity: 0.55,
+  transition: 'opacity 0.15s ease',
+  fontFamily: '"Space Grotesk Variable", "Space Grotesk", sans-serif',
 }
 
+const GROTESK = '"Space Grotesk Variable", "Space Grotesk", sans-serif'
+
 export function HomePage() {
-  // This page is public, but a signed-in user can land back on it (the logo,
-  // a bookmark, the browser's back button). Point them at the console rather
-  // than at a sign-in they have already done.
   const { isAuthenticated } = useAuth()
   const ctaTo = isAuthenticated ? '/queue' : '/auth'
 
   return (
     <Box className="neo-shell">
-      {/* Top bar */}
-      <Box style={{ borderBottom: '3px solid var(--neo-line)' }}>
-        <Container size="lg" py="lg">
+      {/* ── Nav ─────────────────────────────────────────────────────── */}
+      <Box style={{ borderBottom: '1px solid var(--neo-border)' }}>
+        <Container size="lg" py="md">
           <Group justify="space-between" align="center">
-            <Group gap="sm" align="center">
-              <Box className="neo-brand-chip neo-press" p={5}>
-                <BrandIcon width={56} height={56} style={{ display: 'block' }} />
+            <Group gap="xs" align="center">
+              <Box className="neo-brand-chip neo-press" p={4}>
+                <BrandIcon width={36} height={36} style={{ display: 'block' }} />
               </Box>
-              <Text className="neo-display" size="xl" style={{ fontSize: '1.4rem' }}>
-                HomelanderAI
+              <Text
+                style={{
+                  fontSize: '1rem',
+                  fontWeight: 600,
+                  letterSpacing: '-0.01em',
+                  fontFamily: GROTESK,
+                  color: 'var(--neo-ink)',
+                }}
+              >
+                homelander
               </Text>
             </Group>
 
-            <Group gap="lg" visibleFrom="sm">
-              <Anchor size="sm" style={linkStyle} href="#features">
-                Features
-              </Anchor>
-              <Anchor size="sm" style={linkStyle} href="#features">
-                How it works
-              </Anchor>
-              <Anchor size="sm" style={linkStyle} href="#security">
-                Security
-              </Anchor>
+            <Group gap="xl" visibleFrom="md">
+              <Anchor style={navLinkStyle} href="#how">How it works</Anchor>
+              <Anchor style={navLinkStyle} href="#screening">Screening</Anchor>
+              <Anchor style={navLinkStyle} href="#tiers">Tiers</Anchor>
+              <Anchor style={navLinkStyle} href="#limits">Limits</Anchor>
             </Group>
 
-            <Box className="neo-press">
-              <Button
-                component={Link}
-                to={ctaTo}
-                size="sm"
-                radius={0}
-                style={{
-                  border: '3px solid var(--neo-line)',
-                  boxShadow: '4px 4px 0 var(--neo-ink)',
-                  fontWeight: 800,
-                }}
-              >
-                {isAuthenticated ? 'Dashboard →' : 'Sign in →'}
-              </Button>
-            </Box>
+            <Group gap="md">
+              <Anchor component={Link} to="/auth" style={{ ...navLinkStyle, opacity: 0.4 }} visibleFrom="sm">
+                Sign in
+              </Anchor>
+              <Box className="neo-press">
+                <Button
+                  component={Link}
+                  to={ctaTo}
+                  size="sm"
+                  radius={4}
+                  style={{
+                    background: 'var(--neo-forest)',
+                    border: 'none',
+                    fontWeight: 600,
+                    fontFamily: GROTESK,
+                    color: '#FFFFFF',
+                  }}
+                >
+                  {isAuthenticated ? 'Open console' : 'Sign in'}
+                </Button>
+              </Box>
+            </Group>
           </Group>
         </Container>
       </Box>
 
-      {/* Hero */}
-      <Box py={72}>
+      {/* ── Hero ────────────────────────────────────────────────────── */}
+      <Box py={{ base: 64, md: 96 }}>
         <Container size="lg">
-          <SimpleGrid cols={{ base: 1, lg: 2 }} spacing={48}>
+          <SimpleGrid cols={{ base: 1, lg: 2 }} spacing={56} style={{ alignItems: 'center' }}>
             <Stack gap="lg">
               <div>
-                <Badge
-                  variant="filled"
-                  color="dark"
-                  radius={0}
-                  size="md"
-                  style={{ border: '2px solid var(--neo-ink)', boxShadow: '3px 3px 0 var(--neo-accent)' }}
-                >
-                  AI-assisted underwriting
-                </Badge>
+                <span className="neo-decision-badge">
+                  For insurers. Decision support, not a medical device.
+                </span>
               </div>
 
               <Text
                 className="home-rise home-rise-1 neo-display"
-                style={{ fontSize: 'clamp(2.4rem, 6vw, 4rem)' }}
+                style={{ fontSize: 'clamp(2.2rem, 5vw, 3.5rem)', fontWeight: 700 }}
               >
-                Catch early risk{' '}
-                <span className="neo-underline">before</span> it becomes a claim
+                Find the risk <span className="neo-underline">before</span> you write the policy.
               </Text>
 
-              <Text size="md" c="dark" style={{ lineHeight: 1.6, maxWidth: 520 }}>
-                HomelanderAI screens chest X-rays and declared history to give
-                underwriters a recommendation — and the evidence behind it —
-                before a claim can expose the gap between the premium collected
-                and the claim paid.
+              <Text
+                className="home-rise home-rise-2"
+                style={{
+                  fontSize: '0.95rem',
+                  lineHeight: 1.75,
+                  maxWidth: 470,
+                  color: 'var(--neo-ink)',
+                  opacity: 0.62,
+                  fontFamily: GROTESK,
+                }}
+              >
+                An applicant can pass a questionnaire and a nurse check while carrying
+                early disease no one has looked for. Six months of premium does not
+                cover the claim that follows. We screen the medical evidence your
+                underwriters already collect, and show them what it says.
               </Text>
 
-              <Group gap="md">
+              <Group gap="sm" className="home-rise home-rise-3">
                 <Box className="neo-press">
                   <Button
                     component={Link}
                     to={ctaTo}
-                    size="lg"
-                    radius={0}
-                    color="clinical"
-                    style={{ border: '3px solid var(--neo-ink)', boxShadow: '6px 6px 0 var(--neo-accent)', fontWeight: 800 }}
+                    size="md"
+                    radius={4}
+                    style={{
+                      background: 'var(--neo-forest)',
+                      border: 'none',
+                      fontWeight: 600,
+                      fontFamily: GROTESK,
+                      color: '#FFFFFF',
+                    }}
                   >
-                    {isAuthenticated ? 'Go to the dashboard' : 'Sign in to the console'}
+                    Open the console
                   </Button>
                 </Box>
                 <Box className="neo-press">
                   <Button
                     component="a"
-                    href="#features"
+                    href="#how"
                     variant="default"
-                    size="lg"
-                    radius={0}
-                    color="clinical"
-                    rightSection={<IconArrowRight size={18} />}
-                    style={{ border: '3px solid var(--neo-ink)', boxShadow: '6px 6px 0 var(--neo-ink)', fontWeight: 800, background: 'var(--neo-card)',color: 'var(--neo-ink)' }}
+                    size="md"
+                    radius={4}
+                    rightSection={<IconArrowRight size={15} />}
+                    style={{
+                      border: '1px solid var(--neo-border-mid)',
+                      fontWeight: 600,
+                      background: 'var(--neo-card)',
+                      color: 'var(--neo-ink)',
+                      fontFamily: GROTESK,
+                    }}
                   >
-                    See the platform
+                    See how it works
                   </Button>
                 </Box>
               </Group>
-
-              <Group gap="xs" wrap="wrap">
-                {['Human sign-off', 'PII-minimised intake', 'CPU-feasible models'].map((c) => (
-                  <span key={c} className="neo-tag">
-                    {c}
-                  </span>
-                ))}
-              </Group>
             </Stack>
 
-            <Group justify="center">
-              <Box className="neo-card" p="lg">
-                <Box
-                  className="home-rise home-rise-3 home-float"
-                  style={{ display: 'grid', placeItems: 'center' }}
-                >
-                  <Box className="neo-brand-chip" p={12}>
-                    <BrandIcon width={232} height={232} style={{ display: 'block' }} />
-                  </Box>
-                </Box>
-              </Box>
+            <Group justify="center" className="home-rise home-rise-3">
+              <PipelineAnimation />
             </Group>
           </SimpleGrid>
         </Container>
       </Box>
 
-      {/* Ticker */}
-      <Box className="neo-ticker" py="sm">
+      {/* ── How it works ────────────────────────────────────────────── */}
+      <Box id="how" py={{ base: 56, md: 80 }} className="neo-steps-band">
         <Container size="lg">
-          <Group gap="lg" wrap="wrap" justify="center" c="var(--neo-accent-ink)">
-            {TICKER.map((t, i) => (
-              <Group key={t} gap="lg" wrap="nowrap">
-                {i > 0 && <Text c="var(--neo-accent-ink)" opacity={0.6}>◆</Text>}
-                <Text size="sm" fw={700} tt="uppercase" style={{ letterSpacing: '0.08em' }}>
-                  {t}
-                </Text>
-              </Group>
-            ))}
-          </Group>
-        </Container>
-      </Box>
-
-      {/* Features */}
-      <Box id="features" py={{ base: 56, md: 72 }}>
-        <Container size="lg">
-          <Stack gap="xl">
-            <Stack gap={4} align="center" ta="center">
-              <Text className="hl-eyebrow" c="var(--neo-accent)" fw={800}>
-                What the console gives you
+          <Stack gap={44}>
+            <Stack gap={8} align="center" ta="center">
+              <Text className="neo-eyebrow">How it works</Text>
+              <Text className="neo-display" style={{ fontSize: 'clamp(1.6rem, 3.5vw, 2.3rem)', color: 'var(--neo-ink)' }}>
+                Four steps, one page, one submit.
               </Text>
-              <Text className="neo-display" style={{ fontSize: 'clamp(1.6rem, 4vw, 2.4rem)' }}>
-                Built for the two moments that matter
+              <Text size="sm" style={{ opacity: 0.55, maxWidth: 520, lineHeight: 1.7, fontFamily: GROTESK }}>
+                Your operator works through it with the client in the room. Nothing is
+                lost if they jump around or the client corrects themselves.
               </Text>
             </Stack>
 
             <SimpleGrid cols={{ base: 1, sm: 2, lg: 4 }} spacing="lg">
-              {FEATURES.map((f) => (
-                <Box
-                  key={f.title}
-                  className="neo-card neo-lift"
-                  p="lg"
-                  style={{ display: 'flex', flexDirection: 'column', gap: '0.8rem' }}
-                >
-                  <ThemeIcon
-                    size={44}
-                    radius={0}
-                    color="clinical"
-                    variant="filled"
-                    style={{ border: '2px solid var(--neo-ink)', boxShadow: '3px 3px 0 var(--neo-ink)' }}
-                  >
-                    <f.icon size={22} />
-                  </ThemeIcon>
-                  <Text fw={800} size="md" c="var(--neo-ink)">
-                    {f.title}
+              {STEPS.map((step) => (
+                <Box key={step.n} className="neo-step">
+                  <Text className="neo-step__number">{step.n}</Text>
+                  <Text fw={600} size="md" mt="md" mb={6} style={{ color: 'var(--neo-ink)', fontFamily: GROTESK }}>
+                    {step.title}
                   </Text>
-                  <Text size="sm" c="var(--neo-ink)" opacity={0.72} style={{ lineHeight: 1.55 }}>
-                    {f.body}
+                  <Text size="sm" style={{ opacity: 0.58, lineHeight: 1.65, fontFamily: GROTESK }}>
+                    {step.body}
+                  </Text>
+                </Box>
+              ))}
+            </SimpleGrid>
+          </Stack>
+        </Container>
+      </Box>
+
+      {/* ── What we screen for ──────────────────────────────────────── */}
+      <Box id="screening" py={{ base: 56, md: 80 }}>
+        <Container size="lg">
+          <Stack gap={40}>
+            <Stack gap={8} align="center" ta="center">
+              <Text className="neo-eyebrow">What we screen for</Text>
+              <Text className="neo-display" style={{ fontSize: 'clamp(1.6rem, 3.5vw, 2.3rem)', color: 'var(--neo-ink)' }}>
+                Two screens running today.
+              </Text>
+              <Text size="sm" style={{ opacity: 0.55, maxWidth: 540, lineHeight: 1.7, fontFamily: GROTESK }}>
+                We list what works now and what does not. A model that is not ready
+                cannot be selected in the console, so nobody attaches a scan that
+                will never be read.
+              </Text>
+            </Stack>
+
+            <SimpleGrid cols={{ base: 1, sm: 2 }} spacing="lg">
+              {LIVE_MODELS.map((m) => (
+                <Box key={m.name} className="neo-card neo-lift" p="lg">
+                  <Group justify="space-between" align="flex-start" mb="xs">
+                    <Text fw={600} size="md" style={{ color: 'var(--neo-ink)', fontFamily: GROTESK }}>
+                      {m.name}
+                    </Text>
+                    <Badge size="sm" variant="light" color="clinical" radius={3}>
+                      Live
+                    </Badge>
+                  </Group>
+                  <Text size="sm" fw={600} mb={8} style={{ color: 'var(--neo-accent-deep)', fontFamily: GROTESK }}>
+                    {m.finds}
+                  </Text>
+                  <Text size="sm" style={{ opacity: 0.58, lineHeight: 1.65, fontFamily: GROTESK }}>
+                    {m.detail}
                   </Text>
                 </Box>
               ))}
             </SimpleGrid>
 
-            {/* Security note (id="security" target) */}
-            <Group id="security" gap="xs" justify="center" mt="sm">
-              <IconShieldLock size={18} color="var(--neo-accent)" />
-              <Text size="sm" fw={600} c="var(--neo-ink)">
-                Decisions require licensed human sign-off. Health data is
-                minimised and never stored in the browser.
+            <Box className="neo-card" p="lg">
+              <Text fw={600} size="sm" mb={6} style={{ color: 'var(--neo-ink)', fontFamily: GROTESK }}>
+                In development
               </Text>
-            </Group>
+              <Text size="sm" mb="sm" style={{ opacity: 0.58, lineHeight: 1.65, fontFamily: GROTESK }}>
+                These are built into the intake form but produce no score yet. They are
+                shown as unavailable rather than hidden, so you know what is coming.
+              </Text>
+              <Group gap="xs">
+                {COMING.map((c) => (
+                  <Badge key={c} size="sm" variant="outline" color="gray" radius={3}>
+                    {c}
+                  </Badge>
+                ))}
+              </Group>
+            </Box>
           </Stack>
         </Container>
       </Box>
 
-      {/* Footer */}
-      <Box style={{ borderTop: '3px solid var(--neo-line)' }} py="lg">
+      {/* ── Tiers ───────────────────────────────────────────────────── */}
+      <Box id="tiers" py={{ base: 56, md: 80 }} className="neo-steps-band">
+        <Container size="lg">
+          <Stack gap={36}>
+            <Stack gap={8} align="center" ta="center">
+              <Text className="neo-eyebrow">What you get back</Text>
+              <Text className="neo-display" style={{ fontSize: 'clamp(1.6rem, 3.5vw, 2.3rem)', color: 'var(--neo-ink)' }}>
+                A score, a band, and a recommended action.
+              </Text>
+              <Text size="sm" style={{ opacity: 0.55, maxWidth: 520, lineHeight: 1.7, fontFamily: GROTESK }}>
+                Your underwriter always makes the call. The platform never issues or
+                declines a policy on its own.
+              </Text>
+            </Stack>
+
+            <Box className="neo-card" p={0} style={{ overflow: 'hidden' }}>
+              <Table.ScrollContainer minWidth={620}>
+                <Table verticalSpacing="md" horizontalSpacing="lg">
+                  <Table.Thead>
+                    <Table.Tr>
+                      <Table.Th style={{ fontFamily: GROTESK }}>Score</Table.Th>
+                      <Table.Th style={{ fontFamily: GROTESK }}>Plan</Table.Th>
+                      <Table.Th style={{ fontFamily: GROTESK }}>Recommendation</Table.Th>
+                      <Table.Th style={{ fontFamily: GROTESK }}>Who signs it off</Table.Th>
+                    </Table.Tr>
+                  </Table.Thead>
+                  <Table.Tbody>
+                    {TIERS.map((t) => (
+                      <Table.Tr key={t.name}>
+                        <Table.Td style={{ fontFamily: GROTESK, fontWeight: 600 }}>{t.band}</Table.Td>
+                        <Table.Td style={{ fontFamily: GROTESK }}>{t.name}</Table.Td>
+                        <Table.Td style={{ fontFamily: GROTESK, opacity: 0.7 }}>{t.action}</Table.Td>
+                        <Table.Td style={{ fontFamily: GROTESK, opacity: 0.7 }}>{t.who}</Table.Td>
+                      </Table.Tr>
+                    ))}
+                  </Table.Tbody>
+                </Table>
+              </Table.ScrollContainer>
+            </Box>
+          </Stack>
+        </Container>
+      </Box>
+
+      {/* ── What you get ────────────────────────────────────────────── */}
+      <Box py={{ base: 56, md: 80 }}>
+        <Container size="lg">
+          <Stack gap={40}>
+            <Stack gap={8} align="center" ta="center">
+              <Text className="neo-eyebrow">Why it holds up</Text>
+              <Text className="neo-display" style={{ fontSize: 'clamp(1.6rem, 3.5vw, 2.3rem)', color: 'var(--neo-ink)' }}>
+                Built to be questioned.
+              </Text>
+            </Stack>
+
+            <SimpleGrid cols={{ base: 1, sm: 2 }} spacing="lg">
+              {WHAT_YOU_GET.map((f) => (
+                <Box key={f.title} className="neo-card neo-lift" p="lg">
+                  <Text fw={600} size="md" mb={8} style={{ color: 'var(--neo-ink)', fontFamily: GROTESK }}>
+                    {f.title}
+                  </Text>
+                  <Text size="sm" style={{ opacity: 0.58, lineHeight: 1.7, fontFamily: GROTESK }}>
+                    {f.body}
+                  </Text>
+                </Box>
+              ))}
+            </SimpleGrid>
+          </Stack>
+        </Container>
+      </Box>
+
+      {/* ── Limits ──────────────────────────────────────────────────── */}
+      <Box id="limits" py={{ base: 48, md: 64 }} className="neo-steps-band">
+        <Container size="md">
+          <Stack gap="md" ta="center" align="center">
+            <Text className="neo-eyebrow">What this is not</Text>
+            <Text size="sm" style={{ opacity: 0.68, maxWidth: 620, lineHeight: 1.8, fontFamily: GROTESK, color: 'var(--neo-ink)' }}>
+              This is research software. It is not a medical device, it is not
+              clinically validated, and it is not approved by any regulator. It does
+              not diagnose anyone. The chest model has only been tested on one
+              hospital's data, so its accuracy elsewhere is unknown, and the console
+              says so on every score it produces. Use it to decide where an
+              underwriter should look, not to decide who gets cover.
+            </Text>
+          </Stack>
+        </Container>
+      </Box>
+
+      {/* ── CTA ─────────────────────────────────────────────────────── */}
+      <Box className="neo-cta-band" py={{ base: 72, md: 96 }}>
+        <Container size="md">
+          <Stack gap="lg" align="center" ta="center">
+            <Text className="neo-display" style={{ fontSize: 'clamp(1.8rem, 4vw, 2.9rem)' }}>
+              See what your evidence <span className="neo-underline">already says.</span>
+            </Text>
+            <Text style={{ opacity: 0.6, maxWidth: 440, fontSize: '0.9rem', lineHeight: 1.7, fontFamily: GROTESK, color: '#fff' }}>
+              Sign in and put a scan through the console.
+            </Text>
+            <Box className="neo-press">
+              <Button
+                component={Link}
+                to={ctaTo}
+                size="lg"
+                radius={4}
+                rightSection={<IconArrowRight size={17} />}
+                style={{
+                  background: 'rgba(255,255,255,0.12)',
+                  border: '1px solid rgba(255,255,255,0.24)',
+                  fontWeight: 600,
+                  fontFamily: GROTESK,
+                  paddingInline: '2rem',
+                  color: '#fff',
+                }}
+              >
+                Open the console
+              </Button>
+            </Box>
+          </Stack>
+        </Container>
+      </Box>
+
+      {/* ── Footer ──────────────────────────────────────────────────── */}
+      <Box style={{ borderTop: '1px solid var(--neo-border)' }} py="lg">
         <Container size="lg">
           <Group justify="space-between" wrap="wrap">
-            <Group gap="xs">
-              <IconBuildingBank size={18} style={{ color: 'var(--neo-ink)' }} />
-              <Text size="sm" fw={700} c="var(--neo-ink)">
-                HomelanderAI · Underwriting decision support
-              </Text>
-            </Group>
-            <Text size="sm" fw={600} c="var(--neo-ink)">
-              © {new Date().getFullYear()} HomelanderAI
+            <Text size="sm" fw={600} style={{ color: 'var(--neo-ink)', opacity: 0.45, fontFamily: GROTESK }}>
+              HomelanderAI. Underwriting decision support.
+            </Text>
+            <Text size="sm" fw={500} style={{ color: 'var(--neo-ink)', opacity: 0.35, fontFamily: GROTESK }}>
+              {new Date().getFullYear()} HomelanderAI
             </Text>
           </Group>
-
-          {/*
-            This page is public and describes AI screening of medical images.
-            The same disclaimer is carried by README.md and SPEC.md §10; it
-            belongs where a prospective reader actually sees it.
-          */}
-          <Text size="xs" mt="md" c="var(--neo-ink)" opacity={0.7} maw={720}>
-            Research software. Not a medical device, not clinically validated, and
-            not approved by any regulatory body. Every output is a recommendation
-            for a licensed underwriter to review — the platform does not diagnose
-            and never issues an automated denial.
+          <Text size="xs" mt="md" style={{ opacity: 0.35, maxWidth: 680, lineHeight: 1.65, color: 'var(--neo-ink)', fontFamily: GROTESK }}>
+            Research software. Not a medical device, not clinically validated, and not
+            approved by any regulatory body. Every output is a recommendation for a
+            licensed underwriter to review. The platform does not diagnose and never
+            issues an automated denial.
           </Text>
         </Container>
       </Box>

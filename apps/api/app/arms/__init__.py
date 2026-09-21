@@ -56,9 +56,9 @@ class Arm:
     available: Callable[[], bool]
 
 
-# Imported at the bottom on purpose: tb_xray does `from app.arms import
-# ArmResult`, and by this point ArmResult is defined, so there is no cycle.
-from app.arms import tb_xray  # noqa: E402
+# Imported at the bottom on purpose: tb_xray and eyepacs_dr do `from app.arms
+# import ArmResult`, and by this point ArmResult is defined, so there is no cycle.
+from app.arms import eyepacs_dr, tb_xray  # noqa: E402
 
 
 def arm_for_intake(intake_id: str) -> Arm | None:
@@ -81,5 +81,16 @@ ARMS: dict[str, Arm] = {
         validation=tb_xray.VALIDATION,
         run=tb_xray.run,
         available=tb_xray.available,
+    ),
+    eyepacs_dr.NAME: Arm(
+        name=eyepacs_dr.NAME,
+        version=eyepacs_dr.VERSION,
+        arm_type="vision",
+        intake_id="eyepacs",
+        preprocessing_version=eyepacs_dr.PREPROCESSING_VERSION,
+        weight_hash=eyepacs_dr.WEIGHT_HASH,
+        validation=eyepacs_dr.VALIDATION,
+        run=eyepacs_dr.run,
+        available=eyepacs_dr.available,
     ),
 }

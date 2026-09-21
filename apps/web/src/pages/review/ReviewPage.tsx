@@ -15,6 +15,7 @@ import {
   Switch,
   Table,
   Text,
+  Tooltip,
 } from '@mantine/core'
 import { notifications } from '@mantine/notifications'
 import {
@@ -39,6 +40,7 @@ import {
   type Plan,
 } from '../../api/client'
 import { TierBadge, type Tier } from '../../components/TierBadge'
+import { useAuth } from '../../context/AuthContext'
 
 /**
  * Review workspace — the underwriter, alone, a day or two later.
@@ -103,7 +105,7 @@ function FindingBar({ finding, scale }: { finding: Finding; scale: number }) {
           style={{
             width: `${Math.min(width, 100)}%`,
             backgroundColor: toward
-              ? 'var(--mantine-color-clinical-5)'
+              ? 'var(--mantine-color-clinical-3)'
               : 'var(--mantine-color-dark-3)',
             borderRadius: 3,
           }}
@@ -185,11 +187,19 @@ interface ReviewState {
   submit: { mutate: () => void; isPending: boolean }
 }
 
+/** Derive a human-readable image label from whichever arm produced the evidence. */
+function imageLabelFor(modelsRequested: string[]): string {
+  if (modelsRequested.includes('eyepacs')) return 'Retinal photo'
+  return 'Chest X-ray'
+}
+
 function Review({ data, state }: { data: ApplicationDetail; state: ReviewState }) {
   const findings = data.findings ?? []
   const adjustments = data.adjustments ?? []
   const files = data.files ?? []
   const errors = data.errors ?? []
+
+  const imageLabel = imageLabelFor(data.modelsRequested ?? [])
 
   const evidence = files.find((f) => f.kind === 'evidence')
   const heatmap = files.find((f) => f.kind === 'gradcam')
@@ -207,6 +217,11 @@ function Review({ data, state }: { data: ApplicationDetail; state: ReviewState }
   const decided = Boolean(data.decision)
   const scored = data.status === 'scored' || data.status === 'decided'
   const pending = data.status === 'submitted' || data.status === 'processing'
+
+  const { user } = useAuth()
+  const isElevated = data.score?.tier === 'elevated'
+  const isUnderwriter = user?.role === 'underwriter'
+  const isSenior = user?.role === 'senior_underwriter'
 
   return (
     <Stack gap="md">
@@ -274,7 +289,7 @@ function Review({ data, state }: { data: ApplicationDetail; state: ReviewState }
         <Paper p="sm" bd="1px solid var(--mantine-color-default-border)">
           <Group justify="space-between" mb="sm">
             <Text fw={600} size="sm">
-              Chest X-ray
+              {imageLabel}
             </Text>
             <Switch
               label="Heatmap overlay"
@@ -298,7 +313,7 @@ function Review({ data, state }: { data: ApplicationDetail; state: ReviewState }
             {evidence || heatmap ? (
               <Image
                 src={fileUrl(state.showHeatmap && heatmap ? heatmap.id : (evidence ?? heatmap)!.id)}
-                alt={state.showHeatmap ? 'Chest X-ray with model heatmap' : 'Chest X-ray'}
+                alt={state.showHeatmap ? `${imageLabel} with model heatmap` : imageLabel}
                 h={340}
                 fit="contain"
               />
@@ -408,9 +423,52 @@ function Review({ data, state }: { data: ApplicationDetail; state: ReviewState }
 
       {/* ── Decision ────────────────────────────────────────── */}
       <Paper p="md" bd="1px solid var(--mantine-color-default-border)">
-        <Text fw={600} size="sm" mb="sm">
-          Decision
-        </Text>
+        <Group justify="space-between" align="center" mb="sm">
+          <Text fw={600} size="sm">
+            Decision
+          </Text>
+          {isSenior ? (
+            <Badge color="grape" variant="light" size="xs">
+              Senior Adjudication Authority
+            </Badge>
+          ) : isUnderwriter ? (
+            <Badge color="clinical" variant="light" size="xs">
+              Underwriter Review
+            </Badge>
+          ) : null}
+        </Group>
+
+        {/* Senior Underwriter High-Risk Guidance */}
+        {isSenior && isElevated && !decided && (
+          <Alert
+            color="grape"
+            variant="light"
+            icon={<IconShieldCheck size={18} />}
+            title="Senior Underwriter Clinical Review"
+            mb="sm"
+          >
+            <Text size="xs">
+              This application has been scored as <strong>Tier 3 (Elevated Risk)</strong>. As Senior Underwriter / Medical Officer,
+              you hold binding authority to audit sub-scores, review Grad-CAM heatmaps, apply actuarial rate adjustments, or finalize approval.
+            </Text>
+          </Alert>
+        )}
+
+        {/* Underwriter Tier 3 Mandatory Escalation Notice */}
+        {isUnderwriter && isElevated && !decided && (
+          <Alert
+            color="red"
+            variant="light"
+            icon={<IconAlertTriangle size={18} />}
+            title="Mandatory Senior Escalation Required"
+            mb="sm"
+          >
+            <Text size="xs">
+              This application has an elevated risk score (Tier 3). Carrier governance requires mandatory escalation to a Senior Underwriter.
+              Approval actions are disabled for junior underwriters on Tier 3 cases.
+            </Text>
+          </Alert>
+        )}
 
         {decided ? (
           <Alert icon={<IconCircleCheck size={18} />} color="teal" variant="light" title="Decision recorded">
@@ -433,25 +491,55 @@ function Review({ data, state }: { data: ApplicationDetail; state: ReviewState }
         ) : (
           <>
             <SimpleGrid cols={{ base: 1, sm: 2 }} spacing="sm">
-              {DECISIONS.map((d) => (
-                <Button
-                  key={d.value}
-                  variant={state.decision === d.value ? 'filled' : 'light'}
-                  color={state.decision === d.value ? 'clinical' : 'gray'}
-                  justify="space-between"
-                  onClick={() => {
-                    state.setDecision(d.value)
-                    // Start from the plan's figure rather than an empty box, so
-                    // the rate is anchored to the tier and the cover requested.
-                    // The underwriter still sets the final number.
-                    if (d.value === 'approved_with_adjustment' && state.premium == null) {
-                      state.setPremium(data.plan?.monthlyPremiumBdt ?? undefined)
+              {DECISIONS.map((d) => {
+                const isApprovalAction =
+                  d.value === 'confirmed_fast_track' || d.value === 'approved_with_adjustment'
+                const isBlockedForUnderwriter = isUnderwriter && isElevated && isApprovalAction
+                const isEscalate = d.value === 'escalated_senior_review'
+
+                const btn = (
+                  <Button
+                    key={d.value}
+                    variant={state.decision === d.value ? 'filled' : 'light'}
+                    color={
+                      state.decision === d.value
+                        ? isEscalate
+                          ? 'orange'
+                          : isSenior
+                          ? 'grape'
+                          : 'clinical'
+                        : 'gray'
                     }
-                  }}
-                >
-                  {d.label}
-                </Button>
-              ))}
+                    justify="space-between"
+                    disabled={isBlockedForUnderwriter}
+                    onClick={() => {
+                      state.setDecision(d.value)
+                      // Start from the plan's figure rather than an empty box, so
+                      // the rate is anchored to the tier and the cover requested.
+                      // The underwriter still sets the final number.
+                      if (d.value === 'approved_with_adjustment' && state.premium == null) {
+                        state.setPremium(data.plan?.monthlyPremiumBdt ?? undefined)
+                      }
+                    }}
+                  >
+                    {d.label}
+                  </Button>
+                )
+
+                if (isBlockedForUnderwriter) {
+                  return (
+                    <Tooltip
+                      key={d.value}
+                      label="Tier 3 applications require Senior Underwriter escalation"
+                      withArrow
+                    >
+                      <div>{btn}</div>
+                    </Tooltip>
+                  )
+                }
+
+                return btn
+              })}
             </SimpleGrid>
 
             {state.decision === 'approved_with_adjustment' && (

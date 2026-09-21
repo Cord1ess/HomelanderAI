@@ -207,6 +207,41 @@ With the database up, these accounts are seeded (`db/seed.sql`) and work fully.
 
 ---
 
+## Which X-rays to demo with
+
+**Use `data/demo/`.** Twenty films picked from the Shenzhen set and verified
+against the shipped model — ten in `01-normal/` that all score `low`, ten in
+`02-tuberculosis/` that all score `elevated`. `data/demo/README.md` lists every
+file with the score it produces.
+
+**Do not grab a file from `Reference/Nirnoy/assets/samples/`.** That is the
+Kaggle set, and this model is *inverted* on it — normals average 74 and TB films
+average 38, because Kaggle's normal images come from a different hospital than
+its TB images. A demo run from that folder will show a healthy chest scored as
+high risk.
+
+Nor should you pick at random from `data/shenzhen/`: across all 662 films only
+67% of normals and 70% of TB cases land in the tier their label implies. The
+twenty in `data/demo/` are the ones that do.
+
+### The one file to show
+
+`02-tuberculosis/tb-10-shenzhen-0619_1.png`. Its imaging score is 75.1, close
+enough to the cut-points that the declared history moves it across them. Submit
+the same file three times, changing only the health questions:
+
+| Declared history | Score | Tier | Recommendation |
+|---|---|---|---|
+| Nothing | 75.1 | elevated | Senior review |
+| Prior TB, treated, no symptoms | **50.1** | **moderate** | Standard with adjustment |
+| Prior TB **and** a current cough | **100.0** | elevated | Senior review |
+
+One image, three recommendations — because the same shadow on a lung means
+healed scarring or an active relapse depending on something no image model can
+see. That is the argument for the whole product, and it is the thing to show.
+
+---
+
 ## Quick reference
 
 | | Command |
@@ -219,6 +254,8 @@ With the database up, these accounts are seeded (`db/seed.sql`) and work fully.
 | Sign in with no database | `admin` / `admin123` |
 | Is the API alive? | `http://127.0.0.1:8000/api/health` |
 | Dashboard | `http://localhost:5173` |
+| Images to demo with | `data/demo/` — **not** `Reference/Nirnoy/assets/samples/` |
+| Pricing per tier | Pricing tab in the dashboard |
 
 Both machines must be on the same network. A phone hotspot works if the office
 network blocks machine-to-machine traffic, which many do.

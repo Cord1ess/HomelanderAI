@@ -1,5 +1,16 @@
 # Database — required changes
 
+> **Landed 2026-09-01.** Every change below is in `db/schema.sql` and applied by
+> `alembic upgrade head`. The "blocks X" headings describe why each was needed
+> at the time of writing; none of them block anything now. Kept as the record of
+> what was changed and why.
+>
+> Three things were found only once the schema was first executed against a real
+> PostgreSQL: an index on `evidence_files(model_arm_id)` referenced a column the
+> table never had (which aborted the whole file, so it had never run), and
+> `applications` was missing `policy_term` and `models_requested`. See
+> `docs/PHASE1_PLAN.md`.
+
 **For:** whoever owns the database and auth.
 **Base:** `db/schema.sql` as it stands today. This document lists only what needs
 to **change**, and why. Everything not mentioned here is fine as-is.

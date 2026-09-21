@@ -19,12 +19,17 @@ import {
   IconChevronsLeft,
   IconChevronsRight,
   IconFilePlus,
+  IconFlame,
   IconLayoutDashboard,
   IconLogout,
-  IconReceipt,
   IconMoon,
+  IconReceipt,
+  IconShieldCheck,
+  IconStethoscope,
   IconSun,
   IconUser,
+  IconUserCircle,
+  IconUsers,
 } from '@tabler/icons-react'
 import type { JSX } from 'react'
 import { NavLink as RouterLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
@@ -32,21 +37,23 @@ import { NavLink as RouterLink, Outlet, useLocation, useNavigate } from 'react-r
 import { getNotifications } from '../../api/client'
 import { BrandIcon } from '../../components/BrandIcon'
 import { useAuth } from '../../context/AuthContext'
+import type { UserRole } from '../../types/auth'
 
 /**
  * ERP-style shell for the authenticated dashboard.
  *
- * A fixed, collapsible icon sidebar mirrors an underwriting console: a compact
- * brand lockup up top, icon nav with tooltips, and a thin header carrying the
- * current screen title, the notifications bell and a user menu.
- *
+ * Role-aware: renders dedicated workspaces, customized navbars, and distinct
+ * privilege badges for Underwriters, Senior Medical Officers, and Administrators.
  */
 export function AppLayout() {
+  const { user } = useAuth()
   const [navOpened, { toggle: toggleNav }] = useDisclosure(true)
   const [mobileOpened, { toggle: toggleMobile }] = useDisclosure(false)
   const location = useLocation()
 
-  const title = routeFor(location.pathname)?.title
+  const role = user?.role ?? 'underwriter'
+  const title = routeFor(location.pathname, role)?.title
+  const navItems = getNavForRole(role)
 
   // Shares its cache key with the notifications screen, so opening one and
   // marking something read updates the badge without a second request.
@@ -61,7 +68,7 @@ export function AppLayout() {
     <AppShell
       header={{ height: 44 }}
       navbar={{
-        width: navOpened ? 200 : 56,
+        width: navOpened ? 240 : 56,
         breakpoint: 'sm',
         collapsed: { mobile: !mobileOpened },
       }}
@@ -92,6 +99,19 @@ export function AppLayout() {
             <Text size="sm" fw={600}>
               {title}
             </Text>
+            {role === 'senior_underwriter' ? (
+              <Badge color="grape" variant="filled" size="xs">
+                Senior Medical Officer
+              </Badge>
+            ) : role === 'admin' ? (
+              <Badge color="orange" variant="filled" size="xs">
+                Carrier Admin
+              </Badge>
+            ) : (
+              <Badge color="clinical" variant="filled" size="xs">
+                Underwriter
+              </Badge>
+            )}
           </Group>
 
           <Group gap={6} wrap="nowrap">
@@ -143,14 +163,14 @@ export function AppLayout() {
         </Group>
 
         <Box flex={1} mt="xs">
-          {NAV.map((item) => (
+          {navItems.map((item) => (
             <NavItem
               key={item.to}
               to={item.to}
               label={item.label}
               icon={item.icon}
               collapsed={!navOpened}
-              active={location.pathname.startsWith(item.to)}
+              active={location.pathname === item.to || (item.to !== '/queue' && location.pathname.startsWith(item.to))}
             />
           ))}
         </Box>
@@ -163,19 +183,52 @@ export function AppLayout() {
   )
 }
 
-const NAV: { to: string; label: string; icon: () => JSX.Element }[] = [
-  { to: '/queue', label: 'Queue', icon: () => <IconLayoutDashboard size={18} /> },
-  { to: '/applications/new', label: 'New application', icon: () => <IconFilePlus size={18} /> },
-  { to: '/notifications', label: 'Notifications', icon: () => <IconBell size={18} /> },
-  { to: '/pricing', label: 'Pricing', icon: () => <IconReceipt size={18} /> },
-]
+function getNavForRole(role?: UserRole): { to: string; label: string; icon: () => JSX.Element }[] {
+  if (role === 'senior_underwriter') {
+    return [
+      { to: '/escalations', label: 'Escalations', icon: () => <IconFlame size={18} /> },
+      { to: '/queue', label: 'Clinical queue', icon: () => <IconStethoscope size={18} /> },
+      { to: '/applications/new', label: 'New applicant intake', icon: () => <IconFilePlus size={18} /> },
+      { to: '/pricing', label: 'Risk bands', icon: () => <IconReceipt size={18} /> },
+      { to: '/notifications', label: 'Notifications', icon: () => <IconBell size={18} /> },
+      { to: '/profile', label: 'My profile', icon: () => <IconUserCircle size={18} /> },
+    ]
+  }
 
-function routeFor(path: string) {
-  if (path === '/queue') return { title: 'Review queue' }
-  if (path.startsWith('/applications/new')) return { title: 'New application' }
-  if (path.startsWith('/applications/')) return { title: 'Underwriting review' }
+  if (role === 'admin') {
+    return [
+      { to: '/admin/users', label: 'Staff governance', icon: () => <IconUsers size={18} /> },
+      { to: '/queue', label: 'Carrier audit', icon: () => <IconShieldCheck size={18} /> },
+      { to: '/applications/new', label: 'New applicant intake', icon: () => <IconFilePlus size={18} /> },
+      { to: '/pricing', label: 'Policy pricing', icon: () => <IconReceipt size={18} /> },
+      { to: '/notifications', label: 'Notifications', icon: () => <IconBell size={18} /> },
+      { to: '/profile', label: 'Admin profile', icon: () => <IconUserCircle size={18} /> },
+    ]
+  }
+
+  // default: underwriter
+  return [
+    { to: '/queue', label: 'Intake queue', icon: () => <IconLayoutDashboard size={18} /> },
+    { to: '/applications/new', label: 'New applicant intake', icon: () => <IconFilePlus size={18} /> },
+    { to: '/pricing', label: 'Plan rate card', icon: () => <IconReceipt size={18} /> },
+    { to: '/notifications', label: 'Notifications', icon: () => <IconBell size={18} /> },
+    { to: '/profile', label: 'My profile', icon: () => <IconUserCircle size={18} /> },
+  ]
+}
+
+function routeFor(path: string, role?: string) {
+  if (path === '/escalations') return { title: 'Senior Escalation Command Center' }
+  if (path === '/admin/users') return { title: 'Carrier Staff & Access Governance' }
+  if (path === '/queue') {
+    if (role === 'senior_underwriter') return { title: 'Clinical Review Queue' }
+    if (role === 'admin') return { title: 'Carrier Submission Audit' }
+    return { title: 'Underwriting Intake Queue' }
+  }
+  if (path.startsWith('/applications/new')) return { title: 'New Applicant Intake Form' }
+  if (path.startsWith('/applications/')) return { title: 'Underwriting Adjudication' }
   if (path.startsWith('/notifications')) return { title: 'Notifications' }
-  if (path.startsWith('/pricing')) return { title: 'Pricing structure' }
+  if (path.startsWith('/pricing')) return { title: 'Plan & Risk Structure' }
+  if (path.startsWith('/profile')) return { title: 'Operator Profile & Authority' }
   return { title: 'HomelanderAI' }
 }
 
@@ -206,11 +259,31 @@ function NavItem({
       <ThemeIcon
         variant={active ? 'filled' : 'transparent'}
         color={active ? 'clinical' : 'gray'}
-        size={20}
+        size={22}
+        radius="sm"
+        style={
+          active
+            ? {
+                backgroundColor: 'var(--mantine-color-clinical-2)',
+                color: 'var(--mantine-color-dark-7)',
+              }
+            : {
+                color: 'var(--mantine-color-dark-3)',
+              }
+        }
       >
         {icon()}
       </ThemeIcon>
-      {!collapsed && <span>{label}</span>}
+      {!collapsed && (
+        <span
+          style={{
+            fontWeight: active ? 700 : 500,
+            fontSize: '0.825rem',
+          }}
+        >
+          {label}
+        </span>
+      )}
     </RouterLink>
   )
 
@@ -237,31 +310,17 @@ function UserMenu() {
           </ActionIcon>
         </UnstyledButton>
       </Menu.Target>
-      <Menu.Dropdown miw={200}>
-        <Menu.Label>Signed in as</Menu.Label>
-        <Box px="xs" py={4}>
-          <Text size="sm" fw={600} truncate>
-            {user?.fullName || user?.email || 'User'}
-          </Text>
-          <Group gap={6} mt={2}>
-            <Badge
-              size="xs"
-              variant="light"
-              color={
-                user?.role === 'admin'
-                  ? 'blue'
-                  : user?.role === 'senior_underwriter'
-                    ? 'indigo'
-                    : 'teal'
-              }
-            >
-              {user?.role?.replace('_', ' ') ?? 'user'}
-            </Badge>
-            <Text size="xs" c="dimmed" truncate>
-              {user?.email}
-            </Text>
-          </Group>
-        </Box>
+      <Menu.Dropdown miw={180}>
+        <Menu.Item leftSection={<IconUser size={14} />}>
+          {user?.email ?? 'unknown'}
+        </Menu.Item>
+        <Menu.Item
+          component={RouterLink}
+          to="/profile"
+          leftSection={<IconUserCircle size={14} />}
+        >
+          Profile & workspace
+        </Menu.Item>
         <Menu.Divider />
         <Menu.Item
           leftSection={

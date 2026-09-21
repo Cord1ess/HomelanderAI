@@ -1,6 +1,12 @@
+/* ── Fonts ──────────────────────────────────────────────────────────── */
+/* Space Grotesk Variable � primary font for all surfaces */
+@import '@fontsource-variable/space-grotesk';
+/* (replaced by Space Grotesk) */
+/* (replaced by Space Grotesk) */
+
 /* Prevents a white flash before Mantine applies the dark scheme. */
 html {
-  background-color: #16181c;
+  background-color: #0D0E09;
 }
 
 /* The ERP shell's header is 44px; make the main surface fill the viewport so
@@ -53,37 +59,52 @@ body {
 /* Thin scrollbars for dense panels. */
 * {
   scrollbar-width: thin;
-  scrollbar-color: rgba(120, 130, 145, 0.45) transparent;
+  scrollbar-color: rgba(176, 179, 154, 0.45) transparent;
 }
 
 /* App shell — dense fixed sidebar. */
 .hl-shell-nav {
   display: flex;
   flex-direction: column;
+  background-color: #090906 !important;
+  border-right: 1px solid rgba(206, 217, 140, 0.16) !important;
 }
 
 .hl-nav-link {
   display: flex;
   align-items: center;
-  gap: 0.6rem;
-  padding: 0.5rem 0.65rem;
-  margin: 0.0625rem 0.4rem;
-  border-radius: 0.375rem;
-  font-size: 0.8rem;
+  gap: 0.65rem;
+  padding: 0.55rem 0.75rem;
+  margin: 0.2rem 0.45rem;
+  border-radius: 0.45rem;
+  font-size: 0.82rem;
   font-weight: 500;
-  color: var(--mantine-color-dimmed);
+  color: #B0B39A;
   text-decoration: none;
-  transition: background-color 0.12s ease, color 0.12s ease;
+  border: 1px solid transparent;
+  transition: all 0.15s ease;
+  position: relative;
 }
 
 .hl-nav-link:hover {
-  background-color: var(--mantine-color-default-hover);
-  color: var(--mantine-color-text);
+  background-color: rgba(206, 217, 140, 0.10);
+  color: #FFFFFF;
+  border-color: rgba(206, 217, 140, 0.14);
 }
 
+/* Clicked / Active segment of the navbar — Crisp light background for instant identification */
 .hl-nav-link[data-active='true'] {
-  background-color: var(--mantine-color-clinical-light);
-  color: var(--mantine-color-clinical-light-color);
+  background-color: #CED98C !important;
+  color: #0D0E09 !important;
+  font-weight: 700 !important;
+  border: 1px solid rgba(206, 217, 140, 0.55) !important;
+  backdrop-filter: blur(8px);
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.35) !important;
+}
+
+.hl-nav-link[data-active='true'] span {
+  color: #0D0E09 !important;
+  font-weight: 700 !important;
 }
 
 .hl-shell-header {
@@ -93,10 +114,10 @@ body {
   display: flex;
   align-items: center;
   gap: 0.75rem;
-  height: 44px;
-  padding: 0 0.9rem;
-  background-color: var(--mantine-color-dark-8);
-  border-bottom: 1px solid var(--mantine-color-default-border);
+  height: 46px;
+  padding: 0 1rem;
+  background-color: #090906 !important;
+  border-bottom: 1px solid rgba(206, 217, 140, 0.16) !important;
 }
 
 /* Key/value stat block. */
@@ -107,16 +128,17 @@ body {
 }
 
 .hl-kv-label {
-  font-size: 0.65rem;
+  font-size: 0.68rem;
   text-transform: uppercase;
   letter-spacing: 0.08em;
-  color: var(--mantine-color-dimmed);
+  font-weight: 600;
+  color: #878C66;
 }
 
 .hl-kv-value {
-  font-size: 0.85rem;
-  font-weight: 600;
-  color: var(--mantine-color-text);
+  font-size: 0.875rem;
+  font-weight: 700;
+  color: #ffffff;
 }
 
 /* Utility grid/flex helpers. */
@@ -143,7 +165,7 @@ body {
   white-space: nowrap;
 }
 
-/* ── Home / login landing ─────────────────────────────────────────── */
+/* ── Home / landing ─────────────────────────────────────────── */
 
 /* Gentle float for the hero brand mark. */
 @keyframes hl-float {
@@ -164,7 +186,7 @@ body {
 @keyframes hl-rise {
   from {
     opacity: 0;
-    transform: translateY(14px);
+    transform: translateY(16px);
   }
   to {
     opacity: 1;
@@ -174,128 +196,802 @@ body {
 
 .home-rise {
   opacity: 0;
-  animation: hl-rise 0.7s ease forwards;
+  animation: hl-rise 0.75s cubic-bezier(0.22, 1, 0.36, 1) forwards;
 }
 
-.home-rise-1 {
-  animation-delay: 0.05s;
-}
-.home-rise-2 {
-  animation-delay: 0.15s;
-}
-.home-rise-3 {
-  animation-delay: 0.25s;
-}
-.home-rise-4 {
-  animation-delay: 0.35s;
-}
-.home-rise-5 {
-  animation-delay: 0.45s;
-}
+.home-rise-1 { animation-delay: 0.05s; }
+.home-rise-2 { animation-delay: 0.15s; }
+.home-rise-3 { animation-delay: 0.25s; }
+.home-rise-4 { animation-delay: 0.35s; }
+.home-rise-5 { animation-delay: 0.45s; }
 
-/* ── Neo-brutalist public pages ────────────────────────────────────── */
+/* ── Public landing CSS variables ──────────────────────────────────── */
 
 :root {
-  --neo-bg: #f3f0e7;
-  --neo-card: #fffdf7;
-  --neo-ink: #101010;
-  --neo-line: #101010;
-  --neo-shadow: #101010;
-  --neo-accent: #2f7f7b;
-  --neo-accent-ink: #ffffff;
+  /* Landing page. Same hue as the console (68.5, yellow-green), different
+     lightnesses — these are solved against --neo-bg, not against a dark card,
+     so the same role needs a different value here. Ratios are measured.
+     Mirrors the clinical[6..9] half of the ramp in theme.ts. */
+
+  /* Structural dark olive — headings, hard borders, the neo-brutalist frame */
+  --neo-forest:      #3D4127;   /* 10.00:1 on --neo-bg */
+  --neo-forest-mid:  #515A1E;   /*  7.01:1 — secondary structure */
+  --neo-forest-soft: rgba(61, 65, 39, 0.06);
+
+  /* Accent that carries text. #636B2F reads here (5.2:1) but leaves no margin
+     at small sizes, so the accent is solved to a clean 4.54:1 minimum and the
+     darker step is used wherever the text is small or thin. */
+  --neo-accent:      #6D7826;   /*  4.54:1 on --neo-bg */
+  --neo-accent-deep: #515A1E;   /*  7.01:1 — small or thin text */
+  --neo-accent-soft: rgba(109, 120, 38, 0.10);
+  --neo-accent-ink:  #FFFFFF;   /*  4.81:1 on --neo-accent as a button fill */
+
+  /* Surface — warm bone, tinted into the brand hue */
+  --neo-bg:          #F8F9F3;
+  --neo-card:        #FDFDFB;
+  --neo-ink:         #2C2E1C;   /* 13.10:1 on --neo-bg */
+
+  /* Borders — subtle, never hard black */
+  --neo-border:      rgba(44, 46, 28, 0.10);
+  --neo-border-mid:  rgba(44, 46, 28, 0.18);
+
+  /* Shadow — olive tinted, soft */
+  --neo-shadow:      rgba(61, 65, 39, 0.16);
 }
+
+/* ── Shell ─────────────────────────────────────────────────────────── */
 
 .neo-shell {
   min-height: 100vh;
   background: var(--neo-bg);
   color: var(--neo-ink);
+  font-family: 'Space Grotesk Variable', 'Space Grotesk', Inter, ui-sans-serif, system-ui, sans-serif;
 }
 
-/* Chunky bordered cards — flat, hard offset shadow, no blur. */
+/* ── Typography ────────────────────────────────────────────────────── */
+
+/* Display headline � Space Grotesk Variable */
+.neo-display {
+  font-family: 'Space Grotesk Variable', 'Space Grotesk', sans-serif;
+  font-weight: 400;
+  letter-spacing: -0.01em;
+  line-height: 1.08;
+}
+
+/* Serif underline accent */
+.neo-underline {
+  text-decoration: underline;
+  text-decoration-thickness: 2px;
+  text-decoration-color: var(--neo-accent);
+  text-underline-offset: 5px;
+}
+
+/* Small caps eyebrow — kept from before */
+.neo-eyebrow {
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  font-size: 0.68rem;
+  font-weight: 600;
+  color: var(--neo-accent);
+}
+
+/* ── Cards ─────────────────────────────────────────────────────────── */
+
+/* Clean card — no hard borders, soft shadow */
 .neo-card {
   background: var(--neo-card);
-  border: 3px solid var(--neo-line);
-  box-shadow: 6px 6px 0 var(--neo-shadow);
+  border: 1px solid var(--neo-border);
+  box-shadow: 0 2px 12px var(--neo-shadow);
+  border-radius: 4px;
 }
 
-.neo-card--teal {
-  background: var(--neo-accent);
-  color: var(--neo-accent-ink);
+/* Hover lift — gentle, no translate */
+.neo-lift {
+  transition: box-shadow 0.2s ease, border-color 0.2s ease;
 }
 
-.neo-card--yellow {
-  background: #ffe135;
+.neo-lift:hover {
+  box-shadow: 0 6px 24px var(--neo-shadow);
+  border-color: var(--neo-border-mid);
 }
 
-/* Circular brand mark — the logo plate is already light; give it a hard,
-   neo-brutalist ring + offset shadow instead of the old soft glow. */
+/* Brand chip (logo circle) */
 .neo-brand-chip {
   border-radius: 999px;
   background: #fff;
-  border: 3px solid var(--neo-line);
-  box-shadow: 5px 5px 0 var(--neo-accent);
+  border: 1px solid var(--neo-border-mid);
+  box-shadow: 0 2px 8px var(--neo-shadow);
   overflow: hidden;
 }
 
-/* Chunky inline chip / tag. */
+/* ── Inline tag / chip ─────────────────────────────────────────────── */
+
 .neo-tag {
   display: inline-flex;
   align-items: center;
   gap: 0.35rem;
-  padding: 0.3rem 0.75rem;
-  border: 2px solid var(--neo-line);
+  padding: 0.25rem 0.65rem;
+  border: 1px solid var(--neo-border);
   background: var(--neo-card);
-  box-shadow: 3px 3px 0 var(--neo-shadow);
-  font-weight: 700;
+  border-radius: 999px;
+  font-weight: 600;
   text-transform: uppercase;
-  letter-spacing: 0.04em;
-  font-size: 0.7rem;
+  letter-spacing: 0.05em;
+  font-size: 0.68rem;
+  color: var(--neo-ink);
+  opacity: 0.65;
 }
 
-/* Hard shadow press-down for interactive elements. */
+/* ── Interactive press — subtle, no hard offset ─────────────────────── */
+
 .neo-press {
-  transition: transform 0.06s ease, box-shadow 0.06s ease;
+  transition: transform 0.1s ease, box-shadow 0.1s ease;
 }
 
 .neo-press:hover {
-  transform: translate(-2px, -2px);
-  box-shadow: 8px 8px 0 var(--neo-shadow);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 16px var(--neo-shadow);
 }
 
 .neo-press:active {
-  transform: translate(2px, 2px);
-  box-shadow: 2px 2px 0 var(--neo-shadow);
+  transform: translateY(0);
 }
 
-/* Hover lift for feature cards. */
-.neo-lift {
-  transition: transform 0.12s ease, box-shadow 0.12s ease;
+/* ── Decision-support badge ─────────────────────────────────────────── */
+
+.neo-decision-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.28rem 0.8rem;
+  border: 1px solid var(--neo-border);
+  border-radius: 999px;
+  background: var(--neo-card);
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  color: var(--neo-ink);
+  opacity: 0.65;
 }
 
-.neo-lift:hover {
-  transform: translate(-3px, -3px);
-  box-shadow: 10px 10px 0 var(--neo-ink);
+/* ── Hero stat pills ────────────────────────────────────────────────── */
+
+.neo-stat-pill {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  padding: 0.65rem 1.1rem;
+  border: 1px solid var(--neo-border);
+  background: var(--neo-card);
+  border-radius: 4px;
+  box-shadow: 0 1px 4px var(--neo-shadow);
+  min-width: 90px;
 }
 
-/* Neo headline display type. */
-.neo-display {
-  font-weight: 800;
+.neo-stat-value {
+  font-size: 1.55rem;
+  font-weight: 700;
   letter-spacing: -0.03em;
-  line-height: 1.02;
+  line-height: 1;
+  color: var(--neo-ink);
+  font-family: 'Space Grotesk Variable', 'Space Grotesk', sans-serif;
 }
 
-.neo-underline {
-  text-decoration: underline;
-  text-decoration-thickness: 6px;
+.neo-stat-label {
+  font-size: 0.63rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.09em;
+  color: var(--neo-ink);
+  opacity: 0.45;
+  margin-top: 0.25rem;
+}
+
+/* ── Mock case card ─────────────────────────────────────────────────── */
+
+.neo-case-card {
+  width: 100%;
+  max-width: 340px;
+  background: var(--neo-card);
+  border: 1px solid var(--neo-border-mid);
+  box-shadow: 0 8px 32px var(--neo-shadow);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.neo-case-card__header {
+  padding: 1rem 1.25rem;
+  border-bottom: 1px solid var(--neo-border);
+}
+
+.neo-case-card__dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--neo-accent);
+  flex-shrink: 0;
+}
+
+.neo-case-card__score-wrap {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 1.5rem 1.25rem 0.75rem;
+  border-bottom: 1px solid var(--neo-border);
+}
+
+.neo-case-card__rows { padding: 0; }
+
+.neo-case-card__row {
+  padding: 0.6rem 1.25rem;
+  border-bottom: 1px solid var(--neo-border);
+}
+
+.neo-case-card__row:last-child { border-bottom: none; }
+
+/* ── Steps band ─────────────────────────────────────────────────────── */
+
+.neo-steps-band {
+  background: var(--neo-forest-soft);
+  border-top: 1px solid var(--neo-border);
+  border-bottom: 1px solid var(--neo-border);
+}
+
+.neo-step {
+  padding: 1.75rem 1.5rem;
+  background: var(--neo-card);
+  border: 1px solid var(--neo-border);
+  border-radius: 4px;
+  box-shadow: 0 2px 8px var(--neo-shadow);
+  position: relative;
+}
+
+.neo-step__number {
+  font-size: 2.8rem;
+  font-weight: 700;
+  letter-spacing: -0.04em;
+  line-height: 1;
+  color: var(--neo-accent);
+  opacity: 0.18;
+  font-family: 'Space Grotesk Variable', 'Space Grotesk', sans-serif;
+}
+
+/* ── CTA band ───────────────────────────────────────────────────────── */
+
+.neo-cta-band {
+  background: var(--neo-forest);
+  color: #fff;
+}
+
+.neo-cta-band .neo-display {
+  color: #fff;
+  font-family: 'Space Grotesk Variable', 'Space Grotesk', sans-serif;
+  font-weight: 400;
+}
+
+.neo-cta-band .neo-underline {
   text-decoration-color: var(--neo-accent);
-  text-underline-offset: 6px;
 }
 
-/* Marquee / ticker strip inside a bordered, hard-shadow band. */
+/* ── Ticker (legacy — kept for backward compat) ─────────────────────── */
+
 .neo-ticker {
-  border-top: 3px solid var(--neo-line);
-  border-bottom: 3px solid var(--neo-line);
+  border-top: 1px solid var(--neo-border);
+  border-bottom: 1px solid var(--neo-border);
   background: var(--neo-accent);
   color: var(--neo-accent-ink);
 }
 
+/* ── Auth split-panel ───────────────────────────────────────────────── */
+
+.auth-shell {
+  min-height: 100vh;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  font-family: 'Space Grotesk Variable', 'Space Grotesk', Inter, sans-serif;
+}
+
+@media (max-width: 768px) {
+  .auth-shell {
+    grid-template-columns: 1fr;
+  }
+  .auth-panel-left {
+    display: none;
+  }
+}
+
+/* Left — forest green brand panel */
+.auth-panel-left {
+  background: var(--neo-forest);
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  padding: 2.5rem;
+  position: relative;
+  overflow: hidden;
+  min-height: 100vh;
+}
+
+.auth-panel-left::after {
+  content: '';
+  position: absolute;
+  bottom: -80px;
+  left: -60px;
+  width: 420px;
+  height: 420px;
+  border-radius: 50%;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  pointer-events: none;
+}
+
+.auth-panel-left__logo {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+}
+
+.auth-panel-left__logo-mark {
+  width: 30px;
+  height: 30px;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.15);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+}
+
+.auth-panel-left__logo-text {
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.9);
+  letter-spacing: -0.01em;
+}
+
+.auth-panel-left__headline {
+  font-family: 'Space Grotesk Variable', 'Space Grotesk', sans-serif;
+  font-weight: 400;
+  font-size: clamp(2rem, 3.5vw, 2.8rem);
+  line-height: 1.12;
+  color: #fff;
+  letter-spacing: -0.01em;
+}
+
+.auth-panel-left__sub {
+  font-size: 0.85rem;
+  line-height: 1.65;
+  color: rgba(255, 255, 255, 0.6);
+  max-width: 340px;
+  margin-top: 0.85rem;
+}
+
+.auth-panel-left__sub em {
+  font-style: normal;
+  color: rgba(255, 255, 255, 0.85);
+  text-decoration: underline;
+  text-decoration-color: var(--neo-accent);
+  text-underline-offset: 3px;
+}
+
+.auth-panel-left__quote {
+  font-size: 0.75rem;
+  color: rgba(255, 255, 255, 0.4);
+  font-style: italic;
+}
+
+/* Right — white form panel */
+.auth-panel-right {
+  background: #fff;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  padding: 3rem 2.5rem;
+  min-height: 100vh;
+}
+
+.auth-panel-right__inner {
+  width: 100%;
+  max-width: 380px;
+}
+
+.auth-panel-right__logo {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  margin-bottom: 2rem;
+}
+
+.auth-panel-right__logo-mark {
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+  background: var(--neo-forest);
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+}
+
+.auth-panel-right__logo-text {
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--neo-ink);
+  letter-spacing: -0.01em;
+}
+
+/* Auth form heading — serif like the demo */
+.auth-heading {
+  font-family: 'Space Grotesk Variable', 'Space Grotesk', sans-serif;
+  font-weight: 400;
+  font-size: 1.9rem;
+  color: var(--neo-ink);
+  letter-spacing: -0.01em;
+  line-height: 1.15;
+  margin: 0 0 0.35rem;
+}
+
+.auth-subheading {
+  font-size: 0.82rem;
+  color: rgba(26, 28, 18, 0.5);
+  margin-bottom: 1.75rem;
+}
+
+.auth-subheading em {
+  font-style: normal;
+  text-decoration: underline;
+  text-decoration-color: var(--neo-accent);
+  text-underline-offset: 2px;
+}
+
+/* Auth labels */
+.auth-label {
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--neo-ink);
+  opacity: 0.7;
+  margin-bottom: 0.35rem;
+  display: block;
+}
+
+/* Auth inputs */
+.auth-input {
+  width: 100%;
+  padding: 0.65rem 0.85rem;
+  border: 1px solid var(--neo-border-mid);
+  border-radius: 4px;
+  font-size: 0.875rem;
+  font-family: inherit;
+  color: var(--neo-ink);
+  background: #fff;
+  outline: none;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+  box-sizing: border-box;
+}
+
+.auth-input:focus {
+  border-color: var(--neo-forest);
+  box-shadow: 0 0 0 3px rgba(99, 107, 47, 0.14);
+}
+
+/* Auth submit button */
+.auth-btn-primary {
+  width: 100%;
+  padding: 0.72rem 1rem;
+  background: var(--neo-forest);
+  color: #fff;
+  border: none;
+  border-radius: 4px;
+  font-size: 0.875rem;
+  font-weight: 600;
+  font-family: inherit;
+  cursor: pointer;
+  transition: background 0.15s ease, box-shadow 0.15s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+}
+
+.auth-btn-primary:hover {
+  background: var(--neo-forest-mid);
+  box-shadow: 0 2px 12px rgba(61, 65, 39, 0.28);
+}
+
+.auth-btn-primary:active {
+  background: var(--neo-forest);
+}
+
+/* Auth divider */
+.auth-tab-row {
+  display: flex;
+  gap: 0;
+  margin-bottom: 1.75rem;
+  border-bottom: 1px solid var(--neo-border);
+}
+
+.auth-tab {
+  flex: 1;
+  padding: 0.6rem 0;
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+  font-size: 0.82rem;
+  font-weight: 600;
+  font-family: inherit;
+  color: rgba(26, 28, 18, 0.4);
+  cursor: pointer;
+  transition: color 0.15s ease, border-color 0.15s ease;
+}
+
+.auth-tab[data-active='true'] {
+  color: var(--neo-ink);
+  border-bottom-color: var(--neo-forest);
+}
+
+.auth-tab:hover {
+  color: var(--neo-ink);
+}
+
+
+
+
+/* High contrast table styling */
+.mantine-Table-thead {
+  background-color: #09160f !important;
+}
+
+.mantine-Table-th {
+  color: #ffffff !important;
+  font-weight: 700 !important;
+  font-size: 0.75rem !important;
+  text-transform: uppercase !important;
+  letter-spacing: 0.06em !important;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.14) !important;
+}
+
+.mantine-Table-td {
+  border-bottom: 1px solid rgba(255, 255, 255, 0.07) !important;
+  color: #f1f5f9;
+}
+
+.mantine-Table-tbody tr:hover {
+  background-color: rgba(255, 255, 255, 0.05) !important;
+}
+
+/* ── Hero pipeline animation ─────────────────────────────────────────
+   One application moving through intake, reading, scoring and sign-off.
+   A single 12s loop drives every stage; each element's delay is its cue
+   within that loop, so the sequence stays in step without JS.            */
+
+.pipe {
+  width: 100%;
+  max-width: 460px;
+}
+
+.pipe__frame {
+  background: var(--neo-card);
+  border: 1px solid var(--neo-border);
+  border-radius: 6px;
+  box-shadow: 0 2px 16px var(--neo-shadow);
+  padding: 1.35rem 1.5rem 1.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1.15rem;
+}
+
+.pipe__label {
+  font-size: 0.64rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.11em;
+  color: var(--neo-accent-deep);
+  margin-bottom: 0.6rem;
+}
+
+/* Each stage fades up as its turn arrives, then recedes. */
+.pipe__stage {
+  opacity: 0;
+  animation: pipe-stage 12s cubic-bezier(0.22, 1, 0.36, 1) infinite;
+}
+.pipe__stage--film { animation-delay: 0s; }
+.pipe__stage--findings { animation-delay: 3.2s; }
+.pipe__stage--score { animation-delay: 6.4s; }
+
+@keyframes pipe-stage {
+  0%    { opacity: 0; transform: translateY(6px); }
+  6%    { opacity: 1; transform: translateY(0); }
+  26%   { opacity: 1; transform: translateY(0); }
+  34%   { opacity: 0.32; transform: translateY(0); }
+  100%  { opacity: 0.32; transform: translateY(0); }
+}
+
+/* ── Stage 1: the radiograph ──────────────────────────────────────── */
+
+.pipe__film {
+  position: relative;
+  height: 132px;
+  display: grid;
+  place-items: center;
+  background: var(--neo-forest);
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.pipe__ribs { width: 120px; height: 120px; }
+.pipe__cavity { fill: rgba(206, 217, 140, 0.07); stroke: rgba(206, 217, 140, 0.22); stroke-width: 1; }
+.pipe__spine { stroke: rgba(206, 217, 140, 0.3); stroke-width: 2; fill: none; }
+.pipe__rib { stroke: rgba(206, 217, 140, 0.24); stroke-width: 1.4; fill: none; }
+
+/* The flagged region pulses only while the model is reading. */
+.pipe__lesion {
+  fill: rgba(206, 217, 140, 0.5);
+  opacity: 0;
+  animation: pipe-lesion 12s ease-in-out infinite;
+}
+@keyframes pipe-lesion {
+  0%, 12%  { opacity: 0; r: 6; }
+  20%      { opacity: 0.85; r: 12; }
+  27%      { opacity: 0.45; r: 10; }
+  33%, 100% { opacity: 0.6; r: 11; }
+}
+
+/* A single pass of the scanner, matching the read. */
+.pipe__scanline {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: linear-gradient(90deg, transparent, #CED98C, transparent);
+  opacity: 0;
+  animation: pipe-scan 12s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+}
+@keyframes pipe-scan {
+  0%   { top: 0; opacity: 0; }
+  8%   { opacity: 0.9; }
+  24%  { top: 100%; opacity: 0.9; }
+  30%  { opacity: 0; top: 100%; }
+  100% { opacity: 0; top: 100%; }
+}
+
+/* ── Stage 2: findings ────────────────────────────────────────────── */
+
+.pipe__bars { display: flex; flex-direction: column; gap: 0.45rem; }
+
+.pipe__bar { display: grid; grid-template-columns: 92px 1fr; align-items: center; gap: 0.6rem; }
+
+.pipe__bar-label {
+  font-size: 0.68rem;
+  color: var(--neo-ink);
+  opacity: 0.55;
+}
+
+.pipe__bar-track {
+  height: 5px;
+  border-radius: 3px;
+  background: rgba(44, 46, 28, 0.09);
+  overflow: hidden;
+}
+
+.pipe__bar-fill {
+  display: block;
+  height: 100%;
+  width: 0;
+  border-radius: 3px;
+  background: var(--neo-accent);
+  animation: pipe-fill 12s cubic-bezier(0.22, 1, 0.36, 1) infinite;
+}
+@keyframes pipe-fill {
+  0%, 27%   { width: 0; }
+  42%       { width: var(--w); }
+  100%      { width: var(--w); }
+}
+
+/* ── Stage 3: score and decision ──────────────────────────────────── */
+
+.pipe__dial { position: relative; display: grid; place-items: center; }
+.pipe__dial svg { width: 132px; height: 78px; }
+
+.pipe__arc-bg { fill: none; stroke: rgba(44, 46, 28, 0.12); stroke-width: 7; stroke-linecap: round; }
+
+/* Sweeps to 75 of 100 on the semicircle: 170 length, so 0.75 of it. */
+.pipe__arc-fg {
+  fill: none;
+  stroke: var(--neo-accent);
+  stroke-width: 7;
+  stroke-linecap: round;
+  stroke-dasharray: 170;
+  stroke-dashoffset: 170;
+  animation: pipe-arc 12s cubic-bezier(0.22, 1, 0.36, 1) infinite;
+}
+@keyframes pipe-arc {
+  0%, 53%  { stroke-dashoffset: 170; }
+  70%      { stroke-dashoffset: 42; }
+  100%     { stroke-dashoffset: 42; }
+}
+
+.pipe__score { position: absolute; bottom: 2px; text-align: center; }
+.pipe__score-num {
+  display: block;
+  font-size: 1.85rem;
+  font-weight: 700;
+  line-height: 1;
+  color: var(--neo-ink);
+  font-family: 'Space Grotesk Variable', 'Space Grotesk', sans-serif;
+}
+.pipe__score-tier {
+  display: block;
+  font-size: 0.64rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--neo-accent-deep);
+  margin-top: 3px;
+}
+
+.pipe__decision {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-top: 0.9rem;
+  padding: 0.55rem 0.75rem;
+  border-radius: 4px;
+  background: var(--neo-accent-soft);
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: var(--neo-accent-deep);
+}
+
+/* The tick is drawn, not a font glyph, so it cannot fall back to a box. */
+.pipe__tick {
+  width: 13px;
+  height: 13px;
+  flex: none;
+  border-radius: 50%;
+  border: 1.6px solid var(--neo-accent);
+  position: relative;
+  opacity: 0;
+  animation: pipe-tick 12s ease-out infinite;
+}
+.pipe__tick::after {
+  content: '';
+  position: absolute;
+  left: 3px;
+  top: 1px;
+  width: 3.5px;
+  height: 6.5px;
+  border-right: 1.6px solid var(--neo-accent);
+  border-bottom: 1.6px solid var(--neo-accent);
+  transform: rotate(42deg);
+}
+@keyframes pipe-tick {
+  0%, 72%  { opacity: 0; transform: scale(0.7); }
+  80%      { opacity: 1; transform: scale(1); }
+  100%     { opacity: 1; transform: scale(1); }
+}
+
+.pipe__caption {
+  margin: 0.9rem 0 0;
+  font-size: 0.72rem;
+  line-height: 1.6;
+  color: var(--neo-ink);
+  opacity: 0.5;
+  text-align: center;
+}
+
+/* Motion is an enhancement. Reduced-motion holds the finished state, which is
+   the one that carries the message. */
+@media (prefers-reduced-motion: reduce) {
+  .pipe__stage,
+  .pipe__lesion,
+  .pipe__scanline,
+  .pipe__bar-fill,
+  .pipe__arc-fg,
+  .pipe__tick {
+    animation: none;
+  }
+  .pipe__stage { opacity: 1; transform: none; }
+  .pipe__lesion { opacity: 0.6; }
+  .pipe__scanline { opacity: 0; }
+  .pipe__bar-fill { width: var(--w); }
+  .pipe__arc-fg { stroke-dashoffset: 42; }
+  .pipe__tick { opacity: 1; transform: none; }
+}
