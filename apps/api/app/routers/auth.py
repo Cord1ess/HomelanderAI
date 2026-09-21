@@ -6,7 +6,7 @@ and current user session verification.
 
 import logging
 from datetime import UTC, datetime
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from fastapi import APIRouter, Cookie, Depends, HTTPException, Response, status
 from sqlalchemy import select
@@ -360,7 +360,8 @@ async def update_profile(
     if payload.full_name is not None and payload.full_name.strip():
         user.full_name = payload.full_name.strip()
     if payload.license_number is not None:
-        user.license_number = payload.license_number.strip() if payload.license_number.strip() else None
+        stripped = payload.license_number.strip()
+        user.license_number = stripped or None
 
     await db.commit()
     await db.refresh(user)
@@ -540,7 +541,7 @@ async def provision_staff(
         if not _demo_staff_cache:
             _demo_staff_cache = _demo_staff()
         new_operator = UserSchema(
-            id=uuid.uuid4(),
+            id=uuid4(),
             tenant_id=ADMIN_TENANT_ID,
             full_name=payload.full_name.strip(),
             email=payload.email.strip().lower(),

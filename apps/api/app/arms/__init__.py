@@ -58,10 +58,7 @@ class Arm:
 
 # Imported at the bottom on purpose: tb_xray and eyepacs_dr do `from app.arms
 # import ArmResult`, and by this point ArmResult is defined, so there is no cycle.
-from app.arms import (
-    eyepacs_dr,  # noqa: E402
-    tb_xray,  # noqa: E402
-)
+from app.arms import eyepacs_dr, tb_xray  # noqa: E402
 
 
 def arm_for_intake(intake_id: str) -> Arm | None:
