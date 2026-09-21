@@ -29,6 +29,7 @@ export type ModelInfo = Schemas['ModelSchema']
 export type Pricing = Schemas['PricingSchema']
 export type ClassifiedFile = Schemas['ClassifiedFileSchema']
 export type ClassifyResponse = Schemas['ClassifyResponseSchema']
+export type RequestedDocument = Schemas['RequestedDocumentSchema']
 export type SubmitResponse = Schemas['SubmitResponseSchema']
 
 // Relative, so the Vite dev proxy handles it and the production build works
@@ -248,6 +249,27 @@ export const recordDecision = (
   })
 
 export const getAuditTrail = (id: string) => request<AuditTrail>(`/applications/${id}/audit`)
+
+/**
+ * Ask the applicant for specific documents, in the underwriter's own words.
+ *
+ * This is a pause, not a decision: decisions are write-once, so recording a
+ * request there would decide the application forever the moment a document
+ * was asked for. The application moves to `awaiting_evidence` and the decision
+ * stays open.
+ */
+export const requestEvidence = (id: string, body: { items: string[]; note?: string | null }) =>
+  request<RequestedDocument[]>(`/applications/${id}/evidence-request`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  })
+
+/** Tick off one requested document as received. Idempotent. */
+export const fulfilEvidenceRequest = (id: string, documentId: string) =>
+  request<RequestedDocument>(`/applications/${id}/evidence-request/${documentId}/fulfil`, {
+    method: 'POST',
+  })
 
 /** Images are served by the API, not from a static folder, so each read is
  * checked against the caller's tenant. */

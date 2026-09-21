@@ -47,6 +47,9 @@ const STATUS_META: Record<ApplicationStatus, { label: string; color: string }> =
   processing: { label: 'Evaluating', color: 'blue' },
   scored: { label: 'Ready for review', color: 'teal' },
   insufficient_evidence: { label: 'More evidence needed', color: 'yellow' },
+  // Distinct from the line above: this one waits on the applicant, that one
+  // on the operator. Orange, not yellow, so the two do not read as the same.
+  awaiting_evidence: { label: 'Waiting on applicant', color: 'orange' },
   decided: { label: 'Decided', color: 'gray' },
 }
 
@@ -56,6 +59,7 @@ const FILTERS: { value: ApplicationStatus | 'all'; label: string }[] = [
   { value: 'processing', label: 'Evaluating' },
   { value: 'scored', label: 'Ready for review' },
   { value: 'insufficient_evidence', label: 'More evidence needed' },
+  { value: 'awaiting_evidence', label: 'Waiting on applicant' },
   { value: 'decided', label: 'Decided' },
 ]
 
@@ -415,7 +419,7 @@ function Row({ row, userRole }: { row: QueueItem; userRole?: UserRole }) {
   // Anything already evaluated is worth opening — including an application that
   // could not be scored, because that screen explains why.
   const openable = row.status === 'scored' || row.status === 'decided' ||
-    row.status === 'insufficient_evidence'
+    row.status === 'insufficient_evidence' || row.status === 'awaiting_evidence'
   const isElevated = row.tier === 'elevated'
   const isSenior = userRole === 'senior_underwriter'
   const isUnderwriter = userRole === 'underwriter'

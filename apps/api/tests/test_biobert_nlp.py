@@ -5,6 +5,27 @@ import pytest
 from app.schemas.model import AssertionStatus, ModelResult
 from app.services.biobert import AssertionDetector, BioBERTClinicalNLPService
 
+# The service swallows a missing spaCy and returns no entities, so without this
+# guard every test here fails on an empty dict for anyone who has not installed
+# the nlp extra — which the README tells dashboard and database developers not
+# to. Skipping is the convention the vision and database tests already follow.
+#
+# A real import attempt rather than importlib.util.find_spec: find_spec raises
+# instead of returning None in some states (a blocked finder, or a name parked
+# as None in sys.modules), and a guard that can crash collection is worse than
+# no guard. This is also exactly how tb_xray.available() decides.
+try:
+    import spacy  # noqa: F401
+
+    _HAS_SPACY = True
+except ImportError:
+    _HAS_SPACY = False
+
+pytestmark = pytest.mark.skipif(
+    not _HAS_SPACY,
+    reason="nlp extra not installed — run `uv sync --extra nlp`",
+)
+
 
 @pytest.fixture(scope="module")
 def nlp_service() -> BioBERTClinicalNLPService:

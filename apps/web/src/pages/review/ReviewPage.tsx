@@ -16,6 +16,7 @@ import {
   Table,
   Text,
   Tooltip,
+  Textarea,
 } from '@mantine/core'
 import { notifications } from '@mantine/notifications'
 import {
@@ -31,9 +32,11 @@ import { useParams } from 'react-router-dom'
 
 import {
   fileUrl,
+  fulfilEvidenceRequest,
   getApplication,
   getAuditTrail,
   recordDecision,
+  requestEvidence,
   type ApplicationDetail,
   type DecisionType,
   type Finding,
@@ -58,7 +61,11 @@ const DECISIONS: { value: DecisionType; label: string }[] = [
   { value: 'confirmed_fast_track', label: 'Confirm fast-track' },
   { value: 'approved_with_adjustment', label: 'Approve with adjustment' },
   { value: 'escalated_senior_review', label: 'Escalate to senior underwriter' },
-  { value: 'requested_additional_evidence', label: 'Request more evidence' },
+  // "Request more evidence" is deliberately not here. Decisions are
+  // write-once, so recording a request as one would decide the application
+  // forever the moment a document was asked for. It has its own panel and
+  // its own endpoint, and the decision stays open while the applicant is
+  // being waited on.
 ]
 
 const TOP_N = 5
@@ -124,6 +131,12 @@ export function ReviewPage() {
   const [decision, setDecision] = useState<DecisionType | null>(null)
   const [premium, setPremium] = useState<number | undefined>(undefined)
 
+  // Asking the applicant for documents. One item per line, in the
+  // underwriter's own words, because the applicant sees them verbatim.
+  const [requestOpen, setRequestOpen] = useState(false)
+  const [requestItems, setRequestItems] = useState('')
+  const [requestNote, setRequestNote] = useState('')
+
   const { data, isPending, error } = useQuery({
     queryKey: ['application', id],
     queryFn: () => getApplication(id),
@@ -156,6 +169,50 @@ export function ReviewPage() {
     },
   })
 
+  const invalidate = () => {
+    void queryClient.invalidateQueries({ queryKey: ['application', id] })
+    void queryClient.invalidateQueries({ queryKey: ['applications'] })
+    void queryClient.invalidateQueries({ queryKey: ['audit', id] })
+  }
+
+  const request = useMutation({
+    mutationFn: () =>
+      requestEvidence(id, {
+        items: requestItems.split('\n').map((line) => line.trim()).filter(Boolean),
+        note: requestNote.trim() || null,
+      }),
+    onSuccess: (items) => {
+      setRequestOpen(false)
+      setRequestItems('')
+      setRequestNote('')
+      invalidate()
+      notifications.show({
+        title: 'Request sent',
+        message: `${items.length} document${items.length === 1 ? '' : 's'} requested. The application is now waiting on the applicant.`,
+        color: 'orange',
+      })
+    },
+    onError: (err) => {
+      notifications.show({
+        title: 'Could not send the request',
+        message: err instanceof Error ? err.message : 'Unknown error',
+        color: 'red',
+      })
+    },
+  })
+
+  const receive = useMutation({
+    mutationFn: (documentId: string) => fulfilEvidenceRequest(id, documentId),
+    onSuccess: invalidate,
+    onError: (err) => {
+      notifications.show({
+        title: 'Could not mark it received',
+        message: err instanceof Error ? err.message : 'Unknown error',
+        color: 'red',
+      })
+    },
+  })
+
   if (isPending) {
     return (
       <Center mih={300}>
@@ -172,7 +229,30 @@ export function ReviewPage() {
     )
   }
 
-  return <Review data={data} state={{ showHeatmap, setShowHeatmap, showAll, setShowAll, decision, setDecision, premium, setPremium, submit }} />
+  return (
+    <Review
+      data={data}
+      state={{
+        showHeatmap,
+        setShowHeatmap,
+        showAll,
+        setShowAll,
+        decision,
+        setDecision,
+        premium,
+        setPremium,
+        submit,
+        requestOpen,
+        setRequestOpen,
+        requestItems,
+        setRequestItems,
+        requestNote,
+        setRequestNote,
+        request,
+        receive,
+      }}
+    />
+  )
 }
 
 interface ReviewState {
@@ -185,6 +265,14 @@ interface ReviewState {
   premium: number | undefined
   setPremium: (v: number | undefined) => void
   submit: { mutate: () => void; isPending: boolean }
+  requestOpen: boolean
+  setRequestOpen: (v: boolean) => void
+  requestItems: string
+  setRequestItems: (v: string) => void
+  requestNote: string
+  setRequestNote: (v: string) => void
+  request: { mutate: () => void; isPending: boolean }
+  receive: { mutate: (documentId: string) => void; isPending: boolean }
 }
 
 /** Derive a human-readable image label from whichever arm produced the evidence. */
@@ -421,6 +509,108 @@ function Review({ data, state }: { data: ApplicationDetail; state: ReviewState }
       {/* ── What this means for the policy ──────────────────── */}
       {data.plan && <PlanPanel plan={data.plan} coverage={data.coverage} />}
 
+      {/* ── Requested documents ─────────────────────────────── */}
+      {((data.requestedDocuments ?? []).length > 0 || (!decided && !pending)) && (
+        <Paper p="md" bd="1px solid var(--mantine-color-default-border)">
+          <Group justify="space-between" align="center" mb="sm">
+            <Text fw={600} size="sm">
+              Documents requested from the applicant
+            </Text>
+            {data.status === 'awaiting_evidence' && (
+              <Badge color="orange" variant="light" size="xs">
+                Waiting on applicant
+              </Badge>
+            )}
+          </Group>
+
+          {(data.requestedDocuments ?? []).length === 0 && (
+            <Text size="sm" c="dimmed" mb="sm">
+              Nothing has been requested.
+            </Text>
+          )}
+
+          <Stack gap={6} mb="sm">
+            {(data.requestedDocuments ?? []).map((doc) => (
+              <Group key={doc.id} justify="space-between" wrap="nowrap">
+                <Text
+                  size="sm"
+                  c={doc.fulfilledAt ? 'dimmed' : undefined}
+                  td={doc.fulfilledAt ? 'line-through' : undefined}
+                >
+                  {doc.description}
+                </Text>
+                {doc.fulfilledAt ? (
+                  <Badge size="xs" variant="light" color="teal">
+                    Received
+                  </Badge>
+                ) : (
+                  <Button
+                    size="xs"
+                    variant="light"
+                    onClick={() => state.receive.mutate(doc.id)}
+                    loading={state.receive.isPending}
+                  >
+                    Mark received
+                  </Button>
+                )}
+              </Group>
+            ))}
+          </Stack>
+
+          {!decided &&
+            (state.requestOpen ? (
+              <Stack gap="xs">
+                <Textarea
+                  size="xs"
+                  label="What is needed"
+                  description="One document per line, in words the applicant will understand."
+                  placeholder={'A chest X-ray taken within the last 6 months\nHbA1c blood test result'}
+                  autosize
+                  minRows={2}
+                  value={state.requestItems}
+                  onChange={(e) => state.setRequestItems(e.currentTarget.value)}
+                />
+                <Textarea
+                  size="xs"
+                  label="Note to the applicant (optional)"
+                  autosize
+                  minRows={1}
+                  value={state.requestNote}
+                  onChange={(e) => state.setRequestNote(e.currentTarget.value)}
+                />
+                <Group justify="flex-end" gap="xs">
+                  <Button size="xs" variant="subtle" onClick={() => state.setRequestOpen(false)}>
+                    Cancel
+                  </Button>
+                  <Button
+                    size="xs"
+                    color="orange"
+                    onClick={() => state.request.mutate()}
+                    loading={state.request.isPending}
+                    disabled={state.requestItems.split('\n').every((line) => !line.trim())}
+                  >
+                    Send request
+                  </Button>
+                </Group>
+              </Stack>
+            ) : (
+              <Button
+                size="xs"
+                variant="light"
+                color="orange"
+                onClick={() => state.setRequestOpen(true)}
+              >
+                Request more evidence
+              </Button>
+            ))}
+
+          <Text size="xs" c="dimmed" mt="sm">
+            Asking for documents pauses the application. It does not decide it; the
+            decision below stays open.
+          </Text>
+        </Paper>
+      )}
+
       {/* ── Decision ────────────────────────────────────────── */}
       <Paper p="md" bd="1px solid var(--mantine-color-default-border)">
         <Group justify="space-between" align="center" mb="sm">
@@ -484,7 +674,7 @@ function Review({ data, state }: { data: ApplicationDetail; state: ReviewState }
               Decisions are write-once and can no longer be edited.
             </Text>
           </Alert>
-        ) : !scored && data.status !== 'insufficient_evidence' ? (
+        ) : !scored && data.status !== 'insufficient_evidence' && data.status !== 'awaiting_evidence' ? (
           <Text size="sm" c="dimmed">
             A decision can be recorded once the evaluation finishes.
           </Text>
@@ -691,6 +881,7 @@ function StatusBadge({ status }: { status: ApplicationDetail['status'] }) {
     processing: { label: 'Evaluating', color: 'blue' },
     scored: { label: 'Ready for review', color: 'teal' },
     insufficient_evidence: { label: 'More evidence needed', color: 'yellow' },
+    awaiting_evidence: { label: 'Waiting on applicant', color: 'orange' },
     decided: { label: 'Decided', color: 'gray' },
   }
   const m = meta[status] ?? { label: status, color: 'gray' }

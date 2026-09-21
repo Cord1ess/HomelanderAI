@@ -56,8 +56,10 @@ from app.models import (
     NotificationChannel,
     NotificationStatus,
     NotificationType,
+    RequestedDocument,
     SubScore,
     UnderwriterDecision,
+    UnderwriterDecisionType,
     User,
 )
 from app.pipeline import evaluate
@@ -82,6 +84,8 @@ from app.schemas.application import (
     PricingSchema,
     QueueItemSchema,
     QueueSchema,
+    RequestedDocumentSchema,
+    RequestEvidenceIn,
     ScoreSchema,
     SubmitResponseSchema,
 )
@@ -800,6 +804,25 @@ async def get_application(
         )
     ).first()
 
+    requested_rows = (
+        await db.execute(
+            select(RequestedDocument, User)
+            .outerjoin(User, User.id == RequestedDocument.requested_by)
+            .where(RequestedDocument.application_id == application.id)
+            .order_by(RequestedDocument.requested_at)
+        )
+    ).all()
+    requested = [
+        RequestedDocumentSchema(
+            id=row.id,
+            description=row.description,
+            requested_at=row.requested_at,
+            requested_by_name=who.full_name if who else None,
+            fulfilled_at=row.fulfilled_at,
+        )
+        for row, who in requested_rows
+    ]
+
     decision = None
     if decision_row is not None:
         record, underwriter = decision_row
@@ -865,6 +888,7 @@ async def get_application(
         model_info=model_info,
         files=files,
         decision=decision,
+        requested_documents=requested,
         errors=errors,
     )
 
@@ -953,6 +977,19 @@ async def record_decision(
     """
     application, _ = await _load_owned(db, application_id, principal)
 
+    # Asking for documents is a pause, not an outcome. Decisions are
+    # write-once, so recording it here would decide the application forever
+    # the moment a document was requested, and nothing could be decided once
+    # it arrived. There is a separate endpoint for it.
+    if payload.decision == UnderwriterDecisionType.REQUESTED_ADDITIONAL_EVIDENCE:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=(
+                "Requesting evidence does not decide the application. Use "
+                "POST /applications/{id}/evidence-request and name what is needed."
+            ),
+        )
+
     if payload.decision.value == "approved_with_adjustment" and not payload.final_premium:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
@@ -1012,6 +1049,167 @@ async def record_decision(
         final_premium=record.final_premium,
         decided_at=record.decided_at,
         underwriter_name=underwriter.full_name,
+    )
+
+
+# ── requested documents ──────────────────────────────────────────────────────
+
+
+@router.post(
+    "/applications/{application_id}/evidence-request",
+    response_model=list[RequestedDocumentSchema],
+    status_code=status.HTTP_201_CREATED,
+    summary="Ask the applicant for specific documents",
+)
+async def request_evidence(
+    application_id: UUID,
+    payload: RequestEvidenceIn,
+    db: AsyncSession = Depends(get_db),
+    principal: Principal = Depends(current_principal),
+) -> list[RequestedDocumentSchema]:
+    """Name what is missing, in the underwriter's own words.
+
+    Moves the application to `awaiting_evidence` and leaves the decision open:
+    this is a pause, not an outcome. The list is what the applicant will see,
+    so each item is stored verbatim.
+    """
+    application, applicant = await _load_owned(db, application_id, principal)
+
+    if application.status == ApplicationStatus.DECIDED:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="This application has already been decided.",
+        )
+
+    items = [text.strip() for text in payload.items if text.strip()]
+    if not items:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Name at least one document. A request for nothing tells the applicant nothing.",
+        )
+
+    actor = await _actor_id(db, principal)
+    rows = [
+        RequestedDocument(
+            tenant_id=principal.tenant_id,
+            application_id=application.id,
+            requested_by=actor,
+            description=item,
+        )
+        for item in items
+    ]
+    db.add_all(rows)
+    application.status = ApplicationStatus.AWAITING_EVIDENCE
+
+    plural = "s" if len(items) != 1 else ""
+    await persistence.append_audit(
+        db,
+        tenant_id=principal.tenant_id,
+        application_id=application.id,
+        actor_user_id=actor,
+        event_type="evidence_requested",
+        payload={"items": items, "note": payload.note},
+    )
+    await _notify_tenant(
+        db,
+        application,
+        NotificationType.EVIDENCE_REQUESTED,
+        f"{applicant.external_ref}: {len(items)} document{plural} requested from the applicant",
+    )
+    await db.commit()
+    for row in rows:
+        await db.refresh(row)
+
+    requester = await db.get(User, actor) if actor else None
+    return [
+        RequestedDocumentSchema(
+            id=row.id,
+            description=row.description,
+            requested_at=row.requested_at,
+            requested_by_name=requester.full_name if requester else None,
+            fulfilled_at=None,
+        )
+        for row in rows
+    ]
+
+
+@router.post(
+    "/applications/{application_id}/evidence-request/{document_id}/fulfil",
+    response_model=RequestedDocumentSchema,
+    summary="Mark a requested document as received",
+)
+async def fulfil_evidence_request(
+    application_id: UUID,
+    document_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    principal: Principal = Depends(current_principal),
+) -> RequestedDocumentSchema:
+    """Tick off one item. When nothing is outstanding, the application goes
+    back to the underwriter.
+
+    Ticking off is not re-scoring: an existing score stands. New evidence that
+    a model should read arrives through intake, which is what the portal
+    upload will do.
+    """
+    application, _ = await _load_owned(db, application_id, principal)
+
+    row = (
+        await db.execute(
+            select(RequestedDocument).where(
+                RequestedDocument.id == document_id,
+                RequestedDocument.application_id == application.id,
+            )
+        )
+    ).scalar_one_or_none()
+    if row is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No such request.")
+
+    # Idempotent: ticking something already ticked is not an error.
+    if row.fulfilled_at is None:
+        row.fulfilled_at = datetime.now(UTC)
+        await persistence.append_audit(
+            db,
+            tenant_id=principal.tenant_id,
+            application_id=application.id,
+            actor_user_id=await _actor_id(db, principal),
+            event_type="evidence_received",
+            payload={"document_id": str(row.id), "description": row.description},
+        )
+
+    # The session does not autoflush, so without this the count below still
+    # sees the row just ticked as outstanding and the application never leaves
+    # awaiting_evidence. The test for this endpoint caught exactly that.
+    await db.flush()
+
+    outstanding = (
+        await db.execute(
+            select(func.count()).where(
+                RequestedDocument.application_id == application.id,
+                RequestedDocument.fulfilled_at.is_(None),
+            )
+        )
+    ).scalar_one()
+
+    if outstanding == 0 and application.status == ApplicationStatus.AWAITING_EVIDENCE:
+        has_score = (
+            await db.execute(
+                select(func.count()).where(CompositeScore.application_id == application.id)
+            )
+        ).scalar_one()
+        application.status = (
+            ApplicationStatus.SCORED if has_score else ApplicationStatus.INSUFFICIENT_EVIDENCE
+        )
+
+    await db.commit()
+    await db.refresh(row)
+
+    requester = await db.get(User, row.requested_by) if row.requested_by else None
+    return RequestedDocumentSchema(
+        id=row.id,
+        description=row.description,
+        requested_at=row.requested_at,
+        requested_by_name=requester.full_name if requester else None,
+        fulfilled_at=row.fulfilled_at,
     )
 
 

@@ -17,8 +17,13 @@ CREATE EXTENSION IF NOT EXISTS pgcrypto;  -- for gen_random_uuid()
 
 CREATE TYPE user_role AS ENUM ('underwriter', 'senior_underwriter', 'admin');
 
+-- 'awaiting_evidence' is an underwriter asking the applicant for more, as
+-- distinct from 'insufficient_evidence', which is the model being unable to
+-- read what it was given. The two look alike in the queue and mean opposite
+-- things: one waits on the client, the other on the operator.
 CREATE TYPE application_status AS ENUM (
-    'submitted', 'processing', 'insufficient_evidence', 'scored', 'decided'
+    'submitted', 'processing', 'insufficient_evidence', 'awaiting_evidence',
+    'scored', 'decided'
 );
 
 -- 'image' covers a radiograph uploaded as PNG or JPEG rather than DICOM, which
@@ -309,6 +314,31 @@ CREATE INDEX idx_underwriter_decisions_tenant_id ON underwriter_decisions(tenant
 CREATE INDEX idx_underwriter_decisions_underwriter_id ON underwriter_decisions(underwriter_id);
 
 -- ============================================================================
+-- REQUESTED_DOCUMENTS
+-- What an underwriter has asked the applicant to supply. Requesting evidence is
+-- a pause, not a decision: underwriter_decisions is write-once, and if asking
+-- for a document consumed the one decision, nothing could be decided once the
+-- document arrived. So this is its own table and its own status.
+-- ============================================================================
+
+CREATE TABLE requested_documents (
+    id               UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    tenant_id        UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+    application_id   UUID NOT NULL REFERENCES applications(id) ON DELETE CASCADE,
+    requested_by     UUID REFERENCES users(id) ON DELETE RESTRICT,
+    -- In the underwriter's words, shown verbatim to the applicant:
+    -- "A chest X-ray taken within the last 6 months".
+    description      VARCHAR(300) NOT NULL,
+    requested_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
+    fulfilled_at     TIMESTAMPTZ,
+    -- The evidence that satisfied it, once the applicant uploads one.
+    fulfilled_by     UUID REFERENCES evidence_files(id) ON DELETE SET NULL
+);
+
+CREATE INDEX idx_requested_documents_tenant_id ON requested_documents(tenant_id);
+CREATE INDEX idx_requested_documents_application_id ON requested_documents(application_id);
+
+-- ============================================================================
 -- AUDIT_LOG  [v2: + tenant_id, payload, actor_user_id; enforced append-only]
 -- ============================================================================
 
@@ -409,7 +439,8 @@ BEGIN
     FOREACH t IN ARRAY ARRAY[
         'users', 'api_keys', 'applicants', 'applications', 'evidence_files',
         'model_runs', 'sub_scores', 'explanation_artifacts', 'composite_scores',
-        'underwriter_decisions', 'audit_log', 'notifications'
+        'underwriter_decisions', 'requested_documents', 'audit_log',
+        'notifications'
     ]
     LOOP
         EXECUTE format('ALTER TABLE %I ENABLE ROW LEVEL SECURITY;', t);

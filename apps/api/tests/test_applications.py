@@ -340,7 +340,9 @@ def test_the_audit_chain_records_and_verifies(carrier):
         created = submit(client)
         client.post(
             f"/api/applications/{created['id']}/decision",
-            json={"decision": "requested_additional_evidence"},
+            # A real decision. "Request more evidence" is no longer one: it is a
+            # pause with its own endpoint, and the decision endpoint rejects it.
+            json={"decision": "escalated_senior_review"},
         )
         trail = client.get(f"/api/applications/{created['id']}/audit").json()
 

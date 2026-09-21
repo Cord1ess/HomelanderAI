@@ -325,6 +325,55 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/applications/{application_id}/evidence-request": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Ask the applicant for specific documents
+         * @description Name what is missing, in the underwriter's own words.
+         *
+         *     Moves the application to `awaiting_evidence` and leaves the decision open:
+         *     this is a pause, not an outcome. The list is what the applicant will see,
+         *     so each item is stored verbatim.
+         */
+        post: operations["request_evidence_api_applications__application_id__evidence_request_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/applications/{application_id}/evidence-request/{document_id}/fulfil": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Mark a requested document as received
+         * @description Tick off one item. When nothing is outstanding, the application goes
+         *     back to the underwriter.
+         *
+         *     Ticking off is not re-scoring: an existing score stands. New evidence that
+         *     a model should read arrives through intake, which is what the portal
+         *     upload will do.
+         */
+        post: operations["fulfil_evidence_request_api_applications__application_id__evidence_request__document_id__fulfil_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/applications/{application_id}/audit": {
         parameters: {
             query?: never;
@@ -466,6 +515,8 @@ export interface components {
             /** Files */
             files?: components["schemas"]["FileSchema"][];
             decision?: components["schemas"]["DecisionSchema"] | null;
+            /** Requesteddocuments */
+            requestedDocuments?: components["schemas"]["RequestedDocumentSchema"][];
             /** Errors */
             errors?: string[];
         };
@@ -473,7 +524,7 @@ export interface components {
          * ApplicationStatus
          * @enum {string}
          */
-        ApplicationStatus: "submitted" | "processing" | "insufficient_evidence" | "scored" | "decided";
+        ApplicationStatus: "submitted" | "processing" | "insufficient_evidence" | "awaiting_evidence" | "scored" | "decided";
         /** AuditEntrySchema */
         AuditEntrySchema: {
             /**
@@ -908,6 +959,38 @@ export interface components {
             licenseNumber?: string | null;
             /** @default admin */
             role: components["schemas"]["UserRole"];
+        };
+        /**
+         * RequestEvidenceIn
+         * @description What the underwriter is asking the applicant for.
+         *
+         *     At least one item, each in plain words. "More evidence needed" with nothing
+         *     named is exactly the uselessness this replaces.
+         */
+        RequestEvidenceIn: {
+            /** Items */
+            items: string[];
+            /** Note */
+            note?: string | null;
+        };
+        /** RequestedDocumentSchema */
+        RequestedDocumentSchema: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Description */
+            description: string;
+            /**
+             * Requestedat
+             * Format: date-time
+             */
+            requestedAt: string;
+            /** Requestedbyname */
+            requestedByName?: string | null;
+            /** Fulfilledat */
+            fulfilledAt?: string | null;
         };
         /** ScoreSchema */
         ScoreSchema: {
@@ -1575,6 +1658,77 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["DecisionSchema"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    request_evidence_api_applications__application_id__evidence_request_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                application_id: string;
+            };
+            cookie?: {
+                session_token?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RequestEvidenceIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RequestedDocumentSchema"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    fulfil_evidence_request_api_applications__application_id__evidence_request__document_id__fulfil_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                application_id: string;
+                document_id: string;
+            };
+            cookie?: {
+                session_token?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RequestedDocumentSchema"];
                 };
             };
             /** @description Validation Error */

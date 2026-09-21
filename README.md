@@ -148,11 +148,26 @@ The ML libraries are heavy, so they're optional extras. Skip them unless you're 
 ```bash
 cd apps/api
 uv sync --extra vision   # torch (CPU), TorchXRayVision, Grad-CAM, scikit-learn  (~2-3 GB)
+uv sync --extra nlp      # spaCy, scispaCy, negspaCy, transformers — the clinical-notes service
 ```
 
-The API runs fine without it — the chest X-ray arm reports itself unavailable
-and the pipeline degrades rather than crashing, so nobody working on the
-dashboard or the database needs a multi-gigabyte download.
+The API runs fine without either — an arm whose libraries are missing reports
+itself unavailable and the pipeline degrades rather than crashing, so nobody
+working on the dashboard or the database needs a multi-gigabyte download.
+
+**After every `git pull` that changes `uv.lock`, re-run the sync with every
+extra you use in one command:**
+
+```bash
+uv sync --extra vision --extra nlp
+```
+
+A plain `uv run` (or `uv sync` with no extras) only brings the *base*
+dependencies in line with the lock and leaves extra-only packages as they were.
+If the lock moved a shared package such as numpy, the venv ends up holding a
+combination the lock never described — the symptom is inference failing with an
+import or attribute error that looks like a model bug. A `uv run` that takes
+minutes instead of seconds is the sign that this just happened.
 
 Then fetch the training data (~3.6 GB, gitignored):
 

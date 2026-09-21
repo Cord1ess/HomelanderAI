@@ -16,6 +16,10 @@ class ApplicationStatus(enum.StrEnum):
     SUBMITTED = "submitted"
     PROCESSING = "processing"
     INSUFFICIENT_EVIDENCE = "insufficient_evidence"
+    # An underwriter has asked the applicant for more. Distinct from the line
+    # above, which is the model being unable to read what it was given: one
+    # waits on the client, the other on the operator.
+    AWAITING_EVIDENCE = "awaiting_evidence"
     SCORED = "scored"
     DECIDED = "decided"
 

@@ -68,6 +68,29 @@ class QueueSchema(BaseSchema):
     counts: dict[str, int] = Field(default_factory=dict)
 
 
+# ── requested documents ──────────────────────────────────────────────────────
+
+
+class RequestEvidenceIn(BaseSchema):
+    """What the underwriter is asking the applicant for.
+
+    At least one item, each in plain words. "More evidence needed" with nothing
+    named is exactly the uselessness this replaces.
+    """
+
+    items: list[str] = Field(..., min_length=1)
+    # Optional context for the applicant, shown above the list.
+    note: str | None = Field(default=None, max_length=500)
+
+
+class RequestedDocumentSchema(BaseSchema):
+    id: UUID
+    description: str
+    requested_at: datetime
+    requested_by_name: str | None = None
+    fulfilled_at: datetime | None = None
+
+
 # ── detail ───────────────────────────────────────────────────────────────────
 
 
@@ -232,6 +255,10 @@ class ApplicationDetailSchema(BaseSchema):
     model_info: ModelInfoSchema | None = None
     files: list[FileSchema] = Field(default_factory=list)
     decision: DecisionSchema | None = None
+    # What the underwriter has asked the applicant for, fulfilled or not. The
+    # review screen shows the outstanding ones; the portal will show the same
+    # list to the applicant.
+    requested_documents: list[RequestedDocumentSchema] = Field(default_factory=list)
     # Why an arm produced nothing. The review screen must never show a blank
     # panel with no explanation.
     errors: list[str] = Field(default_factory=list)

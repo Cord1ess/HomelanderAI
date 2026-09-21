@@ -77,6 +77,40 @@ class UnderwriterDecision(Base):
     )
 
 
+class RequestedDocument(Base):
+    """A document an underwriter has asked the applicant to supply.
+
+    Requesting evidence is a pause, not a decision. `underwriter_decisions` is
+    write-once, so if asking for a document consumed the one decision, nothing
+    could be decided once the document arrived. This is its own row and its
+    own application status, and the decision stays open.
+    """
+
+    __tablename__ = "requested_documents"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    tenant_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False
+    )
+    application_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("applications.id", ondelete="CASCADE"), nullable=False
+    )
+    requested_by: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="RESTRICT"), nullable=True
+    )
+    # In the underwriter's words, shown verbatim to the applicant.
+    description: Mapped[str] = mapped_column(String(300), nullable=False)
+    requested_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    fulfilled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    fulfilled_by: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("evidence_files.id", ondelete="SET NULL"), nullable=True
+    )
+
+
 class AuditLog(Base):
     """Append-only, enforced by triggers in db/schema.sql.
 

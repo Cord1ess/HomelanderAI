@@ -14,6 +14,7 @@ from app.models.decision import (
     NotificationChannel,
     NotificationStatus,
     NotificationType,
+    RequestedDocument,
     UnderwriterDecision,
     UnderwriterDecisionType,
 )
@@ -50,6 +51,7 @@ __all__ = [
     "NotificationChannel",
     "NotificationStatus",
     "NotificationType",
+    "RequestedDocument",
     "RiskTier",
     "SubScore",
     "Tenant",
