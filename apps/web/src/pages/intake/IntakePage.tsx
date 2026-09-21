@@ -53,14 +53,16 @@ import { Section } from './components'
  *
  * Sections: 1 · Applicant · 2 · Coverage · 3 · Models.
  *
- * Submit is disabled until: name + phone + face photo set (1), coverage
- * type/amount set (2), ≥1 model selected and every selected model's required
- * report is attached (3).
+ * Submit is disabled until: name + phone set (1), coverage type/amount set (2),
+ * and at least one model selected with its required report attached (3). The
+ * identity photo is **not** required — it is biometric data no model reads, so
+ * demanding it would collect the most sensitive thing on the form for no gain.
  *
- * TODO: `POST /api/applications` (multipart) sending the applicant (name, phone,
- * dob, sex, face photo), coverage, `models_requested` + per-model
- * `declared_history` (DATABASE.md §C), and uploads keyed by `model_arm_id`; the
- * database assigns `external_ref`; real upload progress; confirmation persists.
+ * Submits multipart to `POST /api/applications`: the applicant, coverage,
+ * `models_requested` and the per-model `declared_history` as one JSON field,
+ * with each upload paired to the model arm that reads it. The database assigns
+ * `external_ref`, and the reference shown in the confirmation is the one it
+ * returned — never a client-side guess.
  */
 
 type Scalar = string | boolean | number | string[] | null

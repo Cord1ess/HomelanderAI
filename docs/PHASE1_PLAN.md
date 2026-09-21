@@ -21,7 +21,7 @@ below is justified against it.
 | HTTP endpoints | **Done** — intake, queue, review, decision, audit, files |
 | Dashboard wired to the API | **Done** — no screen runs on stub data |
 
-106 tests passing. The whole path runs end to end: an application submitted
+122 tests passing. The whole path runs end to end: an application submitted
 through the form is de-identified, stored, scored in the background, and shown
 to an underwriter with the image, the heatmap, the findings that moved the
 score, and the history rules that adjusted it.
