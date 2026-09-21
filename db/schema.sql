@@ -63,6 +63,12 @@ CREATE TABLE tenants (
     id                  UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     name                VARCHAR(255) NOT NULL,
     subscription_tier   VARCHAR(50)  NOT NULL DEFAULT 'standard',
+    -- How long this carrier tells applicants a decision usually takes, in
+    -- working days. Set by the carrier's admin; copied onto each application
+    -- as a date at submit, so changing it later does not move promises already
+    -- made.
+    turnaround_business_days INTEGER NOT NULL DEFAULT 2
+        CHECK (turnaround_business_days BETWEEN 1 AND 30),
     created_at          TIMESTAMPTZ  NOT NULL DEFAULT now()
 );
 
@@ -159,6 +165,11 @@ CREATE TABLE applications (
     -- Which arms to run, e.g. ["cxr_lung"]. Adding an arm needs no migration.
     models_requested       JSONB NOT NULL DEFAULT '[]'::jsonb,
     declared_history       JSONB NOT NULL DEFAULT '{}'::jsonb,
+    -- When the applicant was told to expect an answer. Set from the carrier
+    -- default at submit; any underwriter may revise it with a reason, which is
+    -- kept in expected_by_note and in the audit log. A date, not a countdown.
+    expected_by            DATE,
+    expected_by_note       VARCHAR(300),
     evaluated_at           TIMESTAMPTZ,
     processing_started_at  TIMESTAMPTZ,
     submitted_at           TIMESTAMPTZ NOT NULL DEFAULT now()

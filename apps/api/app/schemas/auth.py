@@ -25,6 +25,10 @@ class TenantSchema(BaseSchema):
     id: UUID
     name: str
     subscription_tier: str
+    # Working days an applicant is told a decision usually takes. Defaulted so
+    # the built-in admin session, which is built without a database row, still
+    # validates.
+    turnaround_business_days: int = 2
     created_at: datetime
 
 

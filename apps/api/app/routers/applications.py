@@ -35,7 +35,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app import audit as audit_chain
-from app import catalogue, persistence, plans, storage, triage
+from app import catalogue, persistence, plans, storage, triage, turnaround
 from app import evidence as evidence_kinds
 from app.arms import arm_for_intake, arms_for
 from app.db.session import AsyncSessionLocal, get_db
@@ -58,6 +58,7 @@ from app.models import (
     NotificationType,
     RequestedDocument,
     SubScore,
+    Tenant,
     UnderwriterDecision,
     UnderwriterDecisionType,
     User,
@@ -88,6 +89,7 @@ from app.schemas.application import (
     RequestEvidenceIn,
     ScoreSchema,
     SubmitResponseSchema,
+    TurnaroundIn,
 )
 from app.scoring import Thresholds
 
@@ -294,6 +296,14 @@ async def submit_application(
     await db.flush()
     await db.refresh(applicant)
 
+    # The date the applicant is told to expect an answer, from this carrier's
+    # default. Fixed here rather than computed on read, so changing the default
+    # later does not silently move a promise that has already been made.
+    tenant = await db.get(Tenant, principal.tenant_id)
+    business_days = (
+        tenant.turnaround_business_days if tenant else turnaround.DEFAULT_BUSINESS_DAYS
+    )
+
     application = Application(
         tenant_id=principal.tenant_id,
         applicant_id=applicant.id,
@@ -303,6 +313,10 @@ async def submit_application(
         policy_term=intake.coverage.policy_term,
         models_requested=intake.models_requested,
         declared_history=intake.declared_history,
+        # Local date, not UTC. Working days are calendar days where the
+        # operator and applicant are; at 2 a.m. in Dhaka the UTC date is still
+        # yesterday, which would promise a day earlier than intended.
+        expected_by=turnaround.add_business_days(date.today(), business_days),
     )
     db.add(application)
     await db.flush()
@@ -716,6 +730,8 @@ async def list_applications(
             tier=score.tier.value if score else None,
             coverage_amount=application.coverage_amount,
             models_requested=application.models_requested or [],
+            expected_by=application.expected_by,
+            overdue=turnaround.is_overdue(application.expected_by, application.status.value),
         )
         for application, applicant, score in rows.all()
     ]
@@ -839,6 +855,9 @@ async def get_application(
         status=application.status,
         submitted_at=application.submitted_at,
         evaluated_at=application.evaluated_at,
+        expected_by=application.expected_by,
+        expected_by_note=application.expected_by_note,
+        overdue=turnaround.is_overdue(application.expected_by, application.status.value),
         applicant=ApplicantIn(
             name=applicant.name or "",
             phone=applicant.phone or "",
@@ -1050,6 +1069,64 @@ async def record_decision(
         decided_at=record.decided_at,
         underwriter_name=underwriter.full_name,
     )
+
+
+# ── turnaround ───────────────────────────────────────────────────────────────
+
+
+@router.patch(
+    "/applications/{application_id}/turnaround",
+    response_model=ApplicationDetailSchema,
+    summary="Revise when the applicant can expect an answer",
+)
+async def revise_turnaround(
+    application_id: UUID,
+    payload: TurnaroundIn,
+    db: AsyncSession = Depends(get_db),
+    principal: Principal = Depends(current_principal),
+) -> ApplicationDetailSchema:
+    """Move the expected date, with a reason the applicant will see.
+
+    Any underwriter on the case may do this: they are the one who knows the
+    answer will be late, so they should be the one who can say so. The old and
+    new dates and the reason go into the audit trail.
+    """
+    application, _ = await _load_owned(db, application_id, principal)
+
+    if application.status == ApplicationStatus.DECIDED:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="This application has already been decided.",
+        )
+
+    # Local date, for the same reason as at submit: early in the morning the
+    # UTC date is still yesterday, and "yesterday" would pass as not-yet-past.
+    today = date.today()
+    if payload.expected_by < today:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="The expected date cannot be in the past.",
+        )
+
+    previous = application.expected_by
+    application.expected_by = payload.expected_by
+    application.expected_by_note = payload.reason.strip()
+
+    await persistence.append_audit(
+        db,
+        tenant_id=principal.tenant_id,
+        application_id=application.id,
+        actor_user_id=await _actor_id(db, principal),
+        event_type="turnaround_revised",
+        payload={
+            "from": previous.isoformat() if previous else None,
+            "to": payload.expected_by.isoformat(),
+            "reason": payload.reason.strip(),
+        },
+    )
+    await db.commit()
+
+    return await get_application(application_id, db, principal)
 
 
 # ── requested documents ──────────────────────────────────────────────────────

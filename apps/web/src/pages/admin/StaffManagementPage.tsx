@@ -38,6 +38,7 @@ import { useState } from 'react'
 import { Link } from 'react-router-dom'
 
 import { getStaffUsers, provisionStaffUser } from '../../api/client'
+import { TurnaroundCard } from './TurnaroundCard'
 import { useAuth } from '../../context/AuthContext'
 import type { UserRole } from '../../types/auth'
 
@@ -210,6 +211,8 @@ export function StaffManagementPage() {
           </Text>
         </Card>
       </SimpleGrid>
+
+      <TurnaroundCard />
 
       {error && (
         <Alert color="red" variant="light" icon={<IconAlertCircle size={16} />} title="Could not load staff directory">

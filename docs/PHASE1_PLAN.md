@@ -23,8 +23,9 @@ below is justified against it.
 | Arms refuse evidence they cannot read | **Done** — `Arm.accepts`; the retina model no longer scores chest films at 98.8 |
 | Triage + intake review screen | **Done** — rules-based `triage.py`, operator confirms every routing before scoring |
 | Requested documents | **Done** — `awaiting_evidence` status; asking for documents no longer spends the write-once decision |
+| Turnaround timing | **Done** — carrier default in working days, a date fixed at submit, revisable per case with a reason; never a countdown |
 
-174 tests passing. The whole path runs end to end: an application submitted
+184 tests passing. The whole path runs end to end: an application submitted
 through the form is de-identified, stored, scored in the background, and shown
 to an underwriter with the image, the heatmap, the findings that moved the
 score, and the history rules that adjusted it.

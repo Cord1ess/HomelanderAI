@@ -59,6 +59,10 @@ class QueueItemSchema(BaseSchema):
     coverage_amount: Decimal | None = None
     # Which models the operator asked for, so the queue shows what is pending.
     models_requested: list[str] = Field(default_factory=list)
+    # When the applicant was told to expect an answer, and whether that has
+    # passed while the carrier still holds the case.
+    expected_by: date | None = None
+    overdue: bool = False
 
 
 class QueueSchema(BaseSchema):
@@ -66,6 +70,30 @@ class QueueSchema(BaseSchema):
     total: int
     # Every status with at least one application, for the filter chips.
     counts: dict[str, int] = Field(default_factory=dict)
+
+
+# ── turnaround ───────────────────────────────────────────────────────────────
+
+
+class TurnaroundIn(BaseSchema):
+    """Revise when the applicant can expect an answer.
+
+    The reason is required: a date that moves with no explanation is exactly
+    the silent slip this feature exists to replace. It is stored on the
+    application and shown to the applicant.
+    """
+
+    expected_by: date
+    reason: str = Field(..., min_length=3, max_length=300)
+
+
+class TenantSettingsSchema(BaseSchema):
+    name: str
+    turnaround_business_days: int
+
+
+class TenantSettingsIn(BaseSchema):
+    turnaround_business_days: int = Field(..., ge=1, le=30)
 
 
 # ── requested documents ──────────────────────────────────────────────────────
@@ -241,6 +269,11 @@ class ApplicationDetailSchema(BaseSchema):
     status: ApplicationStatus
     submitted_at: datetime
     evaluated_at: datetime | None = None
+    # The date the applicant was given, the reason for the latest revision if
+    # any, and whether it has passed while the carrier still holds the case.
+    expected_by: date | None = None
+    expected_by_note: str | None = None
+    overdue: bool = False
 
     applicant: ApplicantIn
     coverage: CoverageIn

@@ -2,10 +2,10 @@
 
 import enum
 import uuid
-from datetime import datetime
+from datetime import date, datetime
 from decimal import Decimal
 
-from sqlalchemy import BigInteger, DateTime, ForeignKey, Numeric, String, func
+from sqlalchemy import BigInteger, Date, DateTime, ForeignKey, Numeric, String, func
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -62,6 +62,12 @@ class Application(Base):
     # JSONB because the field set changes every time an arm is added.
     declared_history: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
 
+    # When the applicant was told to expect an answer. Set from the carrier's
+    # default at submit; an underwriter may revise it with a reason. A date
+    # rather than a countdown, because a date openly revised reads as managed
+    # and a countdown that slips reads as broken.
+    expected_by: Mapped[date | None] = mapped_column(Date, nullable=True)
+    expected_by_note: Mapped[str | None] = mapped_column(String(300), nullable=True)
     evaluated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     processing_started_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True

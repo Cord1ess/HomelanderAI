@@ -18,7 +18,7 @@ from fastapi.responses import JSONResponse
 from sqlalchemy.exc import SQLAlchemyError
 
 from app.config import settings
-from app.routers import applications, auth, health, notifications
+from app.routers import applications, auth, health, notifications, tenant
 
 log = logging.getLogger(__name__)
 
@@ -104,4 +104,5 @@ app.include_router(health.router, prefix="/api")
 app.include_router(auth.router, prefix="/api")
 app.include_router(applications.router, prefix="/api")
 app.include_router(notifications.router, prefix="/api")
+app.include_router(tenant.router, prefix="/api")
 

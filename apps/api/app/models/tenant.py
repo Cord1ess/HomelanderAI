@@ -4,7 +4,7 @@ import uuid
 from datetime import datetime
 from typing import TYPE_CHECKING
 
-from sqlalchemy import DateTime, String, func
+from sqlalchemy import DateTime, Integer, String, func
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -26,6 +26,10 @@ class Tenant(Base):
     subscription_tier: Mapped[str] = mapped_column(
         String(50), nullable=False, default="standard"
     )
+    # Working days an applicant is told a decision usually takes. Copied onto
+    # each application as a date at submit, so changing it does not move
+    # promises already made.
+    turnaround_business_days: Mapped[int] = mapped_column(Integer, nullable=False, default=2)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )

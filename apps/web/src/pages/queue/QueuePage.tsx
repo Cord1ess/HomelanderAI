@@ -63,6 +63,17 @@ const FILTERS: { value: ApplicationStatus | 'all'; label: string }[] = [
   { value: 'decided', label: 'Decided' },
 ]
 
+/** "Tue 29 Sep" — a date, deliberately not a countdown. */
+function formatDay(isoDate: string): string {
+  // Parsed as local midnight, not UTC: a bare date given a "Z" would show as
+  // the previous day for anyone east of Greenwich.
+  return new Date(`${isoDate}T00:00:00`).toLocaleDateString(undefined, {
+    weekday: 'short',
+    day: 'numeric',
+    month: 'short',
+  })
+}
+
 function relativeTime(iso: string): string {
   const seconds = Math.round((Date.now() - new Date(iso).getTime()) / 1000)
   if (seconds < 60) return 'just now'
@@ -377,6 +388,7 @@ export function QueuePage() {
                 <Table.Th>Applicant</Table.Th>
                 <Table.Th>Cover</Table.Th>
                 <Table.Th>Submitted</Table.Th>
+                <Table.Th>Expected by</Table.Th>
                 <Table.Th>Status</Table.Th>
                 <Table.Th>Risk score</Table.Th>
                 <Table.Th>Tier</Table.Th>
@@ -387,7 +399,7 @@ export function QueuePage() {
               {isPending &&
                 [0, 1, 2].map((i) => (
                   <Table.Tr key={`skeleton-${i}`}>
-                    <Table.Td colSpan={8}>
+                    <Table.Td colSpan={9}>
                       <Skeleton height={18} />
                     </Table.Td>
                   </Table.Tr>
@@ -397,7 +409,7 @@ export function QueuePage() {
 
               {!isPending && rows.length === 0 && !error && (
                 <Table.Tr>
-                  <Table.Td colSpan={8}>
+                  <Table.Td colSpan={9}>
                     <Text ta="center" c="dimmed" py="lg" size="sm">
                       {total === 0
                         ? 'No applications yet. Start by reviewing a new client.'
@@ -457,6 +469,17 @@ function Row({ row, userRole }: { row: QueueItem; userRole?: UserRole }) {
       <Table.Td fz="sm" ff="monospace">
         {/* How much is at stake, so triage is not done on risk alone. */}
         {row.coverageAmount ? `৳${Math.round(Number(row.coverageAmount)).toLocaleString('en-IN')}` : '—'}
+      </Table.Td>
+      {/* The date the applicant was given. Red once it has passed while the
+          carrier still holds the case, so a late file is visible from the
+          queue and not only from inside it. */}
+      <Table.Td fz="sm" c={row.overdue ? 'red' : 'dimmed'}>
+        {row.expectedBy ? formatDay(row.expectedBy) : '—'}
+        {row.overdue && (
+          <Badge ml={6} size="xs" color="red" variant="light">
+            Late
+          </Badge>
+        )}
       </Table.Td>
       <Table.Td fz="sm" c="dimmed">
         {relativeTime(row.submittedAt)}

@@ -17,6 +17,8 @@ import {
   Text,
   Tooltip,
   Textarea,
+  TextInput,
+  Modal,
 } from '@mantine/core'
 import { notifications } from '@mantine/notifications'
 import {
@@ -37,6 +39,7 @@ import {
   getAuditTrail,
   recordDecision,
   requestEvidence,
+  reviseTurnaround,
   type ApplicationDetail,
   type DecisionType,
   type Finding,
@@ -69,6 +72,15 @@ const DECISIONS: { value: DecisionType; label: string }[] = [
 ]
 
 const TOP_N = 5
+
+/** "Tue 29 Sep" — parsed as local midnight so a bare date never shifts a day. */
+function formatDay(isoDate: string): string {
+  return new Date(`${isoDate}T00:00:00`).toLocaleDateString(undefined, {
+    weekday: 'short',
+    day: 'numeric',
+    month: 'short',
+  })
+}
 
 /** `Pleural_Thickening` is the model's own spelling; show it readably. */
 const prettyLabel = (label: string) => label.replace(/_/g, ' ')
@@ -137,6 +149,12 @@ export function ReviewPage() {
   const [requestItems, setRequestItems] = useState('')
   const [requestNote, setRequestNote] = useState('')
 
+  // Moving the date the applicant was given. A reason is required and shown
+  // to them: a date that moves silently is the slip this feature replaces.
+  const [reviseOpen, setReviseOpen] = useState(false)
+  const [reviseDate, setReviseDate] = useState('')
+  const [reviseReason, setReviseReason] = useState('')
+
   const { data, isPending, error } = useQuery({
     queryKey: ['application', id],
     queryFn: () => getApplication(id),
@@ -201,6 +219,28 @@ export function ReviewPage() {
     },
   })
 
+  const revise = useMutation({
+    mutationFn: () => reviseTurnaround(id, { expectedBy: reviseDate, reason: reviseReason.trim() }),
+    onSuccess: () => {
+      setReviseOpen(false)
+      setReviseDate('')
+      setReviseReason('')
+      invalidate()
+      notifications.show({
+        title: 'Expected date updated',
+        message: 'The applicant will see the new date and the reason.',
+        color: 'teal',
+      })
+    },
+    onError: (err) => {
+      notifications.show({
+        title: 'Could not update the date',
+        message: err instanceof Error ? err.message : 'Unknown error',
+        color: 'red',
+      })
+    },
+  })
+
   const receive = useMutation({
     mutationFn: (documentId: string) => fulfilEvidenceRequest(id, documentId),
     onSuccess: invalidate,
@@ -250,6 +290,13 @@ export function ReviewPage() {
         setRequestNote,
         request,
         receive,
+        reviseOpen,
+        setReviseOpen,
+        reviseDate,
+        setReviseDate,
+        reviseReason,
+        setReviseReason,
+        revise,
       }}
     />
   )
@@ -273,6 +320,13 @@ interface ReviewState {
   setRequestNote: (v: string) => void
   request: { mutate: () => void; isPending: boolean }
   receive: { mutate: (documentId: string) => void; isPending: boolean }
+  reviseOpen: boolean
+  setReviseOpen: (v: boolean) => void
+  reviseDate: string
+  setReviseDate: (v: string) => void
+  reviseReason: string
+  setReviseReason: (v: string) => void
+  revise: { mutate: () => void; isPending: boolean }
 }
 
 /** Derive a human-readable image label from whichever arm produced the evidence. */
@@ -335,6 +389,82 @@ function Review({ data, state }: { data: ApplicationDetail; state: ReviewState }
               <span className="hl-kv-label">Submitted</span>
               <span className="hl-kv-value">{relativeTime(data.submittedAt)}</span>
             </div>
+            {/* A date, never a countdown. Red once it has passed while the
+                carrier still holds the case; not while waiting on the
+                applicant, whose delay it would be. */}
+            <div className="hl-kv">
+              <span className="hl-kv-label">Expected by</span>
+              <Group gap={6} wrap="nowrap" align="center">
+                <span className="hl-kv-value" style={{ color: data.overdue ? 'var(--mantine-color-red-5)' : undefined }}>
+                  {data.expectedBy ? formatDay(data.expectedBy) : 'Not set'}
+                </span>
+                {data.overdue && (
+                  <Badge size="xs" color="red" variant="light">
+                    Late
+                  </Badge>
+                )}
+                {!decided && (
+                  <Button
+                    size="compact-xs"
+                    variant="subtle"
+                    onClick={() => {
+                      state.setReviseDate(data.expectedBy ?? '')
+                      state.setReviseOpen(true)
+                    }}
+                  >
+                    Revise
+                  </Button>
+                )}
+              </Group>
+              {data.expectedByNote && (
+                <Text size="xs" c="dimmed">
+                  {data.expectedByNote}
+                </Text>
+              )}
+            </div>
+
+            <Modal
+              opened={state.reviseOpen}
+              onClose={() => state.setReviseOpen(false)}
+              title="Revise the expected date"
+              size="sm"
+            >
+              <Stack gap="sm">
+                <Text size="sm" c="dimmed">
+                  The applicant sees the new date and your reason. Weekends do not
+                  count as working days.
+                </Text>
+                <TextInput
+                  size="xs"
+                  type="date"
+                  label="Expected by"
+                  value={state.reviseDate}
+                  onChange={(e) => state.setReviseDate(e.currentTarget.value)}
+                />
+                <Textarea
+                  size="xs"
+                  label="Reason"
+                  placeholder="Waiting on the radiology report from the applicant's hospital."
+                  autosize
+                  minRows={2}
+                  value={state.reviseReason}
+                  onChange={(e) => state.setReviseReason(e.currentTarget.value)}
+                />
+                <Group justify="flex-end" gap="xs">
+                  <Button size="xs" variant="subtle" onClick={() => state.setReviseOpen(false)}>
+                    Cancel
+                  </Button>
+                  <Button
+                    size="xs"
+                    onClick={() => state.revise.mutate()}
+                    loading={state.revise.isPending}
+                    disabled={!state.reviseDate || state.reviseReason.trim().length < 3}
+                  >
+                    Save new date
+                  </Button>
+                </Group>
+              </Stack>
+            </Modal>
           </Group>
           {data.score && (
             <Group gap="sm">

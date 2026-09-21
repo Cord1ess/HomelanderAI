@@ -325,6 +325,30 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/applications/{application_id}/turnaround": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Revise when the applicant can expect an answer
+         * @description Move the expected date, with a reason the applicant will see.
+         *
+         *     Any underwriter on the case may do this: they are the one who knows the
+         *     answer will be late, so they should be the one who can say so. The old and
+         *     new dates and the reason go into the audit trail.
+         */
+        patch: operations["revise_turnaround_api_applications__application_id__turnaround_patch"];
+        trace?: never;
+    };
     "/api/applications/{application_id}/evidence-request": {
         parameters: {
             query?: never;
@@ -456,6 +480,29 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/tenant/settings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** This carrier's settings */
+        get: operations["get_settings_api_tenant_settings_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Change this carrier's settings (admin only)
+         * @description Only an admin sets the default. The figure is what every future
+         *     applicant is promised, which is a company decision rather than a case one.
+         *     Applications already submitted keep the date they were given.
+         */
+        patch: operations["update_settings_api_tenant_settings_patch"];
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -497,6 +544,15 @@ export interface components {
             submittedAt: string;
             /** Evaluatedat */
             evaluatedAt?: string | null;
+            /** Expectedby */
+            expectedBy?: string | null;
+            /** Expectedbynote */
+            expectedByNote?: string | null;
+            /**
+             * Overdue
+             * @default false
+             */
+            overdue: boolean;
             applicant: components["schemas"]["ApplicantIn"];
             coverage: components["schemas"]["CoverageIn"];
             /** Modelsrequested */
@@ -909,6 +965,13 @@ export interface components {
             coverageAmount?: string | null;
             /** Modelsrequested */
             modelsRequested?: string[];
+            /** Expectedby */
+            expectedBy?: string | null;
+            /**
+             * Overdue
+             * @default false
+             */
+            overdue: boolean;
         };
         /** QueueSchema */
         QueueSchema: {
@@ -1038,10 +1101,44 @@ export interface components {
             /** Subscriptiontier */
             subscriptionTier: string;
             /**
+             * Turnaroundbusinessdays
+             * @default 2
+             */
+            turnaroundBusinessDays: number;
+            /**
              * Createdat
              * Format: date-time
              */
             createdAt: string;
+        };
+        /** TenantSettingsIn */
+        TenantSettingsIn: {
+            /** Turnaroundbusinessdays */
+            turnaroundBusinessDays: number;
+        };
+        /** TenantSettingsSchema */
+        TenantSettingsSchema: {
+            /** Name */
+            name: string;
+            /** Turnaroundbusinessdays */
+            turnaroundBusinessDays: number;
+        };
+        /**
+         * TurnaroundIn
+         * @description Revise when the applicant can expect an answer.
+         *
+         *     The reason is required: a date that moves with no explanation is exactly
+         *     the silent slip this feature exists to replace. It is stored on the
+         *     application and shown to the applicant.
+         */
+        TurnaroundIn: {
+            /**
+             * Expectedby
+             * Format: date
+             */
+            expectedBy: string;
+            /** Reason */
+            reason: string;
         };
         /**
          * UnderwriterDecisionType
@@ -1671,6 +1768,43 @@ export interface operations {
             };
         };
     };
+    revise_turnaround_api_applications__application_id__turnaround_patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                application_id: string;
+            };
+            cookie?: {
+                session_token?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TurnaroundIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApplicationDetailSchema"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     request_evidence_api_applications__application_id__evidence_request_post: {
         parameters: {
             query?: never;
@@ -1861,6 +1995,72 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["NotificationSchema"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_settings_api_tenant_settings_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: {
+                session_token?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TenantSettingsSchema"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_settings_api_tenant_settings_patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: {
+                session_token?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TenantSettingsIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TenantSettingsSchema"];
                 };
             };
             /** @description Validation Error */

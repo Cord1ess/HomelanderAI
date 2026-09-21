@@ -30,6 +30,7 @@ export type Pricing = Schemas['PricingSchema']
 export type ClassifiedFile = Schemas['ClassifiedFileSchema']
 export type ClassifyResponse = Schemas['ClassifyResponseSchema']
 export type RequestedDocument = Schemas['RequestedDocumentSchema']
+export type TenantSettings = Schemas['TenantSettingsSchema']
 export type SubmitResponse = Schemas['SubmitResponseSchema']
 
 // Relative, so the Vite dev proxy handles it and the production build works
@@ -261,6 +262,31 @@ export const getAuditTrail = (id: string) => request<AuditTrail>(`/applications/
 export const requestEvidence = (id: string, body: { items: string[]; note?: string | null }) =>
   request<RequestedDocument[]>(`/applications/${id}/evidence-request`, {
     method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  })
+
+/**
+ * Move the date the applicant was told to expect an answer by.
+ *
+ * A reason is required and is shown to the applicant: a date that moves with
+ * no explanation is exactly the silent slip this replaces.
+ */
+export const reviseTurnaround = (id: string, body: { expectedBy: string; reason: string }) =>
+  request<ApplicationDetail>(`/applications/${id}/turnaround`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  })
+
+// ── tenant settings ──────────────────────────────────────────────────────────
+
+export const getTenantSettings = () => request<TenantSettings>('/tenant/settings')
+
+/** Admin only. Applies to future applicants; existing dates are not moved. */
+export const updateTenantSettings = (body: { turnaroundBusinessDays: number }) =>
+  request<TenantSettings>('/tenant/settings', {
+    method: 'PATCH',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
   })
