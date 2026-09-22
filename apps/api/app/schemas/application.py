@@ -306,6 +306,14 @@ class FileSchema(BaseSchema):
     filename: str | None = None
     mime_type: str | None = None
     uploaded_at: datetime | None = None
+    # What this file is ("chest_xray", "ecg", ...) and how to say it on screen.
+    # Without these the dashboard had to guess from the requested-model list,
+    # which labelled a chest film "12-lead ECG" whenever both were attached.
+    evidence_kind: str | None = None
+    evidence_label: str | None = None
+    # For a heatmap: the evidence file it was drawn over, so each overlay stays
+    # with its own image instead of the first one on the screen.
+    of_file_id: UUID | None = None
 
 
 class DecisionSchema(BaseSchema):

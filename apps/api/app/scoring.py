@@ -216,12 +216,19 @@ MAX_HISTORY_POINTS = 30.0
 def fuse(readings: list[float]) -> float:
     """Combine every reader's 0-100 score into one 0-100 risk.
 
-    Noisy-OR over the readings, each weighted by ARM_WEIGHT. Order does not
-    matter, and no reading can lower the result: evidence of risk accumulates.
+    Noisy-OR over the readings, each weighted by ARM_WEIGHT, and each squared
+    first. The squaring is what keeps a pile of mid-range readings from adding
+    up to alarm: a reader at 45 out of 100 is saying "worth a look", and three
+    of those must not read as one certainty. A reader at 95 still dominates,
+    which is the behaviour screening needs.
+
+    Order does not matter, and no reading can lower the result: evidence of
+    risk accumulates.
     """
     risk = 0.0
     for reading in readings:
-        risk += (1.0 - risk) * ARM_WEIGHT * (max(0.0, min(100.0, reading)) / 100.0)
+        strength = max(0.0, min(100.0, reading)) / 100.0
+        risk += (1.0 - risk) * ARM_WEIGHT * strength * strength
     return round(100.0 * risk, 2)
 
 

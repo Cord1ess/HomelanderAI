@@ -1085,6 +1085,12 @@ export interface components {
             mimeType?: string | null;
             /** Uploadedat */
             uploadedAt?: string | null;
+            /** Evidencekind */
+            evidenceKind?: string | null;
+            /** Evidencelabel */
+            evidenceLabel?: string | null;
+            /** Offileid */
+            ofFileId?: string | null;
         };
         /**
          * FindingSchema

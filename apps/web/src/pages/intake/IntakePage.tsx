@@ -19,6 +19,7 @@ import {
   Table,
   Text,
   TextInput,
+  Tooltip,
 } from '@mantine/core'
 import { Dropzone } from '@mantine/dropzone'
 import { useForm } from '@mantine/form'
@@ -151,8 +152,6 @@ const CARDIO: Option[] = [
   { key: 'family_heart_disease', label: 'Family history of heart disease' },
 ]
 
-const SKIN_TYPES = ['I', 'II', 'III', 'IV', 'V', 'VI']
-
 // The model registry drives the whole form. Adding or dropping an arm is one
 // entry here (see docs/INTAKE_FORM.md and SPEC.md §6).
 const MODELS: ModelDef[] = [
@@ -185,27 +184,6 @@ const MODELS: ModelDef[] = [
         label: 'Known BRCA / genetic test result',
         data: ['Not tested', 'Negative', 'Positive'],
         placeholder: 'Not tested',
-      },
-    ],
-  },
-  {
-    id: 'ham10000',
-    label: 'HAM10000',
-    modality: 'Dermoscopy · skin',
-    upload: {
-      category: 'Lesion photo',
-      accept: PHOTO,
-      instruction: 'Lesion photograph — .png or .jpg',
-    },
-    fields: [
-      { kind: 'select', key: 'skin_type', label: 'Skin type (Fitzpatrick)', data: SKIN_TYPES, placeholder: 'Select' },
-      { kind: 'checkbox', key: 'prior_skin_cancer', label: 'Prior skin cancer' },
-      {
-        kind: 'select',
-        key: 'body_site',
-        label: 'Body site',
-        data: ['Head / neck', 'Upper limb', 'Trunk', 'Lower limb'],
-        placeholder: 'Select',
       },
     ],
   },
@@ -290,21 +268,6 @@ const MODELS: ModelDef[] = [
       { kind: 'select', key: 'activity', label: 'Physical activity', data: ['Sedentary', 'Light', 'Moderate', 'Active'], placeholder: 'Select' },
       { kind: 'select', key: 'occupation', label: 'Occupation', data: ['Office / professional', 'Manual / physical', 'Retired', 'Student', 'Not employed'], placeholder: 'Select' },
       { kind: 'checkbox', key: 'smoker', label: 'Current or former smoker' },
-    ],
-  },
-  {
-    id: 'neuro',
-    label: 'Neuro MRI',
-    modality: '3D brain · MONAI',
-    upload: {
-      category: 'MRI scan',
-      accept: DICOM,
-      instruction: 'Brain MRI — .dcm',
-    },
-    fields: [
-      { kind: 'checkbox', key: 'memory_concerns', label: 'Memory concerns' },
-      { kind: 'checkbox', key: 'speech_concerns', label: 'Speech concerns' },
-      { kind: 'checkbox', key: 'mobility_concerns', label: 'Coordination / mobility concerns' },
     ],
   },
 ]
@@ -1082,78 +1045,24 @@ export function IntakePage() {
       <Section n="3" title="Models" complete={sections[2]}>
         {dropEverythingZone}
 
-        <Text size="sm" c="dimmed">
-          Or pick a reader below and give it its file directly. Each reader you select opens a
-          panel asking for its report and its questions.
-        </Text>
+        {/* No reader picker. The dropped files decide which readers run; the
+            only reader that needs asking for is the one that takes typed
+            values and no file, and it has its own button below. */}
+        <Group justify="space-between" align="center">
+          <Text size="sm" c="dimmed">
+            {selected.length === 0
+              ? 'Drop the files above and the readers appear here.'
+              : `${selected.length} reader${selected.length === 1 ? '' : 's'} will run on this application.`}
+          </Text>
+          {!form.values.selectedModels.includes('xgboost') && isAvailable('xgboost') && (
+            <Button size="xs" variant="light" onClick={() => toggleModel('xgboost')}>
+              Add blood panel and lifestyle
+            </Button>
+          )}
+        </Group>
 
-        <Group align="flex-start" wrap="nowrap" gap="lg">
-          {/* Vertical menu. Availability comes from the API, not this file. */}
-          <Stack gap={6} w={280} style={{ flexShrink: 0 }}>
-            {MODELS.map((m) => {
-              const on = form.values.selectedModels.includes(m.id)
-              const info = availability.get(m.id)
-              const ready = info?.available ?? false
-              return (
-                <Paper
-                  key={m.id}
-                  p="xs"
-                  withBorder
-                  bd={
-                    on
-                      ? '1px solid var(--mantine-color-clinical-3)'
-                      : '1px solid var(--mantine-color-default-border)'
-                  }
-                  style={{
-                    cursor: ready ? 'pointer' : 'not-allowed',
-                    opacity: ready ? 1 : 0.55,
-                  }}
-                  onClick={() => toggleModel(m.id)}
-                  aria-disabled={!ready}
-                >
-                  <Group gap="xs" wrap="nowrap" align="flex-start">
-                    <Checkbox
-                      checked={on}
-                      disabled={!ready}
-                      readOnly
-                      mt={2}
-                      aria-label={m.label}
-                    />
-                    <Stack gap={2} style={{ flex: 1, minWidth: 0 }}>
-                      <Group gap={6} wrap="nowrap" justify="space-between">
-                        <Text size="sm" fw={600}>
-                          {info?.label ?? m.label}
-                        </Text>
-                        {!ready && (
-                          <Badge size="xs" color="gray" variant="outline">
-                            Not built yet
-                          </Badge>
-                        )}
-                      </Group>
-                      {/* What it answers, not what file it eats — that is the
-                          question an operator is actually asking. */}
-                      <Text size="xs" c="dimmed">
-                        {info?.screensFor ?? m.modality}
-                      </Text>
-                    </Stack>
-                  </Group>
-                </Paper>
-              )
-            })}
-            <Text size="xs" c="dimmed" mt={4}>
-              Greyed-out models are on the roadmap but produce no score yet, so
-              they cannot be selected.
-            </Text>
-          </Stack>
-
-          {/* Pop-out panels for selected models */}
-          <Stack gap="md" style={{ flex: 1, minWidth: 0 }}>
-            {selected.length === 0 && (
-              <Text size="sm" c="dimmed">
-                Nothing selected yet — pick at least one model from the menu.
-              </Text>
-            )}
-            {selected.map((m) => (
+        <Stack gap="md">
+          {selected.map((m) => (
               <Paper key={m.id} bd="1px solid var(--mantine-color-default-border)" p="md">
                 <Group justify="space-between" align="flex-start" mb={4}>
                   <Text fw={600} size="sm">
@@ -1163,9 +1072,21 @@ export function IntakePage() {
                       · screens for {availability.get(m.id)?.screensFor ?? m.modality}
                     </Text>
                   </Text>
-                  <Badge size="xs" color="teal" variant="light">
-                    {availability.get(m.id)?.armVersion ?? 'ready'}
-                  </Badge>
+                  <Group gap="xs" wrap="nowrap">
+                    <Badge size="xs" color="teal" variant="light">
+                      {availability.get(m.id)?.armVersion ?? 'ready'}
+                    </Badge>
+                    <Tooltip label="Do not run this reader on this application" withArrow>
+                      <ActionIcon
+                        size="sm"
+                        variant="subtle"
+                        aria-label={`Remove ${m.label}`}
+                        onClick={() => toggleModel(m.id)}
+                      >
+                        <IconX size={14} />
+                      </ActionIcon>
+                    </Tooltip>
+                  </Group>
                 </Group>
                 {/* The caveat travels with the model, not a document. */}
                 {availability.get(m.id)?.validation && (
@@ -1196,9 +1117,8 @@ export function IntakePage() {
                   toggleSet={toggleSet}
                 />
               </Paper>
-            ))}
-          </Stack>
-        </Group>
+          ))}
+        </Stack>
       </Section>
 
           </div>

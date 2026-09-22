@@ -43,6 +43,7 @@ import {
   reviseTurnaround,
   type ApplicationDetail,
   type ArmRun,
+  type EvidenceFile,
   type DecisionType,
   type Finding,
   type Plan,
@@ -378,11 +379,66 @@ function ageAt(dateOfBirth: string | null | undefined, when: string | null | und
   return years >= 0 ? years : null
 }
 
-function imageLabelFor(modelsRequested: string[]): string {
-  if (modelsRequested.includes('eyepacs')) return 'Retinal photo'
-  if (modelsRequested.includes('ecg')) return '12-lead ECG'
-  if (modelsRequested.includes('mirai')) return 'Mammogram'
-  return 'Chest X-ray'
+/**
+ * One evidence image, with its own heatmap overlay.
+ *
+ * The label comes from the file's own `evidenceLabel` — what the platform
+ * identified it as and the operator confirmed. It used to be guessed from the
+ * requested-model list, which labelled a chest film "12-lead ECG" whenever
+ * both were attached, and showed only the first image however many arrived.
+ */
+function EvidencePanel({ file, heatmap }: { file: EvidenceFile; heatmap?: EvidenceFile }) {
+  const [overlay, setOverlay] = useState(false)
+  const label = file.evidenceLabel ?? 'Evidence'
+  const isTracing = file.evidenceKind === 'ecg'
+
+  return (
+    <Paper p="sm" bd="1px solid var(--mantine-color-default-border)">
+      <Group justify="space-between" mb="sm" wrap="nowrap">
+        <div style={{ minWidth: 0 }}>
+          <Text fw={600} size="sm">
+            {label}
+          </Text>
+          <Text size="xs" truncate style={{ color: 'var(--neo-muted)' }}>
+            {file.filename}
+            {file.uploadedAt ? ` · uploaded ${relativeTime(file.uploadedAt)}` : ''}
+          </Text>
+        </div>
+        <Switch
+          label="Heatmap overlay"
+          size="xs"
+          checked={overlay && Boolean(heatmap)}
+          onChange={() => setOverlay(!overlay)}
+          disabled={!heatmap}
+        />
+      </Group>
+
+      <Box
+        h={340}
+        style={{
+          display: 'grid',
+          placeItems: 'center',
+          backgroundColor: 'var(--neo-bg)',
+          borderRadius: 'var(--mantine-radius-sm)',
+          overflow: 'hidden',
+        }}
+      >
+        <Image
+          src={fileUrl(overlay && heatmap ? heatmap.id : file.id)}
+          alt={overlay ? `${label} with model heatmap` : label}
+          h={340}
+          fit="contain"
+        />
+      </Box>
+      <Text size="xs" c="dimmed" mt="sm">
+        {heatmap
+          ? isTracing
+            ? 'The shading marks where in the tracing the network looked for the reported abnormality — not a diagnosis.'
+            : 'The overlay marks the region that moved the score most — not a diagnosis.'
+          : 'No heatmap was produced for this image.'}
+      </Text>
+    </Paper>
+  )
 }
 
 function Review({ data, state }: { data: ApplicationDetail; state: ReviewState }) {
@@ -391,15 +447,18 @@ function Review({ data, state }: { data: ApplicationDetail; state: ReviewState }
   const files = data.files ?? []
   const errors = data.errors ?? []
 
-  const imageLabel = imageLabelFor(data.modelsRequested ?? [])
-
   // A note is stored as text and read in its own panel; the image box is for
   // the evidence that is a picture (or, for an ECG, drawn as one).
   const isText = (f: { mimeType?: string | null }) => Boolean(f.mimeType?.startsWith('text/'))
-  const evidence = files.find((f) => f.kind === 'evidence' && !isText(f))
+  const images = files.filter((f) => f.kind === 'evidence' && !isText(f))
+  const evidence = images[0]
   const note = files.find((f) => f.kind === 'evidence' && isText(f))
-  const heatmap = files.find((f) => f.kind === 'gradcam')
-  const heatmapAvailable = Boolean(heatmap)
+  const heatmaps = files.filter((f) => f.kind === 'gradcam')
+  // Each overlay goes over the image its reader read (`ofFileId`). Older
+  // applications, scored before the API said which, fall back to the first.
+  const heatmapFor = (image: EvidenceFile) =>
+    heatmaps.find((h) => h.ofFileId === image.id) ??
+    (heatmaps.length === 1 && images.length === 1 ? heatmaps[0] : undefined)
 
   // Each arm's own report. The image and findings panels above belong to the
   // vision arm; an application scored from the blood panel alone has neither,
@@ -575,59 +634,20 @@ function Review({ data, state }: { data: ApplicationDetail; state: ReviewState }
 
       {hasVision && (
       <SimpleGrid cols={{ base: 1, lg: 2 }} spacing="md">
-        {/* ── Left · the image ──────────────────────────────── */}
-        <Paper p="sm" bd="1px solid var(--mantine-color-default-border)">
-          <Group justify="space-between" mb="sm">
-            <div>
-              <Text fw={600} size="sm">
-                {imageLabel}
-              </Text>
-              {evidence?.uploadedAt && (
-                <Text size="xs" style={{ color: 'var(--neo-muted)' }}>
-                  Uploaded {relativeTime(evidence.uploadedAt)}
-                </Text>
-              )}
-            </div>
-            <Switch
-              label="Heatmap overlay"
-              size="xs"
-              checked={state.showHeatmap && heatmapAvailable}
-              onChange={() => state.setShowHeatmap(!state.showHeatmap)}
-              disabled={!heatmapAvailable}
-            />
-          </Group>
-
-          <Box
-            h={340}
-            style={{
-              display: 'grid',
-              placeItems: 'center',
-              backgroundColor: 'var(--neo-bg)',
-              borderRadius: 'var(--mantine-radius-sm)',
-              overflow: 'hidden',
-            }}
-          >
-            {evidence || heatmap ? (
-              <Image
-                src={fileUrl(state.showHeatmap && heatmap ? heatmap.id : (evidence ?? heatmap)!.id)}
-                alt={state.showHeatmap ? `${imageLabel} with model heatmap` : imageLabel}
-                h={340}
-                fit="contain"
-              />
-            ) : (
+        {/* ── Left · the evidence, one panel per image ─────── */}
+        <Stack gap="md">
+          {images.length > 0 ? (
+            images.map((image) => (
+              <EvidencePanel key={image.id} file={image} heatmap={heatmapFor(image)} />
+            ))
+          ) : (
+            <Paper p="sm" bd="1px solid var(--mantine-color-default-border)">
               <Text c="dimmed" size="sm">
                 No image was stored for this application.
               </Text>
-            )}
-          </Box>
-          <Text size="xs" c="dimmed" mt="sm">
-            {heatmapAvailable
-              ? ecg
-                ? 'The shading marks where in the tracing the network looked for the reported abnormality — not a diagnosis.'
-                : 'The overlay marks the region that moved the score most — not a diagnosis.'
-              : 'No heatmap was produced for this image.'}
-          </Text>
-        </Paper>
+            </Paper>
+          )}
+        </Stack>
 
         {/* ── Right · why this score ────────────────────────── */}
         <Stack gap="md">

@@ -1028,11 +1028,18 @@ async def _list_files(db: AsyncSession, application: Application) -> list[FileSc
 
     artifacts = (
         await db.execute(
-            select(ExplanationArtifact)
+            select(ExplanationArtifact, ModelRun.model_arm_id)
             .join(ModelRun, ModelRun.id == ExplanationArtifact.model_run_id)
             .where(ModelRun.application_id == application.id)
         )
-    ).scalars().all()
+    ).all()
+
+    # A heatmap belongs to the evidence its reader read. Pair them by the arm
+    # that produced each: one arm reads one kind of evidence (Arm.accepts), so
+    # the arm's own evidence file is the image the overlay goes over.
+    by_arm: dict[UUID, UUID] = {
+        row.model_arm_id: row.id for row in evidence if row.model_arm_id is not None
+    }
 
     return [
         FileSchema(
@@ -1041,16 +1048,19 @@ async def _list_files(db: AsyncSession, application: Application) -> list[FileSc
             filename=row.original_filename,
             mime_type=row.mime_type,
             uploaded_at=row.uploaded_at,
+            evidence_kind=row.evidence_kind,
+            evidence_label=evidence_kinds.label(row.evidence_kind) if row.evidence_kind else None,
         )
         for row in evidence
     ] + [
         FileSchema(
-            id=row.id,
-            kind=row.artifact_type.value,
+            id=artifact.id,
+            kind=artifact.artifact_type.value,
             filename=None,
             mime_type="image/png",
+            of_file_id=by_arm.get(arm_id),
         )
-        for row in artifacts
+        for artifact, arm_id in artifacts
     ]
 
 

@@ -224,5 +224,11 @@ def test_fusion_accumulates_with_diminishing_returns():
     # Order does not matter, and a clean film does not dilute a concerning one.
     assert fuse([100.0, 2.0]) == fuse([2.0, 100.0])
     assert fuse([100.0, 2.0]) >= fuse([100.0])
-    # A single moderate reading stays moderate.
-    assert 30.0 < fuse([50.0]) < 65.0
+
+    # Each reading counts by its own strength, so mid-range readings do not
+    # pile into alarm. One reader saying "worth a look" leaves the application
+    # in the low tier; several of them reach moderate, never elevated.
+    assert fuse([45.0]) < 30.0
+    assert 30.0 < fuse([45.0, 45.0, 45.0]) < 65.0
+    # And a set of clean readings stays clean.
+    assert fuse([2.0, 1.0, 0.0]) < 1.0
