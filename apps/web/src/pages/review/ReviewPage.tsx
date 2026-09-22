@@ -464,10 +464,6 @@ function Review({ data, state }: { data: ApplicationDetail; state: ReviewState }
   // vision arm; an application scored from the blood panel alone has neither,
   // and showing "no image was stored" for it would read as a fault.
   const arms = data.arms ?? []
-  const mortality = arms.find((a) => a.arm === 'mortality')
-  const ecg = arms.find((a) => a.arm === 'ecg_12lead')
-  const medications = arms.find((a) => a.arm === 'medication_check')
-  const mirai = arms.find((a) => a.arm === 'mirai')
   const hasVision = arms.some((a) => a.armType === 'vision') || Boolean(evidence)
 
   // Ranked by absolute contribution: the findings that moved the score most, in
@@ -747,16 +743,25 @@ function Review({ data, state }: { data: ApplicationDetail; state: ReviewState }
       )}
 
       {/* ── The tracing: what was reported, and the ECG age ──── */}
-      {ecg && <EcgPanel run={ecg} age={ageAt(data.applicant.dateOfBirth, data.submittedAt)} />}
-
-      {/* ── The mammogram: five-year breast-cancer risk ────────── */}
-      {mirai && <MiraiPanel run={mirai} />}
-
-      {/* ── The note: what its prescriptions imply that was not declared ── */}
-      {medications && <MedicationPanel run={medications} noteId={note?.id ?? null} />}
-
-      {/* ── The blood panel, against age ─────────────────────── */}
-      {mortality && <MortalityPanel run={mortality} />}
+      {/* Every reader that ran, in the order it ran. One panel per run, not
+          per reader name: two retinal photos are two readings and both belong
+          on the screen. A reader with no panel of its own falls back to a
+          plain one, so a reading is never dropped because nobody wrote a
+          view for it. */}
+      {arms.map((run, i) => {
+        const key = `${run.arm}-${i}`
+        if (run.arm === 'ecg_12lead') {
+          return (
+            <EcgPanel key={key} run={run} age={ageAt(data.applicant.dateOfBirth, data.submittedAt)} />
+          )
+        }
+        if (run.arm === 'mirai') return <MiraiPanel key={key} run={run} />
+        if (run.arm === 'medication_check') {
+          return <MedicationPanel key={key} run={run} noteId={note?.id ?? null} />
+        }
+        if (run.arm === 'mortality') return <MortalityPanel key={key} run={run} />
+        return <ReaderPanel key={key} run={run} />
+      })}
 
       {/* ── What this means for the policy ──────────────────── */}
       {data.plan && <PlanPanel plan={data.plan} coverage={data.coverage} />}
@@ -1388,6 +1393,92 @@ interface MiraiDetails {
   server?: { model_name?: string | null; onconet_version?: string | null }
   scorer?: string
   validation?: string
+}
+
+/**
+ * Any reader without a panel of its own: its score, its findings if it
+ * reported some, and its error if it failed.
+ *
+ * The chest and retina readers land here. Their findings used to go to the one
+ * shared box above, which kept whichever scored highest — so a chest film's 18
+ * findings disappeared whenever a retinal photo outscored it.
+ */
+function ReaderPanel({ run }: { run: ArmRun }) {
+  const details = (run.details ?? {}) as {
+    findings?: Record<string, number>
+    contributions?: Record<string, number>
+    scorer?: string
+    validation?: string
+  }
+  const probabilities = details.findings ?? {}
+  const contributions = details.contributions ?? {}
+  const labels = Array.from(new Set([...Object.keys(probabilities), ...Object.keys(contributions)]))
+  const ranked = labels
+    .map((label) => ({
+      label,
+      probability: probabilities[label] ?? 0,
+      contribution: contributions[label] ?? 0,
+    }))
+    .sort((a, b) => Math.abs(b.contribution) - Math.abs(a.contribution))
+    .slice(0, TOP_N)
+  const scale = Math.max(...ranked.map((f) => Math.abs(f.contribution)), 0.01)
+
+  return (
+    <Paper p="md" bd="1px solid var(--mantine-color-default-border)">
+      <Group justify="space-between" align="flex-start" mb="sm">
+        <div>
+          <Text fw={600} size="sm">
+            {READER_LABELS[run.arm] ?? run.arm}
+          </Text>
+          <Text size="xs" style={{ color: 'var(--neo-muted)' }}>
+            {run.version}
+          </Text>
+        </div>
+        {run.score != null && (
+          <Badge variant="light" size="lg" color={run.score > 65 ? 'red' : run.score > 30 ? 'yellow' : 'teal'}>
+            {run.score.toFixed(1)}
+          </Badge>
+        )}
+      </Group>
+
+      {run.error ? (
+        <Text size="sm" c="dimmed">
+          Could not be assessed: {run.error}.
+        </Text>
+      ) : ranked.length > 0 ? (
+        <>
+          <Text size="xs" mb="sm" style={{ color: 'var(--neo-muted)' }}>
+            What this reader found, ranked by how much each finding moved its score.
+          </Text>
+          <Stack gap="sm">
+            {ranked.map((f) => (
+              <FindingBar key={f.label} finding={f} scale={scale} />
+            ))}
+          </Stack>
+        </>
+      ) : (
+        <Text size="sm" c="dimmed">
+          No findings were reported.
+        </Text>
+      )}
+
+      {details.validation && (
+        <Text size="xs" c="yellow.7" mt="sm">
+          {details.validation}
+        </Text>
+      )}
+    </Paper>
+  )
+}
+
+/** What each reader is called on screen. */
+const READER_LABELS: Record<string, string> = {
+  tb_xray: 'Chest X-ray',
+  dr_fundus: 'Retinal photo',
+  ecg_12lead: '12-lead ECG',
+  mirai: 'Mammogram',
+  medication_check: 'Clinical note',
+  mortality: 'Blood panel and lifestyle',
 }
 
 function MiraiPanel({ run }: { run: ArmRun }) {

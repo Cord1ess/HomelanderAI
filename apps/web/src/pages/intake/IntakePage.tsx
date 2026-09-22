@@ -498,30 +498,35 @@ export function IntakePage() {
   // never types it. The real value comes back in the submit response.
 
   const toggleSet = (modelId: string, key: string, value: string) => {
-    const block = (form.values.modelFields[modelId]?.[key] as string[]) ?? []
-    const next = block.includes(value)
-      ? block.filter((v) => v !== value)
-      : [...block, value]
-    setField(modelId, key, next)
+    form.setFieldValue('modelFields', (current: Record<string, ModelValues>) => {
+      const block = (current[modelId]?.[key] as string[]) ?? []
+      return {
+        ...current,
+        [modelId]: {
+          ...(current[modelId] ?? {}),
+          [key]: block.includes(value) ? block.filter((v) => v !== value) : [...block, value],
+        },
+      }
+    })
   }
 
   const setField = (modelId: string, key: string, value: Scalar) => {
-    form.setFieldValue('modelFields', {
-      ...form.values.modelFields,
-      [modelId]: { ...(form.values.modelFields[modelId] ?? {}), [key]: value },
-    })
+    form.setFieldValue('modelFields', (current: Record<string, ModelValues>) => ({
+      ...current,
+      [modelId]: { ...(current[modelId] ?? {}), [key]: value },
+    }))
   }
 
   const toggleModel = (id: string) => {
     // A model that cannot score is not selectable. Letting someone attach a
     // mammogram that will never be read wastes their time and the client's.
     if (!isAvailable(id)) return
-    const has = form.values.selectedModels.includes(id)
-    form.setFieldValue(
-      'selectedModels',
-      has
-        ? form.values.selectedModels.filter((m) => m !== id)
-        : [...form.values.selectedModels, id],
+    // An updater, not a read-then-write: dropping a folder calls this once per
+    // file, and a derived write would use the values captured at render, so
+    // every call would undo the one before it and only the last reader would
+    // survive — taking its files with it.
+    form.setFieldValue('selectedModels', (current: string[]) =>
+      current.includes(id) ? current.filter((m) => m !== id) : [...current, id],
     )
   }
 
@@ -577,6 +582,7 @@ export function IntakePage() {
    */
   const takeJson = async (files: File[]): Promise<File[]> => {
     const rest: File[] = []
+    const alreadyOn = new Set(form.values.selectedModels)
     for (const file of files) {
       if (!file.name.toLowerCase().endsWith('.json')) {
         rest.push(file)
@@ -599,7 +605,10 @@ export function IntakePage() {
           const questions = (data.questions ?? {}) as Record<string, Record<string, Scalar>>
           for (const [modelId, values] of Object.entries(questions)) {
             if (!isAvailable(modelId)) continue
-            if (!form.values.selectedModels.includes(modelId)) toggleModel(modelId)
+            if (!alreadyOn.has(modelId)) {
+              alreadyOn.add(modelId)
+              toggleModel(modelId)
+            }
             setFields(modelId, values)
           }
           setIdentified((prev) => [
@@ -608,7 +617,10 @@ export function IntakePage() {
           ])
         } else if ('albumin_g_dl' in data || 'creatinine_mg_dl' in data) {
           if (isAvailable('xgboost')) {
-            if (!form.values.selectedModels.includes('xgboost')) toggleModel('xgboost')
+            if (!alreadyOn.has('xgboost')) {
+              alreadyOn.add('xgboost')
+              toggleModel('xgboost')
+            }
             setFields('xgboost', data as Record<string, Scalar>)
             setIdentified((prev) => [
               ...prev,
@@ -627,10 +639,10 @@ export function IntakePage() {
 
   /** Several values for one reader at once (setField one at a time would lose all but the last). */
   const setFields = (modelId: string, values: Record<string, Scalar>) => {
-    form.setFieldValue('modelFields', {
-      ...form.values.modelFields,
-      [modelId]: { ...(form.values.modelFields[modelId] ?? {}), ...values },
-    })
+    form.setFieldValue('modelFields', (current: Record<string, ModelValues>) => ({
+      ...current,
+      [modelId]: { ...(current[modelId] ?? {}), ...values },
+    }))
   }
 
   const dropEverything = async (all: File[]) => {
@@ -646,13 +658,20 @@ export function IntakePage() {
       )
       const byName = new Map(dropped.map((f) => [f.name, f]))
       const rows: typeof identified = []
+      const woken = new Set(form.values.selectedModels)
       for (const found of result.files) {
         const file = byName.get(found.filename)
         const choice = (result.choices ?? []).find((c) => c.kind === found.kind)
         const readerId = (choice?.arms ?? []).find((arm) => isAvailable(arm)) ?? null
         const reader = MODELS.find((m) => m.id === readerId)
         if (file && reader && reader.upload) {
-          if (!form.values.selectedModels.includes(reader.id)) toggleModel(reader.id)
+          // `toggleModel` is idempotent through its updater, but a second call
+          // for the same reader would turn it back off, so the set is tracked
+          // here across the whole drop rather than read back from the form.
+          if (!woken.has(reader.id)) {
+            woken.add(reader.id)
+            toggleModel(reader.id)
+          }
           addModelFiles(reader.id, [file], reader.upload.category, true)
         }
         rows.push({
