@@ -142,6 +142,7 @@ def subsample(rows: list[dict], limit: int | None) -> list[dict]:
 def extract(backbone: str, dataset: str, limit: int | None = None) -> dict:
     """Features for one dataset through one backbone, cached on disk."""
     import torch
+
     from app.arms.fundus import NotAFundusPhoto, frame
 
     everything = read_labels(dataset)

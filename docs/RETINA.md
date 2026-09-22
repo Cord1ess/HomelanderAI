@@ -234,7 +234,38 @@ logistic regression trained on a laptop CPU.
 
 ### Which backbone, and why
 
-PENDING — comparison table
+Three candidates, each frozen, each with the same head fitted on the same
+2,500-photograph DDR subset, each tested on the two sets none of them has ever
+seen. (`python scripts/dr_experiment.py compare` reproduces this.)
+
+| Backbone | Params | Pretrained on | DeepDRiD AUC (n=1,600) | IDRiD test AUC (n=103) | DeepDRiD at 65: sens / spec | Kappa |
+|---|---|---|---|---|---|---|
+| **FLAIR** ResNet-50 | 24M | 288k fundus photographs from 37 datasets, **with their labels as text** | **0.943** (0.932–0.952) | **0.942** (0.894–0.975) | 0.94 / **0.82** | 0.69 |
+| RETFound-Green ViT-S | 22M | 75k fundus photographs, no labels (DDR, ODIR, AIROGS) | 0.912 (0.897–0.925) | 0.866 (0.785–0.926) | 0.93 / 0.65 | 0.58 |
+| DINOv2 ViT-S | 22M | 142M natural images, no retinas at all | 0.915 (0.901–0.929) | 0.902 (0.834–0.956) | 0.91 / 0.73 | 0.57 |
+
+Two things fall out of that table.
+
+**FLAIR wins on every column, and by more where it matters.** Three points of
+AUC on DeepDRiD is outside both intervals, but the operating point is the larger
+gap: at the platform's elevated cut-off FLAIR keeps 82% of healthy eyes out of
+the band where RETFound-Green keeps 65%. Its thresholds travel better because it
+was pretrained with grade labels, so "referable" is close to a direction it
+already knows.
+
+**Retina-specific pretraining without labels bought nothing.** RETFound-Green
+and DINOv2 are the same architecture at the same size; one saw 75,000 retinas
+and the other none, and they land within a point of each other. That agrees with
+an independent benchmark (Front. Med. 2026) which found frozen RETFound
+transferring *worse* than an ImageNet network. What separates FLAIR is the
+supervision, not the domain.
+
+The full-data model above was then trained on all 8,763 DDR photographs, which
+took FLAIR from 0.943 to 0.945 on DeepDRiD — the head is not the bottleneck.
+
+RETFound-Green is also under a non-commercial licence that bars any industry
+involvement, and needs `timm`, which is not a project dependency for that
+reason. FLAIR is Apache-2.0 and loads into stock torchvision.
 
 ---
 
