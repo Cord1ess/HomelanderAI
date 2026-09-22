@@ -263,14 +263,14 @@ def test_unclassified_evidence_is_stored_but_not_scored():
 
 
 def test_evidence_no_model_reads_is_reported_not_dropped():
-    """A mammogram has no arm yet. The underwriter is told it exists and was
-    not read, rather than the platform pretending otherwise."""
+    """A skin-lesion photo has no arm yet. The underwriter is told it exists
+    and was not read, rather than the platform pretending otherwise."""
     image = png()
-    processed = process_upload(image, "mammo.png")
+    processed = process_upload(image, "lesion.png")
     result = evaluate(
-        [(image, "mammo.png")],
+        [(image, "lesion.png")],
         history(),
-        kinds={processed.content_hash: EvidenceKind.MAMMOGRAM},
+        kinds={processed.content_hash: EvidenceKind.SKIN_LESION},
     )
 
     assert result.runs == []

@@ -55,6 +55,12 @@ class Settings(BaseSettings):
     # (docs/DESIGN_POLICY.md §9). Already gitignored.
     data_dir: Path = _REPO_ROOT / "data"
 
+    # The Mirai breast-cancer model runs on a teammate's server (the published
+    # OncoServe container). Empty disables the arm. Four 25 MB DICOMs and a
+    # CPU inference take minutes, hence the timeout.
+    mirai_url: str = "http://34.173.36.245:5000/serve"
+    mirai_timeout_seconds: int = 900
+
     # ── Outgoing mail ─────────────────────────────────────────
     # Used to send applicants their portal sign-in and a note when a decision
     # is recorded. Leave SMTP_HOST empty and nothing is sent: the message is

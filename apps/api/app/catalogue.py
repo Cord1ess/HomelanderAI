@@ -36,8 +36,8 @@ CATALOGUE: list[CatalogueEntry] = [
     CatalogueEntry(
         id="mirai",
         label="Mammogram",
-        evidence="Mammogram, 4 views (.dcm)",
-        screens_for="Breast cancer risk",
+        evidence="Screening mammogram, all four views as .dcm (right/left MLO and CC)",
+        screens_for="Five-year breast-cancer risk (Mirai)",
     ),
     CatalogueEntry(
         id="ham10000",

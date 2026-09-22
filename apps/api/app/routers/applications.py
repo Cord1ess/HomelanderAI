@@ -43,7 +43,7 @@ from app.core.security import generate_password, generate_portal_id, hash_passwo
 from app.db.session import AsyncSessionLocal, get_db
 from app.deps import Principal, current_principal
 from app.evidence import EvidenceKind
-from app.intake import IntakeError, process_upload
+from app.intake import IntakeError, dicom_to_png, is_dicom, process_upload
 from app.models import (
     Applicant,
     Application,
@@ -235,7 +235,10 @@ def _thumbnail(png_bytes: bytes, size: int = 96) -> str | None:
     from PIL import Image
 
     try:
-        # A stored ECG is a signal; draw it first, then shrink the drawing.
+        # A stored mammogram is a DICOM; a stored ECG is a signal. Draw
+        # either first, then shrink the drawing.
+        if is_dicom(png_bytes):
+            png_bytes = dicom_to_png(png_bytes)
         if ecg_signal.is_canonical(png_bytes):
             png_bytes = ecg_signal.render(
                 ecg_signal.from_bytes(png_bytes), width=480, row_height=24
@@ -523,7 +526,9 @@ async def _store_evidence(
 
         # Each stored form keeps its own extension: what is on disk is what
         # the arm read — a PNG, an ECG signal, or a note's text.
-        extension = {"ecg": "npy", "document": "txt"}.get(processed.source_format, "png")
+        extension = {"ecg": "npy", "document": "txt", "mammogram": "dcm"}.get(
+            processed.source_format, "png"
+        )
         path = storage.write(
             principal.tenant_id,
             application.id,
@@ -559,6 +564,7 @@ async def _store_evidence(
                 application_id=application.id,
                 file_type={
                     "dicom": EvidenceFileType.DICOM,
+                    "mammogram": EvidenceFileType.DICOM,
                     "ecg": EvidenceFileType.ECG,
                     "document": EvidenceFileType.CLINICAL_NOTE,
                 }.get(processed.source_format, EvidenceFileType.IMAGE),
@@ -1649,6 +1655,17 @@ async def get_file(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="The record exists but its file is missing from storage.",
         )
+
+    # A stored mammogram is a de-identified DICOM; the screen gets a PNG of it.
+    if absolute.suffix == ".dcm":
+        try:
+            return Response(content=dicom_to_png(absolute.read_bytes()), media_type="image/png")
+        except Exception as exc:
+            log.error("Could not draw mammogram %s: %s", path, exc)
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="The stored mammogram could not be drawn.",
+            ) from exc
 
     # A note is served as the text it is, for the underwriter to read.
     if absolute.suffix == ".txt":

@@ -381,6 +381,7 @@ function ageAt(dateOfBirth: string | null | undefined, when: string | null | und
 function imageLabelFor(modelsRequested: string[]): string {
   if (modelsRequested.includes('eyepacs')) return 'Retinal photo'
   if (modelsRequested.includes('ecg')) return '12-lead ECG'
+  if (modelsRequested.includes('mirai')) return 'Mammogram'
   return 'Chest X-ray'
 }
 
@@ -407,6 +408,7 @@ function Review({ data, state }: { data: ApplicationDetail; state: ReviewState }
   const mortality = arms.find((a) => a.arm === 'mortality')
   const ecg = arms.find((a) => a.arm === 'ecg_12lead')
   const medications = arms.find((a) => a.arm === 'medication_check')
+  const mirai = arms.find((a) => a.arm === 'mirai')
   const hasVision = arms.some((a) => a.armType === 'vision') || Boolean(evidence)
 
   // Ranked by absolute contribution: the findings that moved the score most, in
@@ -726,6 +728,9 @@ function Review({ data, state }: { data: ApplicationDetail; state: ReviewState }
 
       {/* ── The tracing: what was reported, and the ECG age ──── */}
       {ecg && <EcgPanel run={ecg} age={ageAt(data.applicant.dateOfBirth, data.submittedAt)} />}
+
+      {/* ── The mammogram: five-year breast-cancer risk ────────── */}
+      {mirai && <MiraiPanel run={mirai} />}
 
       {/* ── The note: what its prescriptions imply that was not declared ── */}
       {medications && <MedicationPanel run={medications} noteId={note?.id ?? null} />}
@@ -1349,6 +1354,108 @@ function MortalityPanel({ run }: { run: ArmRun }) {
         Relative to a same-age, same-sex peer under a US calibration. Not an absolute
         probability, not validated in South Asia, and not a diagnosis. The smoking box reads
         "current or former"; the model learned "current", so a former smoker is scored as one.
+      </Text>
+    </Paper>
+  )
+}
+
+// What the Mirai arm stores per run (`apps/api/app/arms/mirai.py`).
+interface MiraiDetails {
+  risk_by_year?: number[]
+  five_year_risk?: number
+  views?: string[]
+  anchors?: { low_tier_top: [number, number]; senior_review: [number, number] }
+  server?: { model_name?: string | null; onconet_version?: string | null }
+  scorer?: string
+  validation?: string
+}
+
+function MiraiPanel({ run }: { run: ArmRun }) {
+  const d = run.details as MiraiDetails
+  const risks = d.risk_by_year ?? []
+  const five = d.five_year_risk
+  const average = d.anchors?.low_tier_top[0] ?? 0.017
+  const high = d.anchors?.senior_review[0] ?? 0.045
+  const elevated = five != null && five >= high
+  const peak = Math.max(high, ...risks)
+
+  return (
+    <Paper p="md" bd="1px solid var(--mantine-color-default-border)">
+      <Group justify="space-between" align="flex-start" mb="sm">
+        <div>
+          <Text fw={600} size="sm">
+            Breast-cancer risk from the mammogram
+          </Text>
+          <Text size="xs" c="dimmed">
+            Mirai reads the four views and estimates the chance of a diagnosis within one to five
+            years
+          </Text>
+        </div>
+        {run.score != null && (
+          <Badge variant="light" color={elevated ? 'orange' : five != null && five > average ? 'yellow' : 'teal'} size="lg">
+            arm score {run.score.toFixed(1)}
+          </Badge>
+        )}
+      </Group>
+
+      {run.error || five == null ? (
+        <Text size="sm" c="dimmed">
+          Could not be assessed: {run.error ?? 'no result was stored'}.
+        </Text>
+      ) : (
+        <>
+          <Text size="sm">
+            Five-year risk{' '}
+            <Text span fw={700} c={elevated ? 'orange' : five > average ? 'yellow.7' : 'teal'}>
+              {(five * 100).toFixed(1)}%
+            </Text>
+            . An average woman of screening age carries about {(average * 100).toFixed(1)}%; above{' '}
+            {(high * 100).toFixed(1)}% is the high-risk group Mirai was built to find, and a senior
+            underwriter reviews.
+          </Text>
+
+          <Stack gap={6} mt="md">
+            {risks.map((r, i) => (
+              <div key={i}>
+                <Group justify="space-between" mb={2} wrap="nowrap">
+                  <Text size="xs">Within {i + 1} year{i ? 's' : ''}</Text>
+                  <Text size="xs" ff="monospace" c={r >= high ? 'orange' : 'dimmed'}>
+                    {(r * 100).toFixed(2)}%
+                  </Text>
+                </Group>
+                <Box h={6} w="100%" style={{ position: 'relative', backgroundColor: 'var(--mantine-color-dark-5)', borderRadius: 3 }}>
+                  <Box
+                    h="100%"
+                    style={{
+                      width: `${Math.min(100, (r / peak) * 100)}%`,
+                      backgroundColor: r >= high ? 'var(--mantine-color-orange-5)' : 'var(--mantine-color-clinical-3)',
+                      borderRadius: 3,
+                    }}
+                  />
+                  <Box
+                    style={{
+                      position: 'absolute',
+                      left: `${Math.min(100, (average / peak) * 100)}%`,
+                      top: -2,
+                      width: 1,
+                      height: 10,
+                      backgroundColor: 'var(--mantine-color-gray-5)',
+                    }}
+                  />
+                </Box>
+              </div>
+            ))}
+          </Stack>
+          <Text size="xs" c="dimmed" mt="xs">
+            The tick is the average five-year risk. Views read: {(d.views ?? []).join(', ')}.
+          </Text>
+        </>
+      )}
+
+      <Text size="xs" c="dimmed" mt="md">
+        {d.scorer}
+        {d.server?.model_name ? ` (${d.server.model_name}, onconet ${d.server.onconet_version})` : ''}.{' '}
+        {d.validation}. A risk estimate, not a finding on the film: nothing here says where to look.
       </Text>
     </Paper>
   )

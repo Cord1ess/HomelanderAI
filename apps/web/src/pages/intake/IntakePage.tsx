@@ -173,7 +173,7 @@ const MODELS: ModelDef[] = [
     upload: {
       category: 'Mammogram',
       accept: DICOM,
-      instruction: 'Mammogram, 4 views — .dcm',
+      instruction: 'Screening mammogram, all four views (right/left MLO and CC) — four .dcm files',
     },
     fields: [
       { kind: 'checkbox', key: 'family_breast_cancer', label: 'Family history of breast cancer' },

@@ -129,6 +129,12 @@ def process_upload(raw: bytes, filename: str = "") -> ProcessedFile:
             warnings=list(signal.notes),
         )
 
+    if is_dicom(raw) and _is_mammogram(raw):
+        # Mirai reads the DICOM itself, so a mammogram is kept as one — with
+        # the patient, physician and institution tags removed and the pixels
+        # and view tags left. Everything else DICOM becomes a PNG below.
+        return _mammogram(raw)
+
     if is_dicom(raw):
         png, tags, warnings = _dicom_to_png(raw)
         return ProcessedFile(
@@ -227,6 +233,118 @@ def _document(text: str) -> ProcessedFile:
     )
 
 
+# ── mammograms ───────────────────────────────────────────────────────────────
+
+# Tags that name or locate the person. Removed from a mammogram before it is
+# stored; everything else stays, because the Mirai server reads the file as
+# a whole and refuses one stripped to the pixels and view tags.
+_MAMMOGRAM_IDENTIFYING = (
+    "PatientName",
+    "PatientID",
+    "OtherPatientIDs",
+    "OtherPatientNames",
+    "PatientBirthDate",
+    "PatientBirthTime",
+    "PatientAddress",
+    "PatientTelephoneNumbers",
+    "PatientMotherBirthName",
+    "EthnicGroup",
+    "Occupation",
+    "AdditionalPatientHistory",
+    "PatientComments",
+    "InstitutionName",
+    "InstitutionAddress",
+    "InstitutionalDepartmentName",
+    "ReferringPhysicianName",
+    "ReferringPhysicianAddress",
+    "ReferringPhysicianTelephoneNumbers",
+    "PerformingPhysicianName",
+    "PhysiciansOfRecord",
+    "NameOfPhysiciansReadingStudy",
+    "OperatorsName",
+    "RequestingPhysician",
+    "AccessionNumber",
+    "StudyID",
+    "StationName",
+    "DeviceSerialNumber",
+    "RequestAttributesSequence",
+    "ReferencedPatientSequence",
+)
+
+
+def _is_mammogram(raw: bytes) -> bool:
+    import pydicom
+
+    try:
+        ds = pydicom.dcmread(BytesIO(raw), stop_before_pixels=True, force=True)
+    except Exception:
+        return False
+    return str(ds.get("Modality", "")).upper() == "MG"
+
+
+def _mammogram(raw: bytes) -> ProcessedFile:
+    import pydicom
+
+    try:
+        ds = pydicom.dcmread(BytesIO(raw), force=True)
+        _ = ds.pixel_array  # unreadable pixels fail here, not at scoring time
+    except Exception as exc:
+        raise IntakeError(f"Not a readable mammogram DICOM: {exc}") from exc
+
+    if str(ds.get("PatientIdentityRemoved", "")).upper() == "YES":
+        # Already our stored form (the pipeline re-reads evidence from disk).
+        return ProcessedFile(
+            data=raw,
+            content_hash=sha256(raw),
+            mime_type="application/dicom",
+            source_format="mammogram",
+            deidentified=True,
+            clinical_tags=_mammogram_tags(ds),
+        )
+
+    for keyword in _MAMMOGRAM_IDENTIFYING:
+        if keyword in ds:
+            del ds[keyword]
+    ds.remove_private_tags()
+    # The server expects a patient to exist; it gets an anonymous one.
+    ds.PatientName = "ANONYMOUS"
+    ds.PatientID = sha256(raw)[:16]
+    ds.PatientIdentityRemoved = "YES"
+    ds.DeidentificationMethod = "HomelanderAI intake: identifying tags removed, image tags kept"
+    warnings: list[str] = []
+    if not ds.get("ImageLaterality") or not ds.get("ViewPosition"):
+        warnings.append(
+            "the DICOM does not say which breast or view it is; Mirai needs all four labelled"
+        )
+
+    buffer = BytesIO()
+    ds.save_as(buffer, enforce_file_format=True)
+    data = buffer.getvalue()
+    return ProcessedFile(
+        data=data,
+        content_hash=sha256(data),
+        mime_type="application/dicom",
+        source_format="mammogram",
+        deidentified=True,
+        clinical_tags=_mammogram_tags(ds),
+        warnings=warnings,
+    )
+
+
+def _mammogram_tags(ds) -> dict[str, str]:
+    return {
+        name: str(ds.get(name))
+        for name in ("Modality", "ImageLaterality", "ViewPosition", "Rows", "Columns")
+        if ds.get(name, None) is not None
+    }
+
+
+def dicom_to_png(raw: bytes) -> bytes:
+    """A stored mammogram drawn for the screen."""
+    png, _, _ = _dicom_to_png(raw)
+    return png
+
+
 # ── DICOM ────────────────────────────────────────────────────────────────────
 
 
@@ -264,11 +382,7 @@ def _dicom_to_png(raw: bytes) -> tuple[bytes, dict[str, str], list[str]]:
     if str(ds.get("PhotometricInterpretation", "")).upper() == "MONOCHROME1":
         arr = arr.max() - arr
 
-    tags = {
-        name: str(ds.get(name))
-        for name in _CLINICAL_TAGS
-        if ds.get(name, None) is not None
-    }
+    tags = {name: str(ds.get(name)) for name in _CLINICAL_TAGS if ds.get(name, None) is not None}
 
     return _array_to_png(arr), tags, warnings
 

@@ -75,12 +75,18 @@ class Arm:
     run: Callable[[bytes], ArmResult] | None = None
     run_form: Callable[[dict, int | None, str | None], ArmResult] | None = None
     run_with_form: Callable[[bytes, dict], ArmResult] | None = None
+    # An arm that needs every file of its kind at once — Mirai reads the four
+    # views of a mammogram together — runs once per application over them all.
+    run_set: Callable[[list[bytes]], ArmResult] | None = None
 
     def __post_init__(self) -> None:
-        modes = [m for m in (self.run, self.run_form, self.run_with_form) if m is not None]
+        modes = [
+            m for m in (self.run, self.run_form, self.run_with_form, self.run_set) if m is not None
+        ]
         if len(modes) != 1:
             raise ValueError(
-                f"arm {self.name!r} must define exactly one of run / run_form / run_with_form"
+                f"arm {self.name!r} must define exactly one of "
+                "run / run_form / run_with_form / run_set"
             )
         if self.run_form is not None and self.accepts:
             raise ValueError(f"form arm {self.name!r} must not accept evidence kinds")
@@ -99,7 +105,14 @@ class Arm:
 
 # Imported at the bottom on purpose: the arm modules do `from app.arms import
 # ArmResult`, and by this point ArmResult is defined, so there is no cycle.
-from app.arms import dr_fundus, ecg_12lead, medication_check, mortality, tb_xray  # noqa: E402
+from app.arms import (  # noqa: E402
+    dr_fundus,
+    ecg_12lead,
+    medication_check,
+    mirai,
+    mortality,
+    tb_xray,
+)
 
 
 def arms_for(kind: EvidenceKind | str) -> list[Arm]:
@@ -116,6 +129,11 @@ def arms_for(kind: EvidenceKind | str) -> list[Arm]:
 def form_arms() -> list[Arm]:
     """The arms that read the intake form rather than a file."""
     return [a for a in ARMS.values() if a.run_form is not None]
+
+
+def set_arms() -> list[Arm]:
+    """The arms that read every file of their kind at once."""
+    return [a for a in ARMS.values() if a.run_set is not None]
 
 
 def arm_for_intake(intake_id: str) -> Arm | None:
@@ -166,6 +184,18 @@ ARMS: dict[str, Arm] = {
         validation=ecg_12lead.VALIDATION,
         run=ecg_12lead.run,
         available=ecg_12lead.available,
+    ),
+    mirai.NAME: Arm(
+        name=mirai.NAME,
+        version=mirai.VERSION,
+        arm_type="vision",
+        intake_id="mirai",
+        accepts=frozenset({EvidenceKind.MAMMOGRAM}),
+        preprocessing_version=mirai.PREPROCESSING_VERSION,
+        weight_hash=mirai.WEIGHT_HASH,
+        validation=mirai.VALIDATION,
+        run_set=mirai.run_set,
+        available=mirai.available,
     ),
     medication_check.NAME: Arm(
         name=medication_check.NAME,

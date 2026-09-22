@@ -11,7 +11,7 @@ land, a thin layer writes `Evaluation` into `model_runs`, `sub_scores`,
 
 from dataclasses import dataclass, field
 
-from app.arms import ArmResult, arms_for, form_arms
+from app.arms import ArmResult, arms_for, form_arms, set_arms
 from app.evidence import EvidenceKind, label
 from app.intake import IntakeError, ProcessedFile, process_upload
 from app.scoring import INSUFFICIENT, Adjustment, ScoreResult, Thresholds, score
@@ -129,6 +129,8 @@ def evaluate(
             continue
 
         for arm in readers:
+            if arm.run_set is not None:
+                continue  # below, once over every file of its kind
             if not arm.available():
                 errors.append(f"{arm.name}: unavailable")
                 continue
@@ -143,6 +145,29 @@ def evaluate(
             )
             if result.error:
                 errors.append(f"{arm.name}: {result.error}")
+
+    # The arms that read all the files of a kind together: Mirai wants the four
+    # views of one mammogram, not four separate readings of one view each.
+    for arm in set_arms():
+        members = [
+            item for item in processed if kinds and kinds.get(item.content_hash) in arm.accepts
+        ]
+        if not members:
+            continue
+        if not arm.available():
+            errors.append(f"{arm.name}: unavailable")
+            continue
+        result = arm.run_set([item.data for item in members])
+        runs.append(
+            ArmRun(
+                arm_name=arm.name,
+                arm_version=arm.version,
+                evidence_hash=members[0].content_hash,
+                result=result,
+            )
+        )
+        if result.error:
+            errors.append(f"{arm.name}: {result.error}")
 
     # The arms that read the form. Their "evidence" is what the operator typed,
     # so the input signature recorded against the run is a hash of that.
