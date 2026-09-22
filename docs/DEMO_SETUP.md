@@ -255,6 +255,19 @@ see. That is the argument for the whole product, and it is the thing to show.
 
 ---
 
+## Fresh database, in order
+
+From `apps/api`, with PostgreSQL running and `.env` pointing at it:
+
+1. `uv run alembic upgrade head` (creates every table from `db/schema.sql`, then runs migrations 002 to 012)
+2. `psql -U homelander -d homelander -f ../../db/seed.sql` (the dev accounts)
+3. `uv run python ../../scripts/seed_demo.py` (30 realistic clients for Demo Insurance Co.; `--reset` to redo)
+4. `python ../../scripts/make_demo_tests.py` (the five drag-and-drop test folders under `data/demo/test/`)
+
+The built-in accounts (`underwriter`, `medical`, `admin`, password `admin123`)
+need no seed; they create their rows on first sign-in. Every seeded client's
+portal password is `client123`.
+
 ## The showcase flow, with the five demo clients
 
 `python scripts/make_demo_clients.py` builds `data/demo/clients/`, five folders

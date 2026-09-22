@@ -14,7 +14,7 @@ from dataclasses import dataclass, field
 from app.arms import ArmResult, arms_for, form_arms, set_arms
 from app.evidence import EvidenceKind, label
 from app.intake import IntakeError, ProcessedFile, process_upload
-from app.scoring import INSUFFICIENT, Adjustment, ScoreResult, Thresholds, score
+from app.scoring import INSUFFICIENT, Adjustment, ScoreResult, Thresholds, fuse, score
 
 # Mirrors application_status in the schema.
 STATUS_SCORED = "scored"
@@ -191,11 +191,11 @@ def evaluate(
     if not usable:
         return _insufficient(errors, t, processed, runs)
 
-    # 3. Highest score governs. A concerning finding on one film must not be
-    #    averaged away by a clean one — screening escalates on the worst view.
-    #    The same rule holds across arms: the most concerning reading, from
-    #    whichever model produced it, is the one the underwriter must see.
-    vision_score = max(r.result.score for r in usable)
+    # 3. Every usable reading counts, with diminishing returns (scoring.fuse).
+    #    A concerning reading is never averaged away by a clean one, and a
+    #    second concerning reading adds to the first rather than being ignored,
+    #    but no number of positives turns into a certainty on its own.
+    vision_score = fuse([r.result.score for r in usable])
 
     scored: ScoreResult = score(vision_score, declared_history, age=age, thresholds=t)
 

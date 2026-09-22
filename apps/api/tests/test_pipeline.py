@@ -133,7 +133,10 @@ def test_highest_scoring_film_governs():
         evaluate([(png(color=255), "b.png")], history()).crs,
     ]
 
-    assert both.crs == max(individual)
+    # Both readings count: the fused score is at least the worse single view,
+    # and more evidence of risk never lowers it.
+    assert both.crs >= max(individual)
+    assert both.crs <= 100.0
     assert len(both.runs) == 2
 
 

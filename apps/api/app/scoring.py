@@ -199,6 +199,31 @@ RULES: list[Rule] = [
 
 INSUFFICIENT = "insufficient_evidence"
 
+# How much one reader's certainty is allowed to say on its own. A single
+# certain reading lands at 75, elevated but not a verdict; every further
+# positive reading adds a share of what is left, so many positives approach 100
+# and never reach it. One clean film next to one concerning film still reads
+# as concerning: the concerning one is not averaged away.
+ARM_WEIGHT = 0.75
+
+# Declared history can move the score by at most this many points, and it
+# moves it in proportion to the room left: +25 on a score of 40 adds 15, on a
+# score of 90 adds 2.5. A questionnaire cannot turn a clean scan into a
+# certainty, and cannot erase a concerning one.
+MAX_HISTORY_POINTS = 30.0
+
+
+def fuse(readings: list[float]) -> float:
+    """Combine every reader's 0-100 score into one 0-100 risk.
+
+    Noisy-OR over the readings, each weighted by ARM_WEIGHT. Order does not
+    matter, and no reading can lower the result: evidence of risk accumulates.
+    """
+    risk = 0.0
+    for reading in readings:
+        risk += (1.0 - risk) * ARM_WEIGHT * (max(0.0, min(100.0, reading)) / 100.0)
+    return round(100.0 * risk, 2)
+
 
 def tier_for(crs: float, thresholds: Thresholds | None = None) -> str:
     t = thresholds or Thresholds()
@@ -215,11 +240,15 @@ def score(
     age: int | None = None,
     thresholds: Thresholds | None = None,
 ) -> ScoreResult:
-    """Combine the vision arm's score with declared history.
+    """Combine the readers' fused score with declared history.
 
-    `vision_score` is 0-100, or None when the arm produced nothing usable. A
-    missing vision score is not a zero — it means we cannot score at all, and
-    the application needs more evidence.
+    `vision_score` is the fused 0-100 reading (see `fuse`), or None when no
+    reader produced anything usable. A missing score is not a zero — it means
+    we cannot score at all, and the application needs more evidence.
+
+    History adjusts in proportion to the room left, capped at
+    MAX_HISTORY_POINTS either way, so the questionnaire refines the evidence
+    rather than overruling it.
     """
     t = thresholds or Thresholds()
     declared = declared_history or {}
@@ -239,7 +268,11 @@ def score(
         if r.applies(declared, age)
     ]
 
-    crs = vision_score + sum(a.points for a in applied)
+    net = max(-MAX_HISTORY_POINTS, min(MAX_HISTORY_POINTS, sum(a.points for a in applied)))
+    if net >= 0:
+        crs = vision_score + net * (1.0 - vision_score / 100.0)
+    else:
+        crs = vision_score + net * (vision_score / 100.0)
     crs = max(0.0, min(100.0, crs))
 
     return ScoreResult(

@@ -43,7 +43,8 @@ def test_same_image_opposite_conclusion():
     assert untreated.crs == 62.0
     assert untreated.tier == "moderate"
 
-    assert scarring.crs == 37.0
+    # -25 points applied to the 62 already there: 62 - 25 * 0.62.
+    assert scarring.crs == 46.5
     assert scarring.tier == "moderate"
     assert scarring.crs < untreated.crs
 
@@ -62,7 +63,10 @@ def test_prior_tb_with_symptoms_raises_instead():
     )
 
     assert scarring.crs < vision < relapse.crs
-    assert relapse.tier == "elevated"
+    # +25 on the 50 points of room left: 50 + 25 * 0.5. History refines the
+    # evidence; it does not turn an ambiguous film into a certainty on its own.
+    assert relapse.crs == 62.5
+    assert relapse.tier == "moderate"
 
 
 def test_scarring_and_relapse_are_mutually_exclusive():
@@ -115,10 +119,17 @@ def test_score_is_clamped_to_range():
         fever=True,
         night_sweats=True,
     )
-    assert score(95.0, piled_on, age=70).crs == 100.0
+    # Every positive rule at once is 77 points, capped at 30, applied to the 5
+    # points of room left: 95 + 30 * 0.05. Piling on history approaches 100 and
+    # never reaches it; only the readers themselves can go that high.
+    piled = score(95.0, piled_on, age=70).crs
+    assert piled == 96.5
+    assert piled < 100.0
 
-    # And the floor holds when a downgrade exceeds the vision score.
-    assert score(5.0, history(prior_tb=True, prior_tb_treatment_completed=True)).crs == 0.0
+    # And a downgrade scales with what is there: -25 on 5 takes off 1.25.
+    low = score(5.0, history(prior_tb=True, prior_tb_treatment_completed=True)).crs
+    assert low == 3.75
+    assert low >= 0.0
 
 
 @pytest.mark.parametrize(
@@ -193,3 +204,25 @@ def test_every_rule_can_actually_fire():
         declared, age = triggers[rule.key]
         fired = {a.key for a in score(50.0, declared, age=age).adjustments}
         assert rule.key in fired, f"rule {rule.key!r} never fires"
+
+
+# ── fusing the readers ───────────────────────────────────────────────────────
+
+
+def test_fusion_accumulates_with_diminishing_returns():
+    """One certain reading is elevated, not a verdict; more positives add less
+    each time and never reach 100; a clean reading never lowers a concerning one."""
+    from app.scoring import fuse
+
+    assert fuse([]) == 0.0
+    assert fuse([0.0]) == 0.0
+    assert fuse([100.0]) == 75.0
+    assert fuse([100.0, 100.0]) == 93.75
+    assert fuse([100.0, 100.0, 100.0]) < 100.0
+    assert fuse([100.0, 100.0, 100.0, 100.0, 100.0]) < 100.0
+
+    # Order does not matter, and a clean film does not dilute a concerning one.
+    assert fuse([100.0, 2.0]) == fuse([2.0, 100.0])
+    assert fuse([100.0, 2.0]) >= fuse([100.0])
+    # A single moderate reading stays moderate.
+    assert 30.0 < fuse([50.0]) < 65.0

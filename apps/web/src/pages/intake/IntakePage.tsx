@@ -31,6 +31,7 @@ import { useNavigate } from 'react-router-dom'
 import {
   classifyEvidence,
   getModels,
+  getTenantSettings,
   submitApplication,
   type ClassifyResponse,
   type PortalCredentials,
@@ -311,6 +312,17 @@ const MODELS: ModelDef[] = [
 const MAX_FILE_BYTES = 50 * 1024 * 1024
 const MAX_FACE_BYTES = 10 * 1024 * 1024
 
+/** The latest date of birth an adult can have: today, eighteen years ago. */
+function latestAdultBirthDate(): string {
+  const d = new Date()
+  d.setFullYear(d.getFullYear() - 18)
+  return d.toISOString().slice(0, 10)
+}
+
+function isAdult(dob: string): boolean {
+  return dob !== '' && dob <= latestAdultBirthDate()
+}
+
 interface IntakeForm {
   reference: string
   name: string
@@ -475,6 +487,23 @@ export function IntakePage() {
   // Which models actually run is a fact about the backend. The form used to
   // offer all seven as though they worked; only the chest X-ray does, and an
   // operator attaching a mammogram got no score and no explanation.
+  // The company's rates, for the cover dropdown. Amounts are multiples of the
+  // reference cover, each shown with the standard plan's monthly premium at
+  // that amount, so the operator sees the price as they pick.
+  const { data: policy } = useQuery({ queryKey: ['tenant-settings'], queryFn: getTenantSettings })
+  const coverOptions = (() => {
+    const reference = policy?.referenceCoverBdt ?? 1_000_000
+    const base = policy?.premiumLowBdt ?? 5_000
+    return [0.25, 0.5, 1, 1.5, 2, 3, 5, 10].map((m) => {
+      const amount = Math.round((reference * m) / 50_000) * 50_000
+      const premium = Math.round(base * (amount / reference))
+      return {
+        value: String(amount),
+        label: `৳${amount.toLocaleString('en-IN')} · from ৳${premium.toLocaleString('en-IN')} a month`,
+      }
+    })
+  })()
+
   const { data: catalogue = [] } = useQuery({
     queryKey: ['models'],
     queryFn: getModels,
@@ -577,9 +606,75 @@ export function IntakePage() {
     { name: string; kind: string; reader: string | null; reason: string }[]
   >([])
 
-  const dropEverything = async (dropped: File[]) => {
+  /**
+   * A dropped folder can carry two JSON files the readers never see:
+   * `client.json` fills in the client and the cover, `blood-panel.json` fills
+   * in the lab reader's values. Everything else goes to the API to be
+   * identified.
+   */
+  const takeJson = async (files: File[]): Promise<File[]> => {
+    const rest: File[] = []
+    for (const file of files) {
+      if (!file.name.toLowerCase().endsWith('.json')) {
+        rest.push(file)
+        continue
+      }
+      try {
+        const data = JSON.parse(await file.text()) as Record<string, unknown>
+        if (typeof data.name === 'string' || typeof data.phone === 'string') {
+          const cover = (data.coverage ?? {}) as Record<string, unknown>
+          form.setValues({
+            name: typeof data.name === 'string' ? data.name : form.values.name,
+            phone: typeof data.phone === 'string' ? data.phone : form.values.phone,
+            email: typeof data.email === 'string' ? data.email : form.values.email,
+            dob: typeof data.dateOfBirth === 'string' ? data.dateOfBirth : form.values.dob,
+            sex: typeof data.sex === 'string' ? data.sex : form.values.sex,
+            coverageType: typeof cover.type === 'string' ? cover.type : form.values.coverageType,
+            coverageAmount: typeof cover.amount === 'number' ? cover.amount : form.values.coverageAmount,
+            policyTerm: typeof cover.term === 'string' ? cover.term : form.values.policyTerm,
+          })
+          const questions = (data.questions ?? {}) as Record<string, Record<string, Scalar>>
+          for (const [modelId, values] of Object.entries(questions)) {
+            if (!isAvailable(modelId)) continue
+            if (!form.values.selectedModels.includes(modelId)) toggleModel(modelId)
+            setFields(modelId, values)
+          }
+          setIdentified((prev) => [
+            ...prev,
+            { name: file.name, kind: 'Client details', reader: null, reason: 'Filled in the client and the cover' },
+          ])
+        } else if ('albumin_g_dl' in data || 'creatinine_mg_dl' in data) {
+          if (isAvailable('xgboost')) {
+            if (!form.values.selectedModels.includes('xgboost')) toggleModel('xgboost')
+            setFields('xgboost', data as Record<string, Scalar>)
+            setIdentified((prev) => [
+              ...prev,
+              { name: file.name, kind: 'Blood panel', reader: availability.get('xgboost')?.label ?? 'Blood panel', reason: 'Values typed in for you' },
+            ])
+          }
+        } else {
+          rest.push(file)
+        }
+      } catch {
+        rest.push(file)
+      }
+    }
+    return rest
+  }
+
+  /** Several values for one reader at once (setField one at a time would lose all but the last). */
+  const setFields = (modelId: string, values: Record<string, Scalar>) => {
+    form.setFieldValue('modelFields', {
+      ...form.values.modelFields,
+      [modelId]: { ...(form.values.modelFields[modelId] ?? {}), ...values },
+    })
+  }
+
+  const dropEverything = async (all: File[]) => {
     setIdentifying(true)
     try {
+      const dropped = await takeJson(all)
+      if (dropped.length === 0) return
       const result = await classifyEvidence(dropped)
       setClassified((prev) =>
         prev
@@ -693,7 +788,9 @@ export function IntakePage() {
     // The identity photo is deliberately not required. It is biometric data
     // that no model reads, so demanding it would collect the most sensitive
     // thing on the form for no benefit (SPEC §9, PII minimisation).
-    Boolean(form.values.name.trim()) && Boolean(form.values.phone.trim()),
+    Boolean(form.values.name.trim()) &&
+      Boolean(form.values.phone.trim()) &&
+      (form.values.dob === '' || isAdult(form.values.dob)),
     Boolean(form.values.coverageType) && (form.values.coverageAmount ?? 0) > 0,
     modelsSectionComplete,
   ]
@@ -767,6 +864,75 @@ export function IntakePage() {
     }
   }
 
+  const dropEverythingZone = (
+    <>
+            <Dropzone
+              onDrop={(files) => void dropEverything(files)}
+              onReject={(rejects) =>
+                notifications.show({
+                  title: `${rejects.length} file${rejects.length === 1 ? '' : 's'} not accepted`,
+                  message: 'Images, DICOM, ECG exports (.csv), PDF and text up to 50 MB.',
+                  color: 'red',
+                })
+              }
+              accept={{ ...DICOM, ...PHOTO, ...DOCUMENT, ...ECG_EXPORT, 'application/json': ['.json'] }}
+              maxSize={MAX_FILE_BYTES}
+              loading={identifying}
+              multiple
+              className="drop-all"
+            >
+              <Group justify="center" gap="md" style={{ pointerEvents: 'none' }} py="md">
+                <IconFileUpload size={30} stroke={1.4} style={{ color: 'var(--neo-accent)' }} />
+                <div>
+                  <Text size="sm" fw={600}>
+                    Drop every file the client brought here
+                  </Text>
+                  <Text size="xs" style={{ color: 'var(--neo-muted)' }}>
+                    Scans, retinal photos, ECG exports, reports. The platform works out what each
+                    file is and which reader takes it, and switches that reader on below.
+                  </Text>
+                </div>
+              </Group>
+            </Dropzone>
+
+            {identified.length > 0 && (
+              <Table fz="xs" withRowBorders={false} verticalSpacing={4} className="identified">
+                <Table.Thead>
+                  <Table.Tr>
+                    <Table.Th>File</Table.Th>
+                    <Table.Th>Identified as</Table.Th>
+                    <Table.Th>Read by</Table.Th>
+                  </Table.Tr>
+                </Table.Thead>
+                <Table.Tbody>
+                  {identified.map((row, i) => (
+                    <Table.Tr key={`${row.name}-${i}`} className="identified__row">
+                      <Table.Td ff="monospace">{row.name}</Table.Td>
+                      <Table.Td>
+                        {row.kind}
+                        <Text span size="xs" ml={6} style={{ color: 'var(--neo-muted)' }}>
+                          {row.reason}
+                        </Text>
+                      </Table.Td>
+                      <Table.Td>
+                        {row.reader ? (
+                          <Badge size="xs" color="teal" variant="light">
+                            {row.reader}
+                          </Badge>
+                        ) : (
+                          <Badge size="xs" color="gray" variant="outline">
+                            No reader yet. Not attached.
+                          </Badge>
+                        )}
+                      </Table.Td>
+                    </Table.Tr>
+                  ))}
+                </Table.Tbody>
+              </Table>
+            )}
+    </>
+  )
+
   if (submitted) {
     return (
       <Stack gap="md" maw={560}>
@@ -807,6 +973,11 @@ export function IntakePage() {
       >
         <Stepper.Step label="Client" description="Who is applying" allowStepSelect={step > 0}>
           <div key="client" className="page-enter">
+            <Text size="sm" mt="md" mb="xs" style={{ color: 'var(--neo-muted)' }}>
+              Have the client's folder? Drop everything in it here: the client's details, their cover
+              and every file are taken care of, and each reader is switched on.
+            </Text>
+            {dropEverythingZone}
       {/* ── Section 1 · Applicant ─────────────────────────────── */}
       <Section n="1" title="Applicant" complete={sections[0]}>
         <TextInput
@@ -832,7 +1003,15 @@ export function IntakePage() {
               {...form.getInputProps('email')}
             />
             <Group grow align="flex-start">
-              <TextInput label="Date of birth" type="date" {...form.getInputProps('dob')} />
+              <TextInput
+                label="Date of birth"
+                type="date"
+                description="The client must be 18 or over"
+                max={latestAdultBirthDate()}
+                min="1900-01-01"
+                {...form.getInputProps('dob')}
+                error={form.values.dob && !isAdult(form.values.dob) ? 'The client must be at least 18' : undefined}
+              />
               <Select
                 label="Sex"
                 placeholder="Prefer not to say"
@@ -871,13 +1050,16 @@ export function IntakePage() {
             data={['Life', 'Health', 'Critical illness']}
             {...form.getInputProps('coverageType')}
           />
-          <NumberInput
+          <Select
             label="Coverage amount (BDT)"
-            placeholder="1,000,000"
+            description="What each amount costs a month on the standard plan, under your company's rates"
+            placeholder="Choose an amount"
             required
-            thousandSeparator=","
-            min={0}
-            {...form.getInputProps('coverageAmount')}
+            searchable
+            w={340}
+            data={coverOptions}
+            value={form.values.coverageAmount != null ? String(form.values.coverageAmount) : null}
+            onChange={(v) => form.setFieldValue('coverageAmount', v ? Number(v) : null)}
           />
           <Select
             label="Policy term"
@@ -898,70 +1080,7 @@ export function IntakePage() {
           <div key="evidence" className="page-enter">
       {/* ── Section 3 · Models ─────────────────────────────────── */}
       <Section n="3" title="Models" complete={sections[2]}>
-        <Dropzone
-          onDrop={(files) => void dropEverything(files)}
-          onReject={(rejects) =>
-            notifications.show({
-              title: `${rejects.length} file${rejects.length === 1 ? '' : 's'} not accepted`,
-              message: 'Images, DICOM, ECG exports (.csv), PDF and text up to 50 MB.',
-              color: 'red',
-            })
-          }
-          accept={{ ...DICOM, ...PHOTO, ...DOCUMENT, ...ECG_EXPORT }}
-          maxSize={MAX_FILE_BYTES}
-          loading={identifying}
-          multiple
-          className="drop-all"
-        >
-          <Group justify="center" gap="md" style={{ pointerEvents: 'none' }} py="md">
-            <IconFileUpload size={30} stroke={1.4} style={{ color: 'var(--neo-accent)' }} />
-            <div>
-              <Text size="sm" fw={600}>
-                Drop every file the client brought here
-              </Text>
-              <Text size="xs" style={{ color: 'var(--neo-muted)' }}>
-                Scans, retinal photos, ECG exports, reports. The platform works out what each
-                file is and which reader takes it, and switches that reader on below.
-              </Text>
-            </div>
-          </Group>
-        </Dropzone>
-
-        {identified.length > 0 && (
-          <Table fz="xs" withRowBorders={false} verticalSpacing={4} className="identified">
-            <Table.Thead>
-              <Table.Tr>
-                <Table.Th>File</Table.Th>
-                <Table.Th>Identified as</Table.Th>
-                <Table.Th>Read by</Table.Th>
-              </Table.Tr>
-            </Table.Thead>
-            <Table.Tbody>
-              {identified.map((row, i) => (
-                <Table.Tr key={`${row.name}-${i}`} className="identified__row">
-                  <Table.Td ff="monospace">{row.name}</Table.Td>
-                  <Table.Td>
-                    {row.kind}
-                    <Text span size="xs" ml={6} style={{ color: 'var(--neo-muted)' }}>
-                      {row.reason}
-                    </Text>
-                  </Table.Td>
-                  <Table.Td>
-                    {row.reader ? (
-                      <Badge size="xs" color="teal" variant="light">
-                        {row.reader}
-                      </Badge>
-                    ) : (
-                      <Badge size="xs" color="gray" variant="outline">
-                        No reader yet. Not attached.
-                      </Badge>
-                    )}
-                  </Table.Td>
-                </Table.Tr>
-              ))}
-            </Table.Tbody>
-          </Table>
-        )}
+        {dropEverythingZone}
 
         <Text size="sm" c="dimmed">
           Or pick a reader below and give it its file directly. Each reader you select opens a
