@@ -663,7 +663,8 @@ def test_classify_proposes_a_kind_and_a_destination(carrier):
     # A document goes to the medication check, which reads its prescriptions.
     report = by_name["bloods.pdf"]
     assert report["kind"] == "document"
-    assert report["arms"] == ["medication_check"]
+    # By catalogue id, like every reader: the medication check reads clinical notes.
+    assert report["arms"] == ["biobert"]
 
     # Every kind the operator may correct a row to.
     assert {c["kind"] for c in body["choices"]} >= {"chest_xray", "fundus", "document"}
