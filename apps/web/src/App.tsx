@@ -5,6 +5,8 @@ import { AuthPage } from './pages/AuthPage'
 import { RegisterCarrierPage } from './pages/RegisterCarrierPage'
 import { SettingsPage } from './pages/admin/SettingsPage'
 import { StaffManagementPage } from './pages/admin/StaffManagementPage'
+import { AnalyticsPage } from './pages/analytics/AnalyticsPage'
+import { ClientsPage } from './pages/clients/ClientsPage'
 import { EscalationsPage } from './pages/escalations/EscalationsPage'
 import { HomePage } from './pages/home/HomePage'
 import { IntakePage } from './pages/intake/IntakePage'
@@ -29,6 +31,8 @@ import { ReviewPage } from './pages/review/ReviewPage'
  *
  * Guarded by ProtectedRoute -> AppLayout (the console):
  *   /queue                 Queue - role-tailored view
+ *   /clients               Every applicant, with their latest application
+ *   /analytics             The company's book, in numbers and charts
  *   /escalations           Escalation inbox. Medical Professional and Administrator only
  *   /admin/users           Staff accounts. Administrator only
  *   /admin/settings        Company settings. Administrator only
@@ -53,6 +57,8 @@ export function App() {
         }
       >
         <Route path="/queue" element={<QueuePage />} />
+        <Route path="/clients" element={<ClientsPage />} />
+        <Route path="/analytics" element={<AnalyticsPage />} />
         {/* The two screens that belong to one role. The API enforces the same
             rules; these guards stop the screen being opened by typing its
             address, which the role-specific navigation alone never did. */}

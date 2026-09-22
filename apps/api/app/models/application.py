@@ -21,6 +21,9 @@ class ApplicationStatus(enum.StrEnum):
     # waits on the client, the other on the operator.
     AWAITING_EVIDENCE = "awaiting_evidence"
     SCORED = "scored"
+    # Passed to a medical professional by an underwriter. The decision is
+    # still open; only a medical professional may now record it.
+    ESCALATED = "escalated"
     DECIDED = "decided"
 
 

@@ -132,7 +132,7 @@ export function AccountDetailsCard({ user, tenant, roleTitle }: AccountDetailsCa
         />
         <TextInput
           label="Company"
-          value={tenant?.name ?? 'Homelander Assurance'}
+          value={tenant?.name ?? ''}
           readOnly
         />
         <TextInput label="Registered on" value={memberSince} readOnly />

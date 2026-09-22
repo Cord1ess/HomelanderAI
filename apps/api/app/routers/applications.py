@@ -82,6 +82,7 @@ from app.schemas.application import (
     CoverageIn,
     DecisionIn,
     DecisionSchema,
+    EscalateIn,
     EvidenceChoiceSchema,
     FileSchema,
     FindingSchema,
@@ -199,7 +200,9 @@ async def classify_evidence(
                 kind=verdict.kind.value,
                 kind_label=evidence_kinds.label(verdict.kind),
                 reason=verdict.reason,
-                arms=[a.name for a in readers],
+                # The catalogue id (the form's model id), not the arm's internal name,
+                # so the screen can switch the right reader on.
+                arms=[a.intake_id for a in readers],
                 needs_choice=not verdict.certain,
                 thumbnail=thumbnail,
             )
@@ -211,7 +214,7 @@ async def classify_evidence(
             EvidenceChoiceSchema(
                 kind=kind.value,
                 label=evidence_kinds.label(kind),
-                arms=[a.name for a in arms_for(kind)],
+                arms=[a.intake_id for a in arms_for(kind)],
             )
             for kind in EvidenceKind
             if kind is not EvidenceKind.UNKNOWN
@@ -493,8 +496,10 @@ async def _store_evidence(
     files: list[UploadFile],
     file_arms: list[str],
     file_kinds: list[str] | None = None,
+    created: list[EvidenceFile] | None = None,
 ) -> tuple[list[str], list[str]]:
-    """De-identify each upload and save it. Returns (stored, rejected).
+    """De-identify each upload and save it. Returns (stored, rejected). The
+    rows themselves are appended to `created` when the caller passes a list.
 
     De-identification happens here rather than in the background task so the
     original bytes are never written to disk at all — a DICOM header that is
@@ -549,8 +554,7 @@ async def _store_evidence(
         if kind == EvidenceKind.UNKNOWN.value:
             kind = None
 
-        db.add(
-            EvidenceFile(
+        row = EvidenceFile(
                 tenant_id=principal.tenant_id,
                 application_id=application.id,
                 file_type={
@@ -567,7 +571,9 @@ async def _store_evidence(
                 evidence_kind=kind,
                 model_arm_id=arm_row.id if arm_row else None,
             )
-        )
+        db.add(row)
+        if created is not None:
+            created.append(row)
         stored.append(upload.filename)
 
     return stored, rejected
@@ -926,6 +932,7 @@ async def get_application(
             requested_at=row.requested_at,
             requested_by_name=who.full_name if who else None,
             fulfilled_at=row.fulfilled_at,
+            fulfilled_by_file_id=row.fulfilled_by,
         )
         for row, who in requested_rows
     ]
@@ -1027,6 +1034,7 @@ async def _list_files(db: AsyncSession, application: Application) -> list[FileSc
             kind="evidence",
             filename=row.original_filename,
             mime_type=row.mime_type,
+            uploaded_at=row.uploaded_at,
         )
         for row in evidence
     ] + [
@@ -1101,6 +1109,29 @@ async def record_decision(
                 "Requesting evidence does not decide the application. Use "
                 "POST /applications/{id}/evidence-request and name what is needed."
             ),
+        )
+
+    # Escalating is a hand-over, not an outcome. Recording it here used to
+    # spend the write-once decision, so the medical professional it was handed
+    # to could never decide it. There is a separate endpoint for it.
+    if payload.decision == UnderwriterDecisionType.ESCALATED_SENIOR_REVIEW:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=(
+                "Escalating does not decide the application. Use "
+                "POST /applications/{id}/escalate; a medical professional then decides it."
+            ),
+        )
+
+    # Once escalated, only a medical professional decides. The underwriter who
+    # passed it up cannot take it back by approving it.
+    if (
+        application.status == ApplicationStatus.ESCALATED
+        and principal.role != UserRole.MEDICAL_PROFESSIONAL.value
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="This application has been escalated. A medical professional decides it.",
         )
 
     if payload.decision.value == "approved_with_adjustment" and not payload.final_premium:
@@ -1343,6 +1374,79 @@ async def request_evidence(
 
 
 @router.post(
+    "/applications/{application_id}/escalate",
+    response_model=ApplicationDetailSchema,
+    summary="Hand the application to a medical professional",
+)
+async def escalate_application(
+    application_id: UUID,
+    payload: EscalateIn,
+    db: AsyncSession = Depends(get_db),
+    principal: Principal = Depends(current_principal),
+) -> ApplicationDetailSchema:
+    """Pass the application up without deciding it.
+
+    The decision stays open and becomes a medical professional's to record.
+    Every medical professional in the company is told. The clock the client
+    was given keeps running: the company still holds the case.
+    """
+    application, _ = await _load_owned(db, application_id, principal)
+
+    if application.status == ApplicationStatus.DECIDED:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="This application has already been decided.",
+        )
+    if application.status == ApplicationStatus.ESCALATED:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="This application is already with a medical professional.",
+        )
+    if application.status == ApplicationStatus.PROCESSING:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="The models are reading the evidence now. Wait for them to finish.",
+        )
+
+    application.status = ApplicationStatus.ESCALATED
+    actor = await _actor_id(db, principal)
+    await persistence.append_audit(
+        db,
+        tenant_id=principal.tenant_id,
+        application_id=application.id,
+        actor_user_id=actor,
+        event_type="escalated",
+        payload={"note": payload.note, "by_role": principal.role},
+    )
+
+    # Told to the medical professionals, who now own the decision, and to no
+    # one else: the rest of the company sees the status change in the queue.
+    medics = await db.execute(
+        select(User).where(
+            User.tenant_id == application.tenant_id,
+            User.is_active.is_(True),
+            User.role == UserRole.MEDICAL_PROFESSIONAL,
+        )
+    )
+    reference = (await db.get(Applicant, application.applicant_id)).external_ref
+    for user in medics.scalars().all():
+        db.add(
+            Notification(
+                tenant_id=application.tenant_id,
+                user_id=user.id,
+                application_id=application.id,
+                notification_type=NotificationType.TIER_ESCALATION,
+                channel=NotificationChannel.IN_APP,
+                status=NotificationStatus.SENT,
+                message=f"{reference} has been escalated to you for a decision."
+                + (f" Note: {payload.note}" if payload.note else ""),
+            )
+        )
+    await db.commit()
+    return await get_application(application_id, db, principal)
+
+
+@router.post(
     "/applications/{application_id}/evidence-request/{document_id}/fulfil",
     response_model=RequestedDocumentSchema,
     summary="Mark a requested document as received",
@@ -1350,15 +1454,16 @@ async def request_evidence(
 async def fulfil_evidence_request(
     application_id: UUID,
     document_id: UUID,
+    file: UploadFile | None = File(default=None),
     db: AsyncSession = Depends(get_db),
     principal: Principal = Depends(current_principal),
 ) -> RequestedDocumentSchema:
-    """Tick off one item. When nothing is outstanding, the application goes
-    back to the underwriter.
+    """Tick off one item, attaching the document if it is in hand. When nothing
+    is outstanding, the application goes back to the underwriter.
 
-    Ticking off is not re-scoring: an existing score stands. New evidence that
-    a model should read arrives through intake, which is what the portal
-    upload will do.
+    An attached file is stored with the application and linked to the request
+    (`fulfilled_by`), so the record shows which document answered it. It is
+    not re-scored: an existing score stands.
     """
     application, _ = await _load_owned(db, application_id, principal)
 
@@ -1376,6 +1481,18 @@ async def fulfil_evidence_request(
     # Idempotent: ticking something already ticked is not an error.
     if row.fulfilled_at is None:
         row.fulfilled_at = datetime.now(UTC)
+        if file is not None and file.filename:
+            created: list[EvidenceFile] = []
+            stored, rejected = await _store_evidence(
+                db, principal, application, [file], [""], ["document"], created
+            )
+            if rejected:
+                raise HTTPException(
+                    status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                    detail=f"The file could not be stored: {rejected[0]}",
+                )
+            await db.flush()
+            row.fulfilled_by = created[0].id if created else None
         await persistence.append_audit(
             db,
             tenant_id=principal.tenant_id,
@@ -1419,6 +1536,7 @@ async def fulfil_evidence_request(
         requested_at=row.requested_at,
         requested_by_name=requester.full_name if requester else None,
         fulfilled_at=row.fulfilled_at,
+        fulfilled_by_file_id=row.fulfilled_by,
     )
 
 

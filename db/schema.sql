@@ -25,7 +25,8 @@ CREATE TYPE user_role AS ENUM ('underwriter', 'medical_professional', 'admin');
 -- things: one waits on the client, the other on the operator.
 CREATE TYPE application_status AS ENUM (
     'submitted', 'processing', 'insufficient_evidence', 'awaiting_evidence',
-    'scored', 'decided'
+    'scored', 'escalated',    -- handed to a medical professional; decision still open
+    'decided'
 );
 
 -- 'image' covers a radiograph uploaded as PNG or JPEG rather than DICOM, which

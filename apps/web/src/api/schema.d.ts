@@ -163,6 +163,29 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/auth/users/{user_id}/status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Deactivate or reactivate a staff account (admin only)
+         * @description A deactivated account keeps its rows and its history, which is the
+         *     point: decisions stay attributed to the person who made them. It can no
+         *     longer sign in. An administrator cannot deactivate their own account, so a
+         *     company can never lock itself out.
+         */
+        patch: operations["set_staff_status_api_auth_users__user_id__status_patch"];
+        trace?: never;
+    };
     "/api/auth/users": {
         parameters: {
             query?: never;
@@ -373,6 +396,30 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/applications/{application_id}/escalate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Hand the application to a medical professional
+         * @description Pass the application up without deciding it.
+         *
+         *     The decision stays open and becomes a medical professional's to record.
+         *     Every medical professional in the company is told. The clock the client
+         *     was given keeps running: the company still holds the case.
+         */
+        post: operations["escalate_application_api_applications__application_id__escalate_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/applications/{application_id}/evidence-request/{document_id}/fulfil": {
         parameters: {
             query?: never;
@@ -384,12 +431,12 @@ export interface paths {
         put?: never;
         /**
          * Mark a requested document as received
-         * @description Tick off one item. When nothing is outstanding, the application goes
-         *     back to the underwriter.
+         * @description Tick off one item, attaching the document if it is in hand. When nothing
+         *     is outstanding, the application goes back to the underwriter.
          *
-         *     Ticking off is not re-scoring: an existing score stands. New evidence that
-         *     a model should read arrives through intake, which is what the portal
-         *     upload will do.
+         *     An attached file is stored with the application and linked to the request
+         *     (`fulfilled_by`), so the record shows which document answered it. It is
+         *     not re-scored: an existing score stands.
          */
         post: operations["fulfil_evidence_request_api_applications__application_id__evidence_request__document_id__fulfil_post"];
         delete?: never;
@@ -575,6 +622,43 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/clients": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Every client of this company
+         * @description Each applicant once, with their latest application. Newest first.
+         */
+        get: operations["list_clients_api_clients_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/analytics": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The shape of this company's book */
+        get: operations["analytics_api_analytics_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -587,6 +671,48 @@ export interface components {
             points: number;
             /** Reason */
             reason: string;
+        };
+        /**
+         * AnalyticsSchema
+         * @description The company's book. Every figure is backed by rows, none is estimated.
+         */
+        AnalyticsSchema: {
+            /** Applications */
+            applications: number;
+            /** Decided */
+            decided: number;
+            /** Approved */
+            approved: number;
+            /** Escalated */
+            escalated: number;
+            /** Waiting */
+            waiting: number;
+            /** Averagecrs */
+            averageCrs: number | null;
+            /** Bystatus */
+            byStatus?: components["schemas"]["CountSchema"][];
+            /** Bytier */
+            byTier?: components["schemas"]["CountSchema"][];
+            /** Bydecision */
+            byDecision?: components["schemas"]["CountSchema"][];
+            /** Coverrequestedbdt */
+            coverRequestedBdt: string;
+            /** Coverapprovedbdt */
+            coverApprovedBdt: string;
+            /** Monthlypremiumbookbdt */
+            monthlyPremiumBookBdt: string;
+            /** Bycovertype */
+            byCoverType?: components["schemas"]["CoverTypeSchema"][];
+            /** Averagedaystodecide */
+            averageDaysToDecide: number | null;
+            /** Decidedontime */
+            decidedOnTime: number;
+            /** Decidedlate */
+            decidedLate: number;
+            /** Weeks */
+            weeks?: components["schemas"]["WeekSchema"][];
+            /** Arms */
+            arms?: components["schemas"]["ArmActivitySchema"][];
         };
         /** ApplicantIn */
         ApplicantIn: {
@@ -656,7 +782,18 @@ export interface components {
          * ApplicationStatus
          * @enum {string}
          */
-        ApplicationStatus: "submitted" | "processing" | "insufficient_evidence" | "awaiting_evidence" | "scored" | "decided";
+        ApplicationStatus: "submitted" | "processing" | "insufficient_evidence" | "awaiting_evidence" | "scored" | "escalated" | "decided";
+        /** ArmActivitySchema */
+        ArmActivitySchema: {
+            /** Arm */
+            arm: string;
+            /** Runs */
+            runs: number;
+            /** Failed */
+            failed: number;
+            /** Averagescore */
+            averageScore: number | null;
+        };
         /**
          * ArmRunSchema
          * @description One model's reading of this application, as it was stored.
@@ -727,6 +864,11 @@ export interface components {
              */
             files: string[];
         };
+        /** Body_fulfil_evidence_request_api_applications__application_id__evidence_request__document_id__fulfil_post */
+        Body_fulfil_evidence_request_api_applications__application_id__evidence_request__document_id__fulfil_post: {
+            /** File */
+            file?: string | null;
+        };
         /** Body_submit_application_api_applications_post */
         Body_submit_application_api_applications_post: {
             /**
@@ -796,6 +938,70 @@ export interface components {
             /** Choices */
             choices?: components["schemas"]["EvidenceChoiceSchema"][];
         };
+        /**
+         * ClientSchema
+         * @description One applicant and where their latest application stands.
+         */
+        ClientSchema: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Reference */
+            reference: string;
+            /** Name */
+            name: string | null;
+            /** Phone */
+            phone: string | null;
+            /** Email */
+            email: string | null;
+            /** Portalid */
+            portalId: string | null;
+            /**
+             * Createdat
+             * Format: date-time
+             */
+            createdAt: string;
+            /** Applications */
+            applications: number;
+            /** Latestapplicationid */
+            latestApplicationId: string | null;
+            latestStatus: components["schemas"]["ApplicationStatus"] | null;
+            /** Latesttier */
+            latestTier: string | null;
+            /** Latestcrs */
+            latestCrs: number | null;
+            /** Coveragetype */
+            coverageType: string | null;
+            /** Coverageamount */
+            coverageAmount: string | null;
+            /** Expectedby */
+            expectedBy: string | null;
+            /**
+             * Overdue
+             * @default false
+             */
+            overdue: boolean;
+        };
+        /** CountSchema */
+        CountSchema: {
+            /** Key */
+            key: string;
+            /** Count */
+            count: number;
+        };
+        /** CoverTypeSchema */
+        CoverTypeSchema: {
+            /** Coveragetype */
+            coverageType: string;
+            /** Count */
+            count: number;
+            /** Amountbdt */
+            amountBdt: string;
+            /** Approved */
+            approved: number;
+        };
         /** CoverageIn */
         CoverageIn: {
             /** Coveragetype */
@@ -845,6 +1051,14 @@ export interface components {
             underwriterName?: string | null;
         };
         /**
+         * EscalateIn
+         * @description Handing an application to a medical professional, with an optional word on why.
+         */
+        EscalateIn: {
+            /** Note */
+            note?: string | null;
+        };
+        /**
          * EvidenceChoiceSchema
          * @description One option in the correction dropdown on the review screen.
          */
@@ -869,6 +1083,8 @@ export interface components {
             filename?: string | null;
             /** Mimetype */
             mimeType?: string | null;
+            /** Uploadedat */
+            uploadedAt?: string | null;
         };
         /**
          * FindingSchema
@@ -1248,6 +1464,8 @@ export interface components {
             requestedByName?: string | null;
             /** Fulfilledat */
             fulfilledAt?: string | null;
+            /** Fulfilledbyfileid */
+            fulfilledByFileId?: string | null;
         };
         /** ScoreSchema */
         ScoreSchema: {
@@ -1287,6 +1505,11 @@ export interface components {
                     [key: string]: number | null;
                 };
             };
+        };
+        /** StaffStatusIn */
+        StaffStatusIn: {
+            /** Isactive */
+            isActive: boolean;
         };
         /** SubmitResponseSchema */
         SubmitResponseSchema: {
@@ -1454,6 +1677,13 @@ export interface components {
              * Format: date-time
              */
             createdAt: string;
+            /**
+             * Isactive
+             * @default true
+             */
+            isActive: boolean;
+            /** Lastloginat */
+            lastLoginAt?: string | null;
         };
         /** ValidationError */
         ValidationError: {
@@ -1467,6 +1697,18 @@ export interface components {
             input?: unknown;
             /** Context */
             ctx?: Record<string, never>;
+        };
+        /** WeekSchema */
+        WeekSchema: {
+            /**
+             * Weekof
+             * Format: date
+             */
+            weekOf: string;
+            /** Applications */
+            applications: number;
+            /** Decided */
+            decided: number;
         };
     };
     responses: never;
@@ -1695,6 +1937,43 @@ export interface operations {
                     "application/json": {
                         [key: string]: string;
                     };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    set_staff_status_api_auth_users__user_id__status_patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                user_id: string;
+            };
+            cookie?: {
+                session_token?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["StaffStatusIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UserSchema"];
                 };
             };
             /** @description Validation Error */
@@ -2090,6 +2369,43 @@ export interface operations {
             };
         };
     };
+    escalate_application_api_applications__application_id__escalate_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                application_id: string;
+            };
+            cookie?: {
+                session_token?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EscalateIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApplicationDetailSchema"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     fulfil_evidence_request_api_applications__application_id__evidence_request__document_id__fulfil_post: {
         parameters: {
             query?: never;
@@ -2102,7 +2418,11 @@ export interface operations {
                 session_token?: string | null;
             };
         };
-        requestBody?: never;
+        requestBody?: {
+            content: {
+                "multipart/form-data": components["schemas"]["Body_fulfil_evidence_request_api_applications__application_id__evidence_request__document_id__fulfil_post"];
+            };
+        };
         responses: {
             /** @description Successful Response */
             200: {
@@ -2435,6 +2755,70 @@ export interface operations {
                     "application/json": {
                         [key: string]: string;
                     };
+                };
+            };
+        };
+    };
+    list_clients_api_clients_get: {
+        parameters: {
+            query?: {
+                q?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: {
+                session_token?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ClientSchema"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    analytics_api_analytics_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: {
+                session_token?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AnalyticsSchema"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

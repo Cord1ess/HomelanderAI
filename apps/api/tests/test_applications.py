@@ -296,20 +296,20 @@ def test_a_decision_can_only_be_made_once(carrier):
 
         first = client.post(
             f"/api/applications/{created['id']}/decision",
-            json={"decision": "escalated_senior_review"},
+            json={"decision": "confirmed_fast_track"},
         )
         assert first.status_code == 201, first.text
 
         second = client.post(
             f"/api/applications/{created['id']}/decision",
-            json={"decision": "confirmed_fast_track"},
+            json={"decision": "approved_with_adjustment", "finalPremium": 9000},
         )
         assert second.status_code == 409
         assert "already been decided" in second.json()["detail"]
 
         # The first decision stands, unchanged.
         detail = client.get(f"/api/applications/{created['id']}").json()
-        assert detail["decision"]["decision"] == "escalated_senior_review"
+        assert detail["decision"]["decision"] == "confirmed_fast_track"
         assert detail["status"] == "decided"
 
 
@@ -341,9 +341,10 @@ def test_the_audit_chain_records_and_verifies(carrier):
         created = submit(client)
         client.post(
             f"/api/applications/{created['id']}/decision",
-            # A real decision. "Request more evidence" is no longer one: it is a
-            # pause with its own endpoint, and the decision endpoint rejects it.
-            json={"decision": "escalated_senior_review"},
+            # A real decision. Requesting evidence and escalating are not: each
+            # is a pause with its own endpoint, and the decision endpoint
+            # rejects both.
+            json={"decision": "confirmed_fast_track"},
         )
         trail = client.get(f"/api/applications/{created['id']}/audit").json()
 
@@ -653,7 +654,9 @@ def test_classify_proposes_a_kind_and_a_destination(carrier):
 
     scan = by_name["scan.png"]
     assert scan["kind"] == "chest_xray"
-    assert scan["arms"] == ["tb_xray"]
+    # Readers are named by the catalogue id the form uses, so the screen can
+    # switch the right one on.
+    assert scan["arms"] == ["cxr_lung"]
     assert scan["reason"], "the operator has to be able to judge the proposal"
     assert scan["thumbnail"], "confirming a filename is not confirming a document"
 

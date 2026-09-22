@@ -125,17 +125,55 @@ def test_an_underwriter_cannot_approve_an_elevated_case(carrier, body):
         assert detail["status"] != "decided"
 
 
-def test_an_underwriter_can_still_escalate_an_elevated_case(carrier):
-    """Escalating is exactly what the underwriter is meant to do with one."""
-    _, underwriter, created = an_application(carrier, "elevated", "82.00")
+def test_an_underwriter_escalates_and_a_medical_professional_decides(carrier):
+    """The hand-over. Escalating spends nothing: the decision stays open and
+    becomes the medical professional's. The underwriter cannot take it back."""
+    medical, underwriter, created = an_application(carrier, "elevated", "82.00")
 
     with TestClient(app) as client:
         sign_in(client, underwriter)
-        response = client.post(
+        # Escalating through the decision endpoint is refused: it is not a decision.
+        refused = client.post(
             f"/api/applications/{created['id']}/decision",
             json={"decision": "escalated_senior_review"},
         )
-        assert response.status_code == 201, response.text
+        assert refused.status_code == 422
+
+        handed = client.post(
+            f"/api/applications/{created['id']}/escalate", json={"note": "Please look at the apex."}
+        )
+        assert handed.status_code == 200, handed.text
+        assert handed.json()["status"] == "escalated"
+        assert handed.json()["decision"] is None
+
+        # Twice is a mistake, not a second hand-over.
+        again = client.post(f"/api/applications/{created['id']}/escalate", json={})
+        assert again.status_code == 409
+
+        # And the underwriter cannot now decide it, whatever the tier.
+        blocked = client.post(
+            f"/api/applications/{created['id']}/decision",
+            json={"decision": "confirmed_fast_track"},
+        )
+        assert blocked.status_code == 403
+        assert "medical professional" in blocked.json()["detail"]
+
+    with TestClient(app) as client:
+        sign_in(client, medical)
+        # The medical professional was told, with the note.
+        notes = client.get("/api/notifications").json()
+        assert any(
+            n["notificationType"] == "tier_escalation" and "apex" in n["message"] for n in notes
+        ), notes
+
+        decided = client.post(
+            f"/api/applications/{created['id']}/decision",
+            json={"decision": "approved_with_adjustment", "finalPremium": 12000},
+        )
+        assert decided.status_code == 201, decided.text
+        detail = client.get(f"/api/applications/{created['id']}").json()
+        assert detail["status"] == "decided"
+        assert detail["decision"]["decision"] == "approved_with_adjustment"
 
 
 def test_a_medical_professional_can_approve_an_elevated_case(carrier):

@@ -22,7 +22,7 @@ class Settings(BaseSettings):
         extra="ignore",
     )
 
-    app_name: str = "HomelanderAI API"
+    app_name: str = "Homelander AI API"
     version: str = "0.1.0"
     environment: str = "development"
 
@@ -64,7 +64,7 @@ class Settings(BaseSettings):
     smtp_port: int = 587
     smtp_user: str = ""
     smtp_password: str = ""
-    smtp_from: str = "HomelanderAI <no-reply@homelander.local>"
+    smtp_from: str = "Homelander AI <no-reply@homelander.local>"
     smtp_starttls: bool = True
     # Where the portal link in those emails points.
     portal_url: str = "http://localhost:5173/portal"

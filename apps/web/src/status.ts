@@ -39,6 +39,11 @@ export const STATUS_META: Record<
     meaning: 'Documents were requested from the client. The answer date is paused until they arrive.',
     color: 'orange',
   },
+  escalated: {
+    label: 'With a medical professional',
+    meaning: 'An underwriter passed this up. Only a medical professional can decide it now.',
+    color: 'grape',
+  },
   decided: {
     label: 'Decided',
     meaning: 'A person has recorded a decision. It cannot be changed.',
@@ -52,5 +57,6 @@ export const STATUS_ORDER: ApplicationStatus[] = [
   'scored',
   'insufficient_evidence',
   'awaiting_evidence',
+  'escalated',
   'decided',
 ]

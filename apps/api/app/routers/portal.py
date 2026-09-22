@@ -71,17 +71,21 @@ def _stage(status_value: str, decision: UnderwriterDecisionType | None) -> tuple
             "Your underwriter has asked for the documents listed below. "
             "Your application continues as soon as they arrive.",
         )
+    # An escalated application, or one decided as "escalated" before escalation
+    # stopped being a decision (2026-09-22).
+    if status_value == "escalated" or (
+        status_value == "decided" and decision == UnderwriterDecisionType.ESCALATED_SENIOR_REVIEW
+    ):
+        return (
+            "senior_review",
+            "With a senior reviewer",
+            # Deliberately not "a medical professional", which is who it is.
+            # The portal tells an applicant nothing clinical, and naming a
+            # medical reviewer would imply a finding.
+            "Your application has been passed to a senior reviewer for a closer look. "
+            "This is a normal step and is not a refusal.",
+        )
     if status_value == "decided":
-        if decision == UnderwriterDecisionType.ESCALATED_SENIOR_REVIEW:
-            return (
-                "senior_review",
-                "With a senior reviewer",
-                # Deliberately not "a medical professional", which is who it is.
-                # The portal tells an applicant nothing clinical, and naming a
-                # medical reviewer would imply a finding.
-                "Your application has been passed to a senior reviewer for a closer look. "
-                "This is a normal step and is not a refusal.",
-            )
         return ("decided", "Decided", "A decision has been recorded on your application.")
     if status_value in ("submitted", "processing"):
         return (

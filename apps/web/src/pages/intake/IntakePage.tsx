@@ -22,6 +22,7 @@ import {
 } from '@mantine/core'
 import { Dropzone } from '@mantine/dropzone'
 import { useForm } from '@mantine/form'
+import { notifications } from '@mantine/notifications'
 import { IconAlertCircle, IconCheck, IconCircleCheck, IconFileUpload, IconX } from '@tabler/icons-react'
 import { useQuery } from '@tanstack/react-query'
 import { useState } from 'react'
@@ -534,7 +535,12 @@ export function IntakePage() {
 
   const selected = MODELS.filter((m) => form.values.selectedModels.includes(m.id))
 
-  const addModelFiles = (modelId: string, dropped: File[], fileType: string) => {
+  const addModelFiles = (
+    modelId: string,
+    dropped: File[],
+    fileType: string,
+    alreadyClassified = false,
+  ) => {
     setRejectNote((p) => ({ ...p, [modelId]: null }))
     const added: EvidenceFile[] = dropped.map((f) => ({
       id: crypto.randomUUID(),
@@ -550,6 +556,7 @@ export function IntakePage() {
     // screen opens instantly instead of making them wait with a client
     // watching. A failure here is silent: submit re-classifies anyway, and an
     // error about a background request would mean nothing to the operator.
+    if (alreadyClassified) return
     void classifyEvidence(dropped)
       .then((result) => {
         setClassified((prev) =>
@@ -557,6 +564,56 @@ export function IntakePage() {
         )
       })
       .catch(() => {})
+  }
+
+  /**
+   * The one place to drop everything. The platform says what each file is and
+   * which reader takes it; files land in that reader's panel, and the reader
+   * is switched on. What nothing reads yet is listed, with the reason, and is
+   * not attached: a file that goes nowhere should say so, not vanish.
+   */
+  const [identifying, setIdentifying] = useState(false)
+  const [identified, setIdentified] = useState<
+    { name: string; kind: string; reader: string | null; reason: string }[]
+  >([])
+
+  const dropEverything = async (dropped: File[]) => {
+    setIdentifying(true)
+    try {
+      const result = await classifyEvidence(dropped)
+      setClassified((prev) =>
+        prev
+          ? { files: [...prev.files, ...result.files], choices: result.choices }
+          : result,
+      )
+      const byName = new Map(dropped.map((f) => [f.name, f]))
+      const rows: typeof identified = []
+      for (const found of result.files) {
+        const file = byName.get(found.filename)
+        const choice = (result.choices ?? []).find((c) => c.kind === found.kind)
+        const readerId = (choice?.arms ?? []).find((arm) => isAvailable(arm)) ?? null
+        const reader = MODELS.find((m) => m.id === readerId)
+        if (file && reader && reader.upload) {
+          if (!form.values.selectedModels.includes(reader.id)) toggleModel(reader.id)
+          addModelFiles(reader.id, [file], reader.upload.category, true)
+        }
+        rows.push({
+          name: found.filename,
+          kind: choice?.label ?? found.kind,
+          reader: reader ? (availability.get(reader.id)?.label ?? reader.label) : null,
+          reason: found.reason,
+        })
+      }
+      setIdentified((prev) => [...prev, ...rows])
+    } catch (err) {
+      notifications.show({
+        title: 'Could not identify the files',
+        message: err instanceof Error ? err.message : 'Try dropping them into a reader directly.',
+        color: 'red',
+      })
+    } finally {
+      setIdentifying(false)
+    }
   }
 
   const addModelReject = (modelId: string, rejects: { file: File }[]) => {
@@ -841,9 +898,74 @@ export function IntakePage() {
           <div key="evidence" className="page-enter">
       {/* ── Section 3 · Models ─────────────────────────────────── */}
       <Section n="3" title="Models" complete={sections[2]}>
+        <Dropzone
+          onDrop={(files) => void dropEverything(files)}
+          onReject={(rejects) =>
+            notifications.show({
+              title: `${rejects.length} file${rejects.length === 1 ? '' : 's'} not accepted`,
+              message: 'Images, DICOM, ECG exports (.csv), PDF and text up to 50 MB.',
+              color: 'red',
+            })
+          }
+          accept={{ ...DICOM, ...PHOTO, ...DOCUMENT, ...ECG_EXPORT }}
+          maxSize={MAX_FILE_BYTES}
+          loading={identifying}
+          multiple
+          className="drop-all"
+        >
+          <Group justify="center" gap="md" style={{ pointerEvents: 'none' }} py="md">
+            <IconFileUpload size={30} stroke={1.4} style={{ color: 'var(--neo-accent)' }} />
+            <div>
+              <Text size="sm" fw={600}>
+                Drop every file the client brought here
+              </Text>
+              <Text size="xs" style={{ color: 'var(--neo-muted)' }}>
+                Scans, retinal photos, ECG exports, reports. The platform works out what each
+                file is and which reader takes it, and switches that reader on below.
+              </Text>
+            </div>
+          </Group>
+        </Dropzone>
+
+        {identified.length > 0 && (
+          <Table fz="xs" withRowBorders={false} verticalSpacing={4} className="identified">
+            <Table.Thead>
+              <Table.Tr>
+                <Table.Th>File</Table.Th>
+                <Table.Th>Identified as</Table.Th>
+                <Table.Th>Read by</Table.Th>
+              </Table.Tr>
+            </Table.Thead>
+            <Table.Tbody>
+              {identified.map((row, i) => (
+                <Table.Tr key={`${row.name}-${i}`} className="identified__row">
+                  <Table.Td ff="monospace">{row.name}</Table.Td>
+                  <Table.Td>
+                    {row.kind}
+                    <Text span size="xs" ml={6} style={{ color: 'var(--neo-muted)' }}>
+                      {row.reason}
+                    </Text>
+                  </Table.Td>
+                  <Table.Td>
+                    {row.reader ? (
+                      <Badge size="xs" color="teal" variant="light">
+                        {row.reader}
+                      </Badge>
+                    ) : (
+                      <Badge size="xs" color="gray" variant="outline">
+                        No reader yet. Not attached.
+                      </Badge>
+                    )}
+                  </Table.Td>
+                </Table.Tr>
+              ))}
+            </Table.Tbody>
+          </Table>
+        )}
+
         <Text size="sm" c="dimmed">
-          Pick what you want screened. Each model you select opens a panel below
-          asking for its report and its questions.
+          Or pick a reader below and give it its file directly. Each reader you select opens a
+          panel asking for its report and its questions.
         </Text>
 
         <Group align="flex-start" wrap="nowrap" gap="lg">
@@ -969,6 +1091,7 @@ export function IntakePage() {
               <EvidenceReview
                 inline
                 opened
+                readerNames={Object.fromEntries(catalogue.map((m) => [m.id, m.label]))}
                 result={classified}
                 overrides={overrides}
                 onOverride={(filename, kind) =>

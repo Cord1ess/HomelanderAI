@@ -30,7 +30,7 @@ export function AuthLayout({ children }: AuthLayoutProps) {
           <div className="auth-panel-left__logo-mark">
             <BrandIcon width={18} height={18} style={{ display: 'block', opacity: 0.9 }} />
           </div>
-          <span className="auth-panel-left__logo-text">homelander</span>
+          <span className="auth-panel-left__logo-text">Homelander AI</span>
         </Link>
 
         {/* Headline */}

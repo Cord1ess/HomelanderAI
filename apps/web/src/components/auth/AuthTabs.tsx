@@ -32,7 +32,7 @@ export function AuthTabs() {
           <div className="auth-panel-right__logo-mark">
             <BrandIcon width={16} height={16} style={{ display: 'block', opacity: 0.9 }} />
           </div>
-          <span className="auth-panel-right__logo-text">homelander</span>
+          <span className="auth-panel-right__logo-text">Homelander AI</span>
         </Link>
         <ThemeToggle />
       </div>

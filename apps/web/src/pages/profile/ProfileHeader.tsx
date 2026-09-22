@@ -58,7 +58,8 @@ export function ProfileHeader({
               </Badge>
             </Group>
             <Text size="xs" c="dimmed" mt={2}>
-              {user?.email} · {tenant?.name ?? 'Homelander Assurance Ltd.'}
+              {user?.email}
+              {tenant?.name ? ` · ${tenant.name}` : ''}
             </Text>
           </div>
         </Group>

@@ -12,6 +12,7 @@ import {
   SimpleGrid,
   Skeleton,
   Stack,
+  Switch,
   Table,
   Text,
   TextInput,
@@ -33,7 +34,7 @@ import {
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useState } from 'react'
 
-import { getStaffUsers, provisionStaffUser } from '../../api/client'
+import { getStaffUsers, provisionStaffUser, setStaffStatus } from '../../api/client'
 import { useAuth } from '../../context/AuthContext'
 import { PageHeader } from '../../components/PageHeader'
 import { Stat } from '../../components/Stat'
@@ -48,7 +49,7 @@ import type { UserRole } from '../../types/auth'
  */
 
 export function StaffManagementPage() {
-  const { tenant } = useAuth()
+  const { user: me, tenant } = useAuth()
   const queryClient = useQueryClient()
   const [opened, { open, close }] = useDisclosure(false)
 
@@ -62,6 +63,27 @@ export function StaffManagementPage() {
   const { data: staff, isPending, isFetching, error, refetch } = useQuery({
     queryKey: ['admin', 'staff'],
     queryFn: getStaffUsers,
+  })
+
+  const statusMutation = useMutation({
+    mutationFn: ({ id, isActive }: { id: string; isActive: boolean }) => setStaffStatus(id, isActive),
+    onSuccess: (member) => {
+      void queryClient.invalidateQueries({ queryKey: ['admin', 'staff'] })
+      notifications.show({
+        title: member.isActive ? 'Account reactivated' : 'Account deactivated',
+        message: member.isActive
+          ? `${member.fullName} can sign in again.`
+          : `${member.fullName} can no longer sign in. Their decisions stay on the record.`,
+        color: member.isActive ? 'teal' : 'orange',
+      })
+    },
+    onError: (err) => {
+      notifications.show({
+        title: 'Could not change the account',
+        message: err instanceof Error ? err.message : 'Something went wrong.',
+        color: 'red',
+      })
+    },
   })
 
   const provisionMutation = useMutation({
@@ -160,14 +182,15 @@ export function StaffManagementPage() {
                 <Table.Th>Sign-in email</Table.Th>
                 <Table.Th>Role</Table.Th>
                 <Table.Th>Licence number</Table.Th>
-                <Table.Th>Added</Table.Th>
+                <Table.Th>Last signed in</Table.Th>
+                <Table.Th>Can sign in</Table.Th>
               </Table.Tr>
             </Table.Thead>
             <Table.Tbody>
               {isPending &&
                 [0, 1, 2, 3].map((i) => (
                   <Table.Tr key={i}>
-                    <Table.Td colSpan={5}>
+                    <Table.Td colSpan={6}>
                       <Skeleton height={20} />
                     </Table.Td>
                   </Table.Tr>
@@ -200,11 +223,32 @@ export function StaffManagementPage() {
                       {member.licenseNumber ?? '—'}
                     </Table.Td>
                     <Table.Td fz="xs" c="dimmed">
-                      {new Date(member.createdAt).toLocaleDateString('en-US', {
-                        year: 'numeric',
-                        month: 'short',
-                        day: 'numeric',
-                      })}
+                      {member.lastLoginAt
+                        ? new Date(member.lastLoginAt).toLocaleDateString(undefined, {
+                            year: 'numeric',
+                            month: 'short',
+                            day: 'numeric',
+                          })
+                        : 'Never'}
+                    </Table.Td>
+                    <Table.Td>
+                      {member.id === me?.id ? (
+                        <Badge color="teal" variant="dot" size="sm">
+                          You
+                        </Badge>
+                      ) : (
+                        <Switch
+                          size="xs"
+                          checked={member.isActive !== false}
+                          onLabel="Yes"
+                          offLabel="No"
+                          aria-label={`${member.fullName} can sign in`}
+                          disabled={statusMutation.isPending}
+                          onChange={(e) =>
+                            statusMutation.mutate({ id: member.id, isActive: e.currentTarget.checked })
+                          }
+                        />
+                      )}
                     </Table.Td>
                   </Table.Tr>
                 ))}

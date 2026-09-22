@@ -15,6 +15,7 @@ import { useDisclosure } from '@mantine/hooks'
 import { useQuery } from '@tanstack/react-query'
 import {
   IconBell,
+  IconChartBar,
   IconChevronsLeft,
   IconChevronsRight,
   IconFilePlus,
@@ -22,6 +23,7 @@ import {
   IconLayoutList,
   IconLogout,
   IconReceipt,
+  IconAddressBook,
   IconSettings,
   IconUser,
   IconUserCircle,
@@ -92,7 +94,7 @@ export function AppLayout() {
               </ActionIcon>
             </Tooltip>
             <Text size="sm" fw={600} visibleFrom="xs">
-              {tenant?.name ?? 'HomelanderAI'}
+              {tenant?.name ?? 'Homelander AI'}
             </Text>
           </Group>
 
@@ -202,6 +204,8 @@ const ROLE_COLOR: Record<UserRole, string> = {
 
 const ICONS: Record<ScreenId, () => JSX.Element> = {
   queue: () => <IconLayoutList size={18} />,
+  clients: () => <IconAddressBook size={18} />,
+  analytics: () => <IconChartBar size={18} />,
   escalations: () => <IconFlame size={18} />,
   intake: () => <IconFilePlus size={18} />,
   review: () => <IconLayoutList size={18} />,

@@ -25,6 +25,8 @@ export interface User {
   role: UserRole
   licenseNumber?: string | null
   createdAt: string
+  isActive?: boolean
+  lastLoginAt?: string | null
 }
 
 export interface Tenant {

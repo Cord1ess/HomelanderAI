@@ -338,7 +338,8 @@ function Row({ row, userRole, changed }: { row: QueueItem; userRole?: UserRole; 
     row.status === 'scored' ||
     row.status === 'decided' ||
     row.status === 'insufficient_evidence' ||
-    row.status === 'awaiting_evidence'
+    row.status === 'awaiting_evidence' ||
+    row.status === 'escalated'
   const isElevated = row.tier === 'elevated'
   const isMedical = userRole === 'medical_professional'
   const isUnderwriter = userRole === 'underwriter'

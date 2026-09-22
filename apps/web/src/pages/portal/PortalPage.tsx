@@ -95,7 +95,7 @@ export function PortalPage() {
         <div className="portal-bar__inner">
           <Link to="/" className="portal-bar__brand">
             <BrandIcon width={18} height={18} style={{ display: 'block' }} />
-            homelander
+            Homelander AI
           </Link>
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
             <ThemeToggle />

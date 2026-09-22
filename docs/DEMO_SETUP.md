@@ -255,6 +255,30 @@ see. That is the argument for the whole product, and it is the thing to show.
 
 ---
 
+## The showcase flow, with the five demo clients
+
+`python scripts/make_demo_clients.py` builds `data/demo/clients/`, five folders
+ordered low risk to elevated. Each holds a chest X-ray, a retinal photo, an ECG
+export and a `client.txt` saying what to type.
+
+1. **Take the data.** Sign in as `underwriter`. New application. Type the
+   client and the cover from `client.txt`. On the Evidence step, drag the three
+   files into the zone at the top: each is identified and its reader switched
+   on. Select the lab reader and type the blood values. Tick the health
+   questions. Continue to Check, confirm what each file is, submit.
+2. **AI reads it.** The application appears in Applications as "Reading
+   evidence" and becomes "Ready to decide" on its own. Open it: the composite
+   score, and under it every reader's own score and reasons.
+3. **Hand it to the doctor.** For an elevated case (clients 3 and 5), pick
+   "Escalate to a medical professional", add a note, press Hand over. The
+   status becomes "With a medical professional".
+4. **The doctor decides.** Sign in as `medical`. The bell shows the
+   escalation with the note; Escalations lists the case. Open it and record
+   the decision.
+5. **Everything updates.** Applications, Clients and Analytics reflect the
+   decision; the client's portal (Check status, with the portal ID from the
+   confirmation screen) shows the offer.
+
 ## Company settings
 
 Signed in as `admin`, **Company settings** in the sidebar holds three things:

@@ -39,6 +39,7 @@ from app.schemas.auth import (
     ChangePasswordSchema,
     RegisterStaffSchema,
     RegisterTenantSchema,
+    StaffStatusIn,
     TenantSchema,
     UpdateProfileSchema,
     UserLoginSchema,
@@ -571,6 +572,63 @@ def _demo_staff() -> list[UserSchema]:
 
 
 _demo_staff_cache: list[UserSchema] = []
+
+
+@router.patch(
+    "/users/{user_id}/status",
+    response_model=UserSchema,
+    summary="Deactivate or reactivate a staff account (admin only)",
+)
+async def set_staff_status(
+    user_id: UUID,
+    payload: StaffStatusIn,
+    session_token: str | None = Cookie(default=None, alias=COOKIE_NAME),
+    db: AsyncSession = Depends(get_db),
+) -> UserSchema:
+    """A deactivated account keeps its rows and its history, which is the
+    point: decisions stay attributed to the person who made them. It can no
+    longer sign in. An administrator cannot deactivate their own account, so a
+    company can never lock itself out."""
+    if not session_token:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="No active session cookie found.",
+        )
+    token_data = decode_access_token(session_token)
+    if not token_data or "sub" not in token_data:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid or expired session cookie.",
+        )
+
+    caller = await db.get(User, UUID(token_data["sub"]))
+    if caller is None or not caller.is_active:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Caller not found or deactivated.",
+        )
+    if caller.role != UserRole.ADMIN:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only an administrator can change who may sign in.",
+        )
+    if caller.id == user_id:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="You cannot deactivate your own account.",
+        )
+
+    target = await db.get(User, user_id)
+    if target is None or target.tenant_id != caller.tenant_id:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="No such account at your company.",
+        )
+
+    target.is_active = payload.is_active
+    await db.commit()
+    await db.refresh(target)
+    return UserSchema.model_validate(target)
 
 
 @router.get(

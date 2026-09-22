@@ -63,7 +63,9 @@ export function EscalationsPage() {
   // system had not escalated and labelled the cut-off with a number that was
   // never the real one.
   const allItems = data?.items ?? []
-  const escalatedRows = allItems.filter((item) => item.tier === 'elevated')
+  const escalatedRows = allItems.filter(
+    (item) => item.status === 'escalated' || item.tier === 'elevated',
+  )
 
   const pendingDecisionCount = escalatedRows.filter((item) => item.status !== 'decided').length
   const decidedCount = escalatedRows.filter((item) => item.status === 'decided').length

@@ -150,6 +150,8 @@ class RequestedDocumentSchema(BaseSchema):
     requested_at: datetime
     requested_by_name: str | None = None
     fulfilled_at: datetime | None = None
+    # The evidence file that answered the request, when one was attached.
+    fulfilled_by_file_id: UUID | None = None
 
 
 # ── detail ───────────────────────────────────────────────────────────────────
@@ -303,6 +305,7 @@ class FileSchema(BaseSchema):
     kind: str  # "evidence" | "gradcam"
     filename: str | None = None
     mime_type: str | None = None
+    uploaded_at: datetime | None = None
 
 
 class DecisionSchema(BaseSchema):
@@ -371,6 +374,12 @@ class SubmitResponseSchema(BaseSchema):
 
 
 # ── decision ─────────────────────────────────────────────────────────────────
+
+
+class EscalateIn(BaseSchema):
+    """Handing an application to a medical professional, with an optional word on why."""
+
+    note: str | None = Field(default=None, max_length=500)
 
 
 class DecisionIn(BaseSchema):

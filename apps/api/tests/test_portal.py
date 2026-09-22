@@ -303,10 +303,7 @@ def test_an_escalation_is_not_presented_as_a_refusal(carrier, monkeypatch):
 
     with TestClient(app) as client:
         sign_in(client, account)
-        client.post(
-            f"/api/applications/{created['id']}/decision",
-            json={"decision": "escalated_senior_review"},
-        )
+        client.post(f"/api/applications/{created['id']}/escalate", json={})
 
     with TestClient(app) as client:
         body = client.post(

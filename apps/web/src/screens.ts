@@ -27,6 +27,8 @@ export interface Screen {
 
 export type ScreenId =
   | 'queue'
+  | 'clients'
+  | 'analytics'
   | 'escalations'
   | 'intake'
   | 'review'
@@ -52,6 +54,26 @@ export const SCREENS: Record<ScreenId, Screen> = {
           : 'Every application your company has taken, newest first. Open one to see what the evidence says and record a decision.',
     roles: ALL,
     navOrder: 10,
+  },
+  clients: {
+    id: 'clients',
+    path: '/clients',
+    label: 'Clients',
+    title: 'Clients',
+    description:
+      'Everyone who has applied through your company, with where their latest application stands and their portal sign-in.',
+    roles: ALL,
+    navOrder: 12,
+  },
+  analytics: {
+    id: 'analytics',
+    path: '/analytics',
+    label: 'Analytics',
+    title: 'Analytics',
+    description:
+      "The shape of your company's book: what has been asked for, what was approved, what it earns, and how the readers are performing. Every figure comes from real applications.",
+    roles: ALL,
+    navOrder: 14,
   },
   escalations: {
     id: 'escalations',

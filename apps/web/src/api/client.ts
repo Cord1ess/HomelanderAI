@@ -33,6 +33,8 @@ export type RequestedDocument = Schemas['RequestedDocumentSchema']
 export type TenantSettings = Schemas['TenantSettingsSchema']
 export type SubmitResponse = Schemas['SubmitResponseSchema']
 export type PortalStatus = Schemas['PortalStatusSchema']
+export type Client = Schemas['ClientSchema']
+export type Analytics = Schemas['AnalyticsSchema']
 export type PortalCredentials = Schemas['PortalCredentialsSchema']
 export type ArmRun = Schemas['ArmRunSchema']
 
@@ -131,6 +133,14 @@ export const changePassword = (payload: { currentPassword: string; newPassword: 
   })
 
 export const getStaffUsers = () => request<AuthResponse['user'][]>('/auth/users')
+
+/** Admin only. A deactivated account keeps its history and cannot sign in. */
+export const setStaffStatus = (userId: string, isActive: boolean) =>
+  request<AuthResponse['user']>(`/auth/users/${userId}/status`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ isActive }),
+  })
 
 export const provisionStaffUser = (payload: {
   fullName: string
@@ -305,11 +315,30 @@ export const updateTenantSettings = (body: TenantSettingsUpdate) =>
 /** Who changed which setting, from what. Newest first. */
 export const getTenantSettingsHistory = () => request<SettingsChange[]>('/tenant/settings/history')
 
-/** Tick off one requested document as received. Idempotent. */
-export const fulfilEvidenceRequest = (id: string, documentId: string) =>
-  request<RequestedDocument>(`/applications/${id}/evidence-request/${documentId}/fulfil`, {
+/**
+ * Hand the application to a medical professional. Not a decision: the decision
+ * stays open and becomes theirs. Every medical professional is told.
+ */
+export const escalateApplication = (id: string, body: { note?: string | null } = {}) =>
+  request<ApplicationDetail>(`/applications/${id}/escalate`, {
     method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
   })
+
+/**
+ * Tick off one requested document as received, attaching the document itself
+ * when it is in hand. The file is stored with the application and linked to
+ * the request. Idempotent.
+ */
+export const fulfilEvidenceRequest = (id: string, documentId: string, file?: File | null) => {
+  const body = new FormData()
+  if (file) body.append('file', file)
+  return request<RequestedDocument>(`/applications/${id}/evidence-request/${documentId}/fulfil`, {
+    method: 'POST',
+    body,
+  })
+}
 
 /** Images are served by the API, not from a static folder, so each read is
  * checked against the caller's tenant. */
@@ -321,6 +350,13 @@ export const getNotifications = () => request<AppNotification[]>('/notifications
 
 export const markNotificationRead = (id: string) =>
   request<AppNotification>(`/notifications/${id}/read`, { method: 'POST' })
+
+// ── clients and analytics ────────────────────────────────────────────────────
+
+export const getClients = (q?: string) =>
+  request<Client[]>(`/clients${q ? `?q=${encodeURIComponent(q)}` : ''}`)
+
+export const getAnalytics = () => request<Analytics>('/analytics')
 
 // ── client portal ────────────────────────────────────────────────────────────
 //

@@ -38,6 +38,8 @@ import type { ClassifiedFile, ClassifyResponse } from '../../api/client'
 export interface EvidenceReviewProps {
   /** Rendered as the last step of the intake form rather than a dialog. */
   inline?: boolean
+  /** Reader id -> the name shown for it (from the catalogue). */
+  readerNames?: Record<string, string>
   opened: boolean
   /** Null while classification is still running. */
   result: ClassifyResponse | null
@@ -51,6 +53,7 @@ export interface EvidenceReviewProps {
 
 export function EvidenceReview({
   inline = false,
+  readerNames = {},
   opened,
   result,
   overrides,
@@ -148,7 +151,7 @@ export function EvidenceReview({
                     {arms.length > 0 ? (
                       arms.map((a) => (
                         <Badge key={a} size="xs" variant="light" color="clinical">
-                          {a}
+                          {readerNames[a] ?? a}
                         </Badge>
                       ))
                     ) : (

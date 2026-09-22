@@ -42,6 +42,10 @@ class UserSchema(BaseSchema):
     role: UserRole
     license_number: str | None = None
     created_at: datetime
+    # False once an administrator has deactivated the account. It keeps its
+    # rows and its history; it can no longer sign in.
+    is_active: bool = True
+    last_login_at: datetime | None = None
 
 
 class RegisterTenantSchema(BaseSchema):
@@ -87,6 +91,10 @@ class ChangePasswordSchema(BaseSchema):
 
     current_password: str = Field(..., min_length=1)
     new_password: str = Field(..., min_length=8)
+
+
+class StaffStatusIn(BaseSchema):
+    is_active: bool
 
 
 class RegisterStaffSchema(BaseSchema):

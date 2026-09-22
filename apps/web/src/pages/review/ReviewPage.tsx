@@ -1,5 +1,7 @@
 import {
   Alert,
+  Anchor,
+  FileButton,
   Badge,
   Box,
   Button,
@@ -31,6 +33,7 @@ import { useState } from 'react'
 import { useParams } from 'react-router-dom'
 
 import {
+  escalateApplication,
   fileUrl,
   fulfilEvidenceRequest,
   getApplication,
@@ -169,17 +172,35 @@ export function ReviewPage() {
     },
   })
 
+  // Escalating is a hand-over, not a decision, and has its own endpoint. The
+  // buttons sit together because that is where the person looks for it.
+  const [escalateNote, setEscalateNote] = useState('')
+
   const submit = useMutation({
-    mutationFn: () =>
-      recordDecision(id, {
-        decision: decision as DecisionType,
-        finalPremium: decision === 'approved_with_adjustment' ? premium : null,
-      }),
+    // The two calls return different shapes; the screen refetches anyway.
+    mutationFn: async (): Promise<void> => {
+      if (decision === 'escalated_senior_review') {
+        await escalateApplication(id, { note: escalateNote.trim() || null })
+      } else {
+        await recordDecision(id, {
+          decision: decision as DecisionType,
+          finalPremium: decision === 'approved_with_adjustment' ? premium : null,
+        })
+      }
+    },
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['application', id] })
       void queryClient.invalidateQueries({ queryKey: ['applications'] })
       void queryClient.invalidateQueries({ queryKey: ['audit', id] })
-      notifications.show({ title: 'Decision recorded', message: 'It cannot be changed.', color: 'teal' })
+      if (decision === 'escalated_senior_review') {
+        notifications.show({
+          title: 'Handed to a medical professional',
+          message: 'They have been told. The decision is now theirs.',
+          color: 'grape',
+        })
+      } else {
+        notifications.show({ title: 'Decision recorded', message: 'It cannot be changed.', color: 'teal' })
+      }
     },
     onError: (err) => {
       notifications.show({
@@ -245,7 +266,8 @@ export function ReviewPage() {
   })
 
   const receive = useMutation({
-    mutationFn: (documentId: string) => fulfilEvidenceRequest(id, documentId),
+    mutationFn: ({ documentId, file }: { documentId: string; file?: File | null }) =>
+      fulfilEvidenceRequest(id, documentId, file),
     onSuccess: invalidate,
     onError: (err) => {
       notifications.show({
@@ -290,6 +312,8 @@ export function ReviewPage() {
         setDecision,
         premium,
         setPremium,
+        escalateNote,
+        setEscalateNote,
         submit,
         requestOpen,
         setRequestOpen,
@@ -320,6 +344,8 @@ interface ReviewState {
   setDecision: (v: DecisionType) => void
   premium: number | undefined
   setPremium: (v: number | undefined) => void
+  escalateNote: string
+  setEscalateNote: (v: string) => void
   submit: { mutate: () => void; isPending: boolean }
   requestOpen: boolean
   setRequestOpen: (v: boolean) => void
@@ -328,7 +354,7 @@ interface ReviewState {
   requestNote: string
   setRequestNote: (v: string) => void
   request: { mutate: () => void; isPending: boolean }
-  receive: { mutate: (documentId: string) => void; isPending: boolean }
+  receive: { mutate: (v: { documentId: string; file?: File | null }) => void; isPending: boolean }
   reviseOpen: boolean
   setReviseOpen: (v: boolean) => void
   reviseDate: string
@@ -393,7 +419,9 @@ function Review({ data, state }: { data: ApplicationDetail; state: ReviewState }
   const scale = Math.max(...ranked.map((f) => Math.abs(f.contribution)), 0.01)
 
   const decided = Boolean(data.decision)
-  const scored = data.status === 'scored' || data.status === 'decided'
+  const scored =
+    data.status === 'scored' || data.status === 'decided' || data.status === 'escalated'
+  const escalated = data.status === 'escalated'
   const pending = data.status === 'submitted' || data.status === 'processing'
 
   const { user } = useAuth()
@@ -548,9 +576,16 @@ function Review({ data, state }: { data: ApplicationDetail; state: ReviewState }
         {/* ── Left · the image ──────────────────────────────── */}
         <Paper p="sm" bd="1px solid var(--mantine-color-default-border)">
           <Group justify="space-between" mb="sm">
-            <Text fw={600} size="sm">
-              {imageLabel}
-            </Text>
+            <div>
+              <Text fw={600} size="sm">
+                {imageLabel}
+              </Text>
+              {evidence?.uploadedAt && (
+                <Text size="xs" style={{ color: 'var(--neo-muted)' }}>
+                  Uploaded {relativeTime(evidence.uploadedAt)}
+                </Text>
+              )}
+            </div>
             <Switch
               label="Heatmap overlay"
               size="xs"
@@ -732,18 +767,37 @@ function Review({ data, state }: { data: ApplicationDetail; state: ReviewState }
                   {doc.description}
                 </Text>
                 {doc.fulfilledAt ? (
-                  <Badge size="xs" variant="light" color="teal">
-                    Received
-                  </Badge>
+                  <Group gap={6} wrap="nowrap">
+                    <Badge size="xs" variant="light" color="teal">
+                      Received
+                    </Badge>
+                    {doc.fulfilledByFileId && (
+                      <Anchor href={fileUrl(doc.fulfilledByFileId)} target="_blank" size="xs">
+                        Open the document
+                      </Anchor>
+                    )}
+                  </Group>
                 ) : (
-                  <Button
-                    size="xs"
-                    variant="light"
-                    onClick={() => state.receive.mutate(doc.id)}
-                    loading={state.receive.isPending}
-                  >
-                    Mark received
-                  </Button>
+                  <Group gap={6} wrap="nowrap">
+                    <FileButton
+                      onChange={(file) => file && state.receive.mutate({ documentId: doc.id, file })}
+                      accept="image/png,image/jpeg,application/pdf,text/plain,text/csv,application/dicom"
+                    >
+                      {(props) => (
+                        <Button {...props} size="xs" variant="light" loading={state.receive.isPending}>
+                          Attach and mark received
+                        </Button>
+                      )}
+                    </FileButton>
+                    <Button
+                      size="xs"
+                      variant="subtle"
+                      onClick={() => state.receive.mutate({ documentId: doc.id })}
+                      loading={state.receive.isPending}
+                    >
+                      Received, no file
+                    </Button>
+                  </Group>
                 )}
               </Group>
             ))}
@@ -822,7 +876,7 @@ function Review({ data, state }: { data: ApplicationDetail; state: ReviewState }
           </Text>
         )}
 
-        {isMedical && isElevated && !decided && (
+        {isMedical && isElevated && !decided && !escalated && (
           <Alert color="grape" variant="light" icon={<IconShieldCheck size={18} />} title="Elevated risk" mb="sm">
             <Text size="xs">
               The models put this application in the elevated tier. Only a medical professional can
@@ -831,7 +885,17 @@ function Review({ data, state }: { data: ApplicationDetail; state: ReviewState }
           </Alert>
         )}
 
-        {isUnderwriter && isElevated && !decided && (
+        {escalated && !decided && (
+          <Alert color="grape" variant="light" icon={<IconShieldCheck size={18} />} title="With a medical professional" mb="sm">
+            <Text size="xs">
+              {isMedical
+                ? 'An underwriter passed this application to you. The decision is yours to record.'
+                : 'This application has been passed to a medical professional. Only they can decide it now.'}
+            </Text>
+          </Alert>
+        )}
+
+        {isUnderwriter && isElevated && !decided && !escalated && (
           <Alert color="red" variant="light" icon={<IconAlertTriangle size={18} />} title="Elevated risk" mb="sm">
             <Text size="xs">
               The models put this application in the elevated tier. You can escalate it to a
@@ -867,10 +931,11 @@ function Review({ data, state }: { data: ApplicationDetail; state: ReviewState }
         ) : (
           <>
             <SimpleGrid cols={{ base: 1, sm: 2 }} spacing="sm">
-              {DECISIONS.map((d) => {
+              {DECISIONS.filter((d) => !(escalated && d.value === 'escalated_senior_review')).map((d) => {
                 const isApprovalAction =
                   d.value === 'confirmed_fast_track' || d.value === 'approved_with_adjustment'
-                const isBlockedForUnderwriter = isUnderwriter && isElevated && isApprovalAction
+                const isBlockedForUnderwriter =
+                  isUnderwriter && isApprovalAction && (isElevated || escalated)
                 const isEscalate = d.value === 'escalated_senior_review'
 
                 const btn = (
@@ -906,7 +971,11 @@ function Review({ data, state }: { data: ApplicationDetail; state: ReviewState }
                   return (
                     <Tooltip
                       key={d.value}
-                      label="Elevated risk: escalate this to a medical professional"
+                      label={
+                        escalated
+                          ? 'Escalated: a medical professional decides this'
+                          : 'Elevated risk: escalate this to a medical professional'
+                      }
                       withArrow
                     >
                       <div>{btn}</div>
@@ -917,6 +986,19 @@ function Review({ data, state }: { data: ApplicationDetail; state: ReviewState }
                 return btn
               })}
             </SimpleGrid>
+
+            {state.decision === 'escalated_senior_review' && (
+              <Textarea
+                mt="md"
+                label="A note for the medical professional"
+                description="Optional. What you want them to look at. They see it with the notification."
+                placeholder="The apex of the right lung; the client reports a cough of six weeks."
+                autosize
+                minRows={2}
+                value={state.escalateNote}
+                onChange={(e) => state.setEscalateNote(e.currentTarget.value)}
+              />
+            )}
 
             {state.decision === 'approved_with_adjustment' && (
               <NumberInput
@@ -953,7 +1035,7 @@ function Review({ data, state }: { data: ApplicationDetail; state: ReviewState }
                 onClick={() => state.submit.mutate()}
                 loading={state.submit.isPending}
               >
-                Record decision
+                {state.decision === 'escalated_senior_review' ? 'Hand over' : 'Record decision'}
               </Button>
             </Group>
           </>

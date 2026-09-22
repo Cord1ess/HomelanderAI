@@ -206,3 +206,32 @@ def test_the_request_is_in_the_audit_trail(carrier):
     assert events["evidence_requested"]["payload"]["note"] == "The film supplied was from 2019."
     assert events["evidence_requested"]["actorName"] == "Test Underwriter"
     assert "evidence_received" in events
+
+
+def test_the_document_itself_can_be_attached_when_it_is_received(carrier):
+    """`fulfilled_by` points at the evidence file that answered the request, so
+    the record shows which document closed it, not only that something did."""
+    account = asyncio.run(carrier())
+
+    with TestClient(app) as client:
+        sign_in(client, account)
+        created = submit(client)
+        item = client.post(
+            f"/api/applications/{created['id']}/evidence-request",
+            json={"items": ["The radiology report"]},
+        ).json()[0]
+
+        received = client.post(
+            f"/api/applications/{created['id']}/evidence-request/{item['id']}/fulfil",
+            files={"file": ("report.txt", b"Radiology report: no acute findings.", "text/plain")},
+        )
+        assert received.status_code == 200, received.text
+        assert received.json()["fulfilledAt"] is not None
+        file_id = received.json()["fulfilledByFileId"]
+        assert file_id, "the attached file should be linked to the request"
+
+        detail = client.get(f"/api/applications/{created['id']}").json()
+        assert file_id in [f["id"] for f in detail["files"]]
+        assert detail["requestedDocuments"][0]["fulfilledByFileId"] == file_id
+        # The stored file can be read back through the API, like any evidence.
+        assert client.get(f"/api/files/{file_id}").status_code == 200
