@@ -18,15 +18,15 @@ Every output is a recommendation. Nothing is ever denied automatically.
 [![PostgreSQL](https://img.shields.io/badge/PostgreSQL-17-4169E1?logo=postgresql&logoColor=white)](db/schema.sql)
 [![PyTorch](https://img.shields.io/badge/PyTorch-CPU-EE4C2C?logo=pytorch&logoColor=white)](apps/api/app/arms)
 [![Tests](https://img.shields.io/badge/tests-366-2EA043)](apps/api/tests)
-[![Status](https://img.shields.io/badge/status-research%20prototype-8A2BE2)](#-disclaimer)
+[![Status](https://img.shields.io/badge/status-research%20prototype-8A2BE2)](#disclaimer)
 
-[Quick start](#-quick-start) · [How it works](#-how-it-works) · [Model arms](#-model-arms) · [The console](#-the-console) · [Documentation](#-documentation)
+[Quick start](#quick-start) · [How it works](#how-it-works) · [Model arms](#model-arms) · [The console](#the-console) · [Documentation](#documentation)
 
 </div>
 
 <br/>
 
-## 📌 Overview
+## <img src="docs/assets/icons/info-circle.svg" width="22" height="22" align="top" alt="" /> Overview
 
 Underwriters face **early-claim asymmetry**. An applicant can carry early-stage, asymptomatic pathology that passes a health questionnaire and a nurse screening, be written at baseline rates, and file a catastrophic critical-illness claim months later.
 
@@ -36,7 +36,7 @@ It is a **multi-tenant B2B platform**: each carrier sees only its own applicatio
 
 <br/>
 
-## 🔢 By the numbers
+## <img src="docs/assets/icons/hash.svg" width="22" height="22" align="top" alt="" /> By the numbers
 
 <table align="center">
   <tr>
@@ -55,24 +55,24 @@ It is a **multi-tenant B2B platform**: each carrier sees only its own applicatio
 
 <br/>
 
-## ⚙️ How it works
+## <img src="docs/assets/icons/route.svg" width="22" height="22" align="top" alt="" /> How it works
 
 ```mermaid
 flowchart LR
-    A["📁 Evidence package<br/>scans · signals · notes · form"] --> B["🔒 Intake<br/>de-identify · hash · classify"]
+    A["Evidence package<br/>scans · signals · notes · form"] --> B["Intake<br/>de-identify · hash · classify"]
     B --> C{Triage}
-    C -->|chest X-ray| D1["🫁 tb_xray"]
-    C -->|retinal photo| D2["👁️ dr_fundus"]
-    C -->|12-lead ECG| D3["🫀 ecg_12lead"]
-    C -->|mammogram| D4["🎗️ mirai"]
-    C -->|document| D5["💊 medication_check"]
-    C -->|form| D6["🩸 mortality"]
-    C -->|not recognised| P["🙋 A person"]
+    C -->|chest X-ray| D1["tb_xray"]
+    C -->|retinal photo| D2["dr_fundus"]
+    C -->|12-lead ECG| D3["ecg_12lead"]
+    C -->|mammogram| D4["mirai"]
+    C -->|document| D5["medication_check"]
+    C -->|form| D6["mortality"]
+    C -->|not recognised| P["A person"]
     D1 & D2 & D3 & D4 & D5 & D6 --> E["Highest reading governs"]
     E --> F["13 declared-history rules"]
-    F --> G["📊 Composite Risk Score<br/>+ tier + explanations"]
-    G --> H["✍️ Underwriter decides"]
-    H --> I[("🔗 Hash-chained<br/>audit log")]
+    F --> G["Composite Risk Score<br/>+ tier + explanations"]
+    G --> H["Underwriter decides"]
+    H --> I[("Hash-chained<br/>audit log")]
 ```
 
 1. **Intake discards the original.** A DICOM is rendered to PNG and thrown away. A tag that is never stored cannot leak.
@@ -85,67 +85,67 @@ flowchart LR
 
 <br/>
 
-## 🧠 Model arms
+## <img src="docs/assets/icons/brain.svg" width="22" height="22" align="top" alt="" /> Model arms
 
 Published models, used as published. Where we trained anything, it is a thin head over a frozen backbone, exported to plain JSON so runtime scoring needs no ML library. Every score carries its arm's validation statement to the screen, so the caveat cannot be left behind in a document.
 
 | | Arm | Reads | Screens for | Method | Headline result |
 |:-:|---|---|---|---|---|
-| 🫁 | **Chest X-ray**<br/>`tb_xray` | Chest radiograph<br/>DICOM · PNG · JPEG | Tuberculosis | TorchXRayVision DenseNet-121 → 18 findings → logistic regression trained on Shenzhen (662 images) | **AUC 0.877** ± 0.037<br/>5-fold CV, internal only |
-| 👁️ | **Retina**<br/>`dr_fundus` | Colour fundus photograph | Referable diabetic retinopathy (ICDR ≥ 2) | FLAIR ResNet-50, frozen (288k photos) → logistic head trained on DDR (8,763 photos, 147 hospitals) | **AUC 0.945** DeepDRiD (n=1,600)<br/>**AUC 0.946** IDRiD test (n=103)<br/>external, unseen hospitals |
-| 🫀 | **12-lead ECG**<br/>`ecg_12lead` | ECG signal export (CSV) | 1° AV block · RBBB · LBBB · sinus brady/tachycardia · atrial fibrillation · ECG age | PyTorch ports of Ribeiro 2020 and Lima 2021, thresholds recovered from the authors' decisions | **AUC 0.994–1.000** per class on CODE-test (827 ECGs)<br/>99.6–100 % agreement with the authors |
-| 🎗️ | **Mammogram**<br/>`mirai` | Four-view screening mammogram (DICOM) | Five-year breast-cancer risk | Mirai (Yala 2021, MIT CSAIL), served remotely from the published OncoServe container | **5-year AUC 0.76–0.81**<br/>128,793 exams, published |
-| 🩸 | **Blood panel**<br/>`mortality` | Nine routine blood values + lifestyle, typed from the lab report | Mortality relative to a same-age peer | Levine 2018 Phenotypic Age (closed form) + our gradient-boosted Cox survival model (889 trees) | **AUC 0.887** vs 0.861 for age alone (21,959 NHANES adults)<br/>**C-index 0.876** vs 0.833 age + sex (17,126 held out) |
-| 💊 | **Medication check**<br/>`medication_check` | Discharge summary · prescription · physician note (PDF · TXT) | Medications that imply a condition the form did not declare | Curated table of 153 medications and 29 conditions; assertion-aware, so negated, family and hypothetical mentions do not count | A dictionary, not a model.<br/>Every flag traces to a table row |
+| <img src="docs/assets/icons/lungs.svg" width="22" height="22" align="top" alt="" /> | **Chest X-ray**<br/>`tb_xray` | Chest radiograph<br/>DICOM · PNG · JPEG | Tuberculosis | TorchXRayVision DenseNet-121 → 18 findings → logistic regression trained on Shenzhen (662 images) | **AUC 0.877** ± 0.037<br/>5-fold CV, internal only |
+| <img src="docs/assets/icons/eye.svg" width="22" height="22" align="top" alt="" /> | **Retina**<br/>`dr_fundus` | Colour fundus photograph | Referable diabetic retinopathy (ICDR ≥ 2) | FLAIR ResNet-50, frozen (288k photos) → logistic head trained on DDR (8,763 photos, 147 hospitals) | **AUC 0.945** DeepDRiD (n=1,600)<br/>**AUC 0.946** IDRiD test (n=103)<br/>external, unseen hospitals |
+| <img src="docs/assets/icons/activity-heartbeat.svg" width="22" height="22" align="top" alt="" /> | **12-lead ECG**<br/>`ecg_12lead` | ECG signal export (CSV) | 1° AV block · RBBB · LBBB · sinus brady/tachycardia · atrial fibrillation · ECG age | PyTorch ports of Ribeiro 2020 and Lima 2021, thresholds recovered from the authors' decisions | **AUC 0.994–1.000** per class on CODE-test (827 ECGs)<br/>99.6–100 % agreement with the authors |
+| <img src="docs/assets/icons/ribbon-health.svg" width="22" height="22" align="top" alt="" /> | **Mammogram**<br/>`mirai` | Four-view screening mammogram (DICOM) | Five-year breast-cancer risk | Mirai (Yala 2021, MIT CSAIL), served remotely from the published OncoServe container | **5-year AUC 0.76–0.81**<br/>128,793 exams, published |
+| <img src="docs/assets/icons/droplet.svg" width="22" height="22" align="top" alt="" /> | **Blood panel**<br/>`mortality` | Nine routine blood values + lifestyle, typed from the lab report | Mortality relative to a same-age peer | Levine 2018 Phenotypic Age (closed form) + our gradient-boosted Cox survival model (889 trees) | **AUC 0.887** vs 0.861 for age alone (21,959 NHANES adults)<br/>**C-index 0.876** vs 0.833 age + sex (17,126 held out) |
+| <img src="docs/assets/icons/pill.svg" width="22" height="22" align="top" alt="" /> | **Medication check**<br/>`medication_check` | Discharge summary · prescription · physician note (PDF · TXT) | Medications that imply a condition the form did not declare | Curated table of 153 medications and 29 conditions; assertion-aware, so negated, family and hypothetical mentions do not count | A dictionary, not a model.<br/>Every flag traces to a table row |
 
 The blood panel also reports **eGFR** (CKD-EPI 2021), **FIB-4**, **BMI** at WHO Asian cut-offs and **fasting glucose** against ADA thresholds. They are shown beside the score and never move it.
 
-> **Honesty note.** The chest arm has only been tested on one hospital's data. No arm has been validated in South Asia. Numbers on datasets a backbone was pretrained on are excluded, and a test fails if a claim quotes one. Details in each arm's document under [Documentation](#-documentation).
+> **Honesty note.** The chest arm has only been tested on one hospital's data. No arm has been validated in South Asia. Numbers on datasets a backbone was pretrained on are excluded, and a test fails if a claim quotes one. Details in each arm's document under [Documentation](#documentation).
 
 <br/>
 
-## 🧭 Recommendation tiers
+## <img src="docs/assets/icons/compass.svg" width="22" height="22" align="top" alt="" /> Recommendation tiers
 
 | Tier | Score | Recommendation | Who decides |
 |---|:-:|---|---|
-| 🟢 **Low** | 0 – 30 | Cleared for fast-track at standard rates | Underwriter, one click |
-| 🟡 **Moderate** | 31 – 65 | Approve with a rate adjustment | Underwriter sets the rate |
-| 🔴 **Elevated** | 66 – 100 | Hand over with the full evidence pack | Medical professional |
-| ⚪ **Insufficient evidence** | — | Request named documents from the applicant | The clock pauses; no decision is spent |
+| <img src="docs/assets/icons/dot-green.svg" width="16" height="16" align="top" alt="" /> **Low** | 0 – 30 | Cleared for fast-track at standard rates | Underwriter, one click |
+| <img src="docs/assets/icons/dot-yellow.svg" width="16" height="16" align="top" alt="" /> **Moderate** | 31 – 65 | Approve with a rate adjustment | Underwriter sets the rate |
+| <img src="docs/assets/icons/dot-red.svg" width="16" height="16" align="top" alt="" /> **Elevated** | 66 – 100 | Hand over with the full evidence pack | Medical professional |
+| <img src="docs/assets/icons/dot-grey.svg" width="16" height="16" align="top" alt="" /> **Insufficient evidence** | — | Request named documents from the applicant | The clock pauses; no decision is spent |
 
 Boundaries are per company. An administrator adjusts them with a live preview, every change is logged with who and when, and the thresholds in force are snapshotted onto each score so an old result can still be explained after a re-tune.
 
 <br/>
 
-## 🛡️ Built to be questioned
+## <img src="docs/assets/icons/shield-check.svg" width="22" height="22" align="top" alt="" /> Built to be questioned
 
 | | |
 |---|---|
-| 🔍 **Heatmaps on the evidence** | Grad-CAM on chest films, an exact class-activation map on retinal photos, gradient saliency on the ECG trace. Stored as artifacts keyed to the run, so the audit record reproduces what the underwriter saw. |
-| 📊 **Factor attribution** | Each finding's contribution to the score, and each declared-history rule that fired, with its reason in plain words. |
-| 🏷️ **Validation on every score** | The arm's validation string travels with the number to every screen that shows it. |
-| 🔗 **Hash-chained audit log** | Append-only, SHA-256 chained, re-verified on read. Altering one entry breaks every entry after it. Tamper-evident, and described precisely as such. |
-| 🔒 **De-identification by discard** | The original DICOM is never written to disk. Only a rendered image and a handful of clinical tags survive intake. |
-| 🏢 **Tenant isolation** | `tenant_id` on every row, row-level security forced on every tenant table, evidence served through authenticated routes rather than public URLs. |
+| <img src="docs/assets/icons/zoom-scan.svg" width="20" height="20" align="top" alt="" /> **Heatmaps on the evidence** | Grad-CAM on chest films, an exact class-activation map on retinal photos, gradient saliency on the ECG trace. Stored as artifacts keyed to the run, so the audit record reproduces what the underwriter saw. |
+| <img src="docs/assets/icons/chart-bar.svg" width="20" height="20" align="top" alt="" /> **Factor attribution** | Each finding's contribution to the score, and each declared-history rule that fired, with its reason in plain words. |
+| <img src="docs/assets/icons/tag.svg" width="20" height="20" align="top" alt="" /> **Validation on every score** | The arm's validation string travels with the number to every screen that shows it. |
+| <img src="docs/assets/icons/link.svg" width="20" height="20" align="top" alt="" /> **Hash-chained audit log** | Append-only, SHA-256 chained, re-verified on read. Altering one entry breaks every entry after it. Tamper-evident, and described precisely as such. |
+| <img src="docs/assets/icons/lock.svg" width="20" height="20" align="top" alt="" /> **De-identification by discard** | The original DICOM is never written to disk. Only a rendered image and a handful of clinical tags survive intake. |
+| <img src="docs/assets/icons/building.svg" width="20" height="20" align="top" alt="" /> **Tenant isolation** | `tenant_id` on every row, row-level security forced on every tenant table, evidence served through authenticated routes rather than public URLs. |
 
 <br/>
 
-## 🖥️ The console
+## <img src="docs/assets/icons/device-desktop.svg" width="22" height="22" align="top" alt="" /> The console
 
 A React console for carrier staff, a separate read-only portal for applicants, and one plain-language status vocabulary shared by both. Light and dark schemes follow the device, with a WCAG AA contrast gate in `npm run lint`.
 
 | Role | What they see |
 |---|---|
-| 👤 **Underwriter** | Four-step intake (client · cover · evidence · check), the applications queue, and the review screen. Decides low and moderate cases; can only hand over an elevated one. |
-| 🩺 **Medical professional** | The escalations queue. Decides the cases an underwriter handed over. |
-| 🔑 **Administrator** | Staff accounts, tier boundaries, pricing policy and turnaround defaults for the company. |
-| 🙋 **Applicant** | A portal sign-in issued at intake. Sees status and an expected answer date in business days. The offer shown derives from the underwriter's decision, never from the model's tier. |
+| <img src="docs/assets/icons/user.svg" width="20" height="20" align="top" alt="" /> **Underwriter** | Four-step intake (client · cover · evidence · check), the applications queue, and the review screen. Decides low and moderate cases; can only hand over an elevated one. |
+| <img src="docs/assets/icons/stethoscope.svg" width="20" height="20" align="top" alt="" /> **Medical professional** | The escalations queue. Decides the cases an underwriter handed over. |
+| <img src="docs/assets/icons/key.svg" width="20" height="20" align="top" alt="" /> **Administrator** | Staff accounts, tier boundaries, pricing policy and turnaround defaults for the company. |
+| <img src="docs/assets/icons/user-circle.svg" width="20" height="20" align="top" alt="" /> **Applicant** | A portal sign-in issued at intake. Sees status and an expected answer date in business days. The offer shown derives from the underwriter's decision, never from the model's tier. |
 
 Three built-in demo accounts (`underwriter`, `medical`, `admin`, password `admin123`) sign in without a database, so a network problem on demo day does not cost the demo. A database outage answers 503 with a readable reason, never a stack trace.
 
 <br/>
 
-## 🚀 Quick start
+## <img src="docs/assets/icons/rocket.svg" width="22" height="22" align="top" alt="" /> Quick start
 
 Requires [uv](https://docs.astral.sh/uv/) 0.5+ and [Node.js](https://nodejs.org) 22+. uv fetches Python 3.12 itself. Docker is optional.
 
@@ -189,7 +189,7 @@ The platform runs without them and reports those arms unavailable rather than cr
 
 <br/>
 
-## 🧱 Stack
+## <img src="docs/assets/icons/stack-2.svg" width="22" height="22" align="top" alt="" /> Stack
 
 | Layer | |
 |---|---|
@@ -205,7 +205,7 @@ Every architectural choice follows [docs/DESIGN_POLICY.md](docs/DESIGN_POLICY.md
 
 <br/>
 
-## 📂 Project layout
+## <img src="docs/assets/icons/folder.svg" width="22" height="22" align="top" alt="" /> Project layout
 
 ```
 apps/
@@ -230,7 +230,7 @@ scripts/                  data fetchers, experiments that produce the model JSON
 
 <br/>
 
-## 📚 Documentation
+## <img src="docs/assets/icons/book.svg" width="22" height="22" align="top" alt="" /> Documentation
 
 | Document | What it covers |
 |---|---|
@@ -242,7 +242,7 @@ scripts/                  data fetchers, experiments that produce the model JSON
 
 <br/>
 
-## 🗺️ Roadmap
+## <img src="docs/assets/icons/map-2.svg" width="22" height="22" align="top" alt="" /> Roadmap
 
 - **External validation of the chest arm** on Montgomery, so 0.877 stops being an internal-only number.
 - **A clean calibration set for the retina arm** (Messidor-2), because the referable threshold drifts between hospitals.
@@ -252,7 +252,7 @@ scripts/                  data fetchers, experiments that produce the model JSON
 
 <br/>
 
-## ⚠️ Disclaimer
+## <img src="docs/assets/icons/alert-triangle.svg" width="22" height="22" align="top" alt="" /> Disclaimer
 
 Research software built as an academic capstone. It is **not a medical device**, not clinically validated, and not approved by any regulator. It does not diagnose anyone.
 
@@ -262,7 +262,7 @@ No real patient data is used at any stage. Development runs on public, de-identi
 
 <br/>
 
-## 👥 Team & license
+## <img src="docs/assets/icons/users.svg" width="22" height="22" align="top" alt="" /> Team & license
 
 Built by a team of five as an academic capstone. See the [contributors](https://github.com/Cord1ess/HomelanderAI/graphs/contributors).
 
