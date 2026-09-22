@@ -174,9 +174,12 @@ def test_a_stored_ecg_passes_through_intake_unchanged():
     assert again.data == stored and again.source_format == "ecg"
 
 
-def test_intake_refuses_a_csv_that_is_not_an_ecg_with_the_reason():
+def test_intake_refuses_an_ecg_export_it_cannot_read_with_the_reason():
+    # Lead columns were found, so this was meant to be an ECG and the reason
+    # is for the operator; a table with no leads is kept as a document instead.
     with pytest.raises(intake.IntakeError, match="12-lead ECG export"):
-        intake.process_upload(b"test,value\nHbA1c,6.1\n", "labs.csv")
+        intake.process_upload(synthetic(header=ecg.LEADS[:11]), "export.csv")
+    assert intake.process_upload(b"test,value\nHbA1c,6.1\n", "labs.csv").source_format == "document"
 
 
 def test_triage_recognises_an_export_and_the_stored_signal():

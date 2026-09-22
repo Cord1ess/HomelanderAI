@@ -73,7 +73,16 @@ _MAX_PLAUSIBLE_MV = 50.0
 
 
 class NotAnEcg(ValueError):
-    """The bytes are not a 12-lead ECG export we can read. The message says why."""
+    """The bytes are not a 12-lead ECG export we can read. The message says why.
+
+    `looked_like_ecg` is set once lead columns were found: the file was meant
+    to be an ECG and the reason is worth showing the operator, as opposed to a
+    lab table or a note that merely shares the extension.
+    """
+
+    def __init__(self, message: str, looked_like_ecg: bool = False) -> None:
+        super().__init__(message)
+        self.looked_like_ecg = looked_like_ecg
 
 
 @dataclass
@@ -136,7 +145,10 @@ def parse_csv(raw: bytes) -> Signal:
             raise NotAnEcg(
                 "no lead columns found (expected a header naming I, II, III, aVR ... V6)"
             )
-        raise NotAnEcg(f"only {len(columns)} of 12 leads found; missing {', '.join(missing)}")
+        raise NotAnEcg(
+            f"only {len(columns)} of 12 leads found; missing {', '.join(missing)}",
+            looked_like_ecg=True,
+        )
 
     try:
         table = np.array(
@@ -144,9 +156,9 @@ def parse_csv(raw: bytes) -> Signal:
             dtype=np.float64,
         )
     except ValueError as exc:
-        raise NotAnEcg(f"a data cell is not a number: {exc}") from exc
+        raise NotAnEcg(f"a data cell is not a number: {exc}", looked_like_ecg=True) from exc
     if table.ndim != 2 or table.shape[0] < 2:
-        raise NotAnEcg("no numeric rows")
+        raise NotAnEcg("no numeric rows", looked_like_ecg=True)
 
     notes: list[str] = []
     rate = None
@@ -154,7 +166,7 @@ def parse_csv(raw: bytes) -> Signal:
         steps = np.diff(table[:, time_col])
         step = float(np.median(steps))
         if step <= 0:
-            raise NotAnEcg("the time column does not increase")
+            raise NotAnEcg("the time column does not increase", looked_like_ecg=True)
         # Seconds, unless the values are far too large to be seconds.
         if step > 0.5:
             step /= 1000.0
@@ -163,13 +175,18 @@ def parse_csv(raw: bytes) -> Signal:
     if rate is None:
         rate = _sample_rate_from_comments(text)
     if rate is None:
-        raise NotAnEcg("sampling rate unknown: add a time column or a line such as fs=500")
+        raise NotAnEcg(
+            "sampling rate unknown: add a time column or a line such as fs=500",
+            looked_like_ecg=True,
+        )
     if not 100 <= rate <= 5000:
-        raise NotAnEcg(f"sampling rate {rate:g} Hz is not plausible for an ECG")
+        raise NotAnEcg(
+            f"sampling rate {rate:g} Hz is not plausible for an ECG", looked_like_ecg=True
+        )
 
     leads = np.stack([table[:, columns[lead]] for lead in LEADS]).astype(np.float32)
     if not np.all(np.isfinite(leads)):
-        raise NotAnEcg("the signal contains NaN or infinite values")
+        raise NotAnEcg("the signal contains NaN or infinite values", looked_like_ecg=True)
 
     peak = float(np.percentile(np.abs(leads), 99.9))
     if peak > _MAX_PLAUSIBLE_MV:
@@ -179,13 +196,15 @@ def parse_csv(raw: bytes) -> Signal:
         peak /= 1000.0
     if peak > _MAX_PLAUSIBLE_MV or peak < 0.05:
         raise NotAnEcg(
-            f"amplitudes ({peak:.2f} mV at the 99.9th percentile) are not an ECG in millivolts"
+            f"amplitudes ({peak:.2f} mV at the 99.9th percentile) are not an ECG in millivolts",
+            looked_like_ecg=True,
         )
 
     signal = Signal(leads=leads, sample_rate=rate, notes=notes)
     if signal.seconds < MIN_SECONDS:
         raise NotAnEcg(
-            f"only {signal.seconds:.1f} s of signal; at least {MIN_SECONDS:g} s is needed"
+            f"only {signal.seconds:.1f} s of signal; at least {MIN_SECONDS:g} s is needed",
+            looked_like_ecg=True,
         )
     return signal
 

@@ -73,8 +73,10 @@ def process_upload(raw: bytes, filename: str = "") -> ProcessedFile:
 
     Images and DICOMs become a PNG. A 12-lead ECG export (CSV) becomes the
     canonical signal array — numbers only, so a name in the export's comment
-    line never reaches storage. Raises IntakeError for anything unreadable;
-    the caller turns that into an `insufficient_evidence` outcome, not a 500.
+    line never reaches storage. A note or report (PDF with a text layer, or a
+    text file) becomes plain UTF-8 text. Raises IntakeError for anything
+    unreadable; the caller turns that into an `insufficient_evidence` outcome,
+    not a 500.
     """
     if not raw:
         raise IntakeError("File is empty")
@@ -99,11 +101,19 @@ def process_upload(raw: bytes, filename: str = "") -> ProcessedFile:
             deidentified=True,
         )
 
+    if raw[:5] == b"%PDF-":
+        return _document(_pdf_text(raw))
+
     if _looks_like_signal_export(raw, filename):
         try:
             signal = ecg.parse_csv(raw)
         except ecg.NotAnEcg as exc:
-            raise IntakeError(f"not a readable 12-lead ECG export: {exc}") from exc
+            if exc.looked_like_ecg:
+                raise IntakeError(f"not a readable 12-lead ECG export: {exc}") from exc
+            # A text file that never had lead columns is a note, a report or a
+            # table, and is kept as text for the underwriter and the medication
+            # check to read.
+            return _document(_decode_text(raw))
         data = ecg.to_bytes(ecg.canonical(signal))
         return ProcessedFile(
             data=data,
@@ -146,15 +156,75 @@ def sha256(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
 
 
-# Text exports of a signal. Anything else with these suffixes is a document
-# and fails ECG parsing with a reason, which the caller reports.
-_SIGNAL_SUFFIXES = (".csv", ".txt", ".tsv")
-# PDF, PNG and JPEG magic: a mis-named picture or document is not a signal.
+# Text files: a signal export, or a note. Which one is decided by reading it.
+_SIGNAL_SUFFIXES = (".csv", ".txt", ".tsv", ".md", ".text")
+# PDF, PNG and JPEG magic: a mis-named picture or document is not text.
 _NOT_TEXT_MAGIC = (b"%", b"\x89", b"\xff")
+
+# A note longer than this is not a note. Keeps a mis-uploaded data dump out
+# of the database.
+MAX_DOCUMENT_CHARS = 200_000
 
 
 def _looks_like_signal_export(raw: bytes, filename: str) -> bool:
     return (filename or "").lower().endswith(_SIGNAL_SUFFIXES) and raw[:1] not in _NOT_TEXT_MAGIC
+
+
+# ── documents ────────────────────────────────────────────────────────────────
+
+
+def _decode_text(raw: bytes) -> str:
+    for encoding in ("utf-8-sig", "cp1252"):
+        try:
+            return raw.decode(encoding)
+        except UnicodeDecodeError:
+            continue
+    raise IntakeError("not a readable text file")
+
+
+def _pdf_text(raw: bytes) -> str:
+    """The PDF's text layer. A scanned page has none, and saying so beats
+    storing an empty note as if it had been read."""
+    from pypdf import PdfReader
+
+    try:
+        reader = PdfReader(BytesIO(raw))
+        if reader.is_encrypted:
+            reader.decrypt("")
+        pages = [page.extract_text() or "" for page in reader.pages]
+    except Exception as exc:
+        raise IntakeError(f"not a readable PDF: {exc}") from exc
+    text = "\n\n".join(pages)
+    if not any(ch.isalpha() for ch in text):
+        raise IntakeError(
+            "the PDF has no text layer (a scanned document); export or type the text instead"
+        )
+    return text
+
+
+def _document(text: str) -> ProcessedFile:
+    """A note, report or prescription, kept as plain UTF-8 text.
+
+    Not de-identified: a clinical note names its patient throughout and cannot
+    be stripped without reading it, so the row records that honestly and the
+    note is shown only to the underwriter who holds the case.
+    """
+    text = text.replace("\r\n", "\n").replace("\x00", "").strip()
+    if not any(ch.isalpha() for ch in text):
+        raise IntakeError("the document contains no text")
+    if len(text) > MAX_DOCUMENT_CHARS:
+        raise IntakeError(
+            f"the document is {len(text):,} characters; the limit is {MAX_DOCUMENT_CHARS:,}"
+        )
+    data = text.encode("utf-8")
+    return ProcessedFile(
+        data=data,
+        content_hash=sha256(data),
+        mime_type="text/plain",
+        source_format="document",
+        deidentified=False,
+        clinical_tags={"Characters": str(len(text)), "Lines": str(text.count("\n") + 1)},
+    )
 
 
 # ── DICOM ────────────────────────────────────────────────────────────────────

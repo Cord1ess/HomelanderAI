@@ -145,10 +145,11 @@ def test_an_application_with_no_readable_evidence_is_not_left_pending(carrier):
 
     with TestClient(app) as client:
         sign_in(client, account)
+        # A text file would be kept as a note; this is not anything.
         response = client.post(
             "/api/applications",
             data={"payload": intake_payload(), "file_arms": ["cxr_lung"]},
-            files={"files": ("notes.txt", b"this is not an image", "text/plain")},
+            files={"files": ("scan.bin", b"\x00\x01\x02 not an image", "application/octet-stream")},
         )
         assert response.status_code == 201, response.text
         assert response.json()["status"] == "insufficient_evidence"
@@ -505,9 +506,15 @@ def test_the_form_is_told_which_models_actually_run(carrier):
     assert by_id["ecg"]["armName"] == "ecg_12lead"
     assert "NOT validated in South Asia" in by_id["ecg"]["validation"]
 
+    # Clinical notes are read by the medication check, which is a table, not a
+    # model, and says so.
+    assert by_id["biobert"]["available"] is True
+    assert by_id["biobert"]["armName"] == "medication_check"
+    assert "not a diagnosis" in by_id["biobert"]["validation"]
+
     # Everything else is on the roadmap and says so.
     planned = [m["id"] for m in models if not m["available"]]
-    assert set(planned) == {"mirai", "ham10000", "biobert", "neuro"}
+    assert set(planned) == {"mirai", "ham10000", "neuro"}
     assert all(by_id[p]["validation"] is None for p in planned)
 
 
@@ -650,10 +657,10 @@ def test_classify_proposes_a_kind_and_a_destination(carrier):
     assert scan["reason"], "the operator has to be able to judge the proposal"
     assert scan["thumbnail"], "confirming a filename is not confirming a document"
 
-    # No model reads a lab report yet, and saying so is the honest answer.
+    # A document goes to the medication check, which reads its prescriptions.
     report = by_name["bloods.pdf"]
     assert report["kind"] == "document"
-    assert report["arms"] == []
+    assert report["arms"] == ["medication_check"]
 
     # Every kind the operator may correct a row to.
     assert {c["kind"] for c in body["choices"]} >= {"chest_xray", "fundus", "document"}

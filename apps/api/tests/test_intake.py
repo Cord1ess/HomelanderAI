@@ -212,7 +212,13 @@ def test_empty_file_rejected():
 
 def test_garbage_rejected_as_intake_error_not_crash():
     with pytest.raises(IntakeError):
-        process_upload(b"this is not an image at all", "junk.txt")
+        process_upload(b"\x00\x01\x02 this is not an image at all", "junk.bin")
+
+
+def test_a_text_file_is_kept_as_a_document():
+    # Prose with a text extension is a note, not garbage.
+    processed = process_upload(b"this is a note, not an image", "junk.txt")
+    assert processed.source_format == "document"
 
 
 def test_oversized_file_rejected_before_decoding():

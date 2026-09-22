@@ -366,7 +366,11 @@ function Review({ data, state }: { data: ApplicationDetail; state: ReviewState }
 
   const imageLabel = imageLabelFor(data.modelsRequested ?? [])
 
-  const evidence = files.find((f) => f.kind === 'evidence')
+  // A note is stored as text and read in its own panel; the image box is for
+  // the evidence that is a picture (or, for an ECG, drawn as one).
+  const isText = (f: { mimeType?: string | null }) => Boolean(f.mimeType?.startsWith('text/'))
+  const evidence = files.find((f) => f.kind === 'evidence' && !isText(f))
+  const note = files.find((f) => f.kind === 'evidence' && isText(f))
   const heatmap = files.find((f) => f.kind === 'gradcam')
   const heatmapAvailable = Boolean(heatmap)
 
@@ -376,6 +380,7 @@ function Review({ data, state }: { data: ApplicationDetail; state: ReviewState }
   const arms = data.arms ?? []
   const mortality = arms.find((a) => a.arm === 'mortality')
   const ecg = arms.find((a) => a.arm === 'ecg_12lead')
+  const medications = arms.find((a) => a.arm === 'medication_check')
   const hasVision = arms.some((a) => a.armType === 'vision') || Boolean(evidence)
 
   // Ranked by absolute contribution: the findings that moved the score most, in
@@ -686,6 +691,9 @@ function Review({ data, state }: { data: ApplicationDetail; state: ReviewState }
 
       {/* ── The tracing: what was reported, and the ECG age ──── */}
       {ecg && <EcgPanel run={ecg} age={ageAt(data.applicant.dateOfBirth, data.submittedAt)} />}
+
+      {/* ── The note: what its prescriptions imply that was not declared ── */}
+      {medications && <MedicationPanel run={medications} noteId={note?.id ?? null} />}
 
       {/* ── The blood panel, against age ─────────────────────── */}
       {mortality && <MortalityPanel run={mortality} />}
@@ -1259,6 +1267,227 @@ function MortalityPanel({ run }: { run: ArmRun }) {
         Relative to a same-age, same-sex peer under a US calibration. Not an absolute
         probability, not validated in South Asia, and not a diagnosis. The smoking box reads
         "current or former"; the model learned "current", so a former smoker is scored as one.
+      </Text>
+    </Paper>
+  )
+}
+
+// What the medication check stores per run (`apps/api/app/arms/medication_check.py`).
+interface MedicationDetails {
+  medications?: {
+    generic: string
+    atc?: string | null
+    as_written: string[]
+    assertion: 'PRESENT' | 'PAST'
+    conditions: string[]
+    condition_labels: string[]
+    declared: string[]
+    ambiguous: boolean
+    status: 'undisclosed' | 'explained' | 'immaterial'
+    note?: string | null
+    sentence: string
+  }[]
+  undisclosed?: {
+    condition: string
+    label: string
+    medications: string[]
+    points: number
+    asked_on_form: boolean
+  }[]
+  explained?: string[]
+  immaterial?: string[]
+  excluded?: { generic: string; as_written: string; assertion: string; sentence: string }[]
+  declared_labels?: string[]
+  characters?: number
+  scorer?: string
+  validation?: string
+}
+
+const ASSERTION_WORDS: Record<string, string> = {
+  NEGATED: 'ruled out or an allergy',
+  FAMILY_HISTORY: "a relative's, not the applicant's",
+  HYPOTHETICAL: 'proposed or conditional, not prescribed',
+}
+
+function MedicationPanel({ run, noteId }: { run: ArmRun; noteId: string | null }) {
+  const d = run.details as MedicationDetails
+  const [showNote, setShowNote] = useState(false)
+  const noteText = useQuery({
+    queryKey: ['note-text', noteId],
+    queryFn: async () => {
+      const response = await fetch(fileUrl(noteId!), { credentials: 'include' })
+      if (!response.ok) throw new Error(`The note could not be loaded (${response.status}).`)
+      return response.text()
+    },
+    enabled: showNote && Boolean(noteId),
+    staleTime: Infinity,
+  })
+
+  const flags = d.undisclosed ?? []
+  const meds = d.medications ?? []
+  const excluded = d.excluded ?? []
+
+  return (
+    <Paper p="md" bd="1px solid var(--mantine-color-default-border)">
+      <Group justify="space-between" align="flex-start" mb="sm">
+        <div>
+          <Text fw={600} size="sm">
+            Medications against the declared history
+          </Text>
+          <Text size="xs" c="dimmed">
+            Each prescription in the note, what it is prescribed for, and whether the form said
+            so
+          </Text>
+        </div>
+        {run.score != null && (
+          <Badge variant="light" color={flags.length ? 'orange' : 'teal'} size="lg">
+            arm score {run.score.toFixed(1)}
+          </Badge>
+        )}
+      </Group>
+
+      {run.error ? (
+        <Text size="sm" c="dimmed">
+          Not checked: {run.error}.
+        </Text>
+      ) : flags.length === 0 ? (
+        <Text size="sm">
+          Every medication found is explained by the declared history or implies nothing
+          material.
+        </Text>
+      ) : (
+        <Stack gap={6}>
+          {flags.map((f) => (
+            <Group key={f.condition} gap="sm" wrap="nowrap" align="flex-start">
+              <Badge size="sm" variant="light" color="orange" ff="monospace" miw={44}>
+                {f.points.toFixed(0)}
+              </Badge>
+              <Text size="sm" style={{ flex: 1 }}>
+                <Text span fw={600}>
+                  {f.label}
+                </Text>{' '}
+                — implied by {f.medications.join(', ')}.{' '}
+                <Text span c="dimmed">
+                  {f.asked_on_form
+                    ? 'The form asks about this and it was not declared: ask the applicant.'
+                    : 'The form does not ask about this: ask the applicant.'}
+                </Text>
+              </Text>
+            </Group>
+          ))}
+        </Stack>
+      )}
+
+      {meds.length > 0 && (
+        <Table fz="xs" withRowBorders={false} verticalSpacing={4} mt="md">
+          <Table.Thead>
+            <Table.Tr>
+              <Table.Th>Medication</Table.Th>
+              <Table.Th>As written</Table.Th>
+              <Table.Th>Prescribed for</Table.Th>
+              <Table.Th></Table.Th>
+            </Table.Tr>
+          </Table.Thead>
+          <Table.Tbody>
+            {meds.map((m) => (
+              <Table.Tr key={m.generic}>
+                <Table.Td>
+                  <Tooltip label={m.sentence} multiline w={360} withArrow>
+                    <Text size="xs" style={{ cursor: 'help' }}>
+                      {m.generic}
+                      {m.assertion === 'PAST' && (
+                        <Text span c="dimmed">
+                          {' '}
+                          (stopped)
+                        </Text>
+                      )}
+                    </Text>
+                  </Tooltip>
+                </Table.Td>
+                <Table.Td ff="monospace">{m.as_written.join(', ')}</Table.Td>
+                <Table.Td>
+                  {m.condition_labels.length ? m.condition_labels.join(' / ') : '—'}
+                  {m.ambiguous && (
+                    <Text span c="dimmed">
+                      {' '}
+                      · several uses
+                    </Text>
+                  )}
+                </Table.Td>
+                <Table.Td>
+                  <Badge
+                    size="xs"
+                    variant="light"
+                    color={
+                      m.status === 'undisclosed' ? 'orange' : m.status === 'explained' ? 'teal' : 'gray'
+                    }
+                  >
+                    {m.status === 'undisclosed'
+                      ? 'not declared'
+                      : m.status === 'explained'
+                        ? 'declared'
+                        : 'nothing material'}
+                  </Badge>
+                </Table.Td>
+              </Table.Tr>
+            ))}
+          </Table.Tbody>
+        </Table>
+      )}
+
+      {excluded.length > 0 && (
+        <Text size="xs" c="dimmed" mt="sm">
+          Not counted:{' '}
+          {excluded
+            .map((e) => `${e.as_written} (${ASSERTION_WORDS[e.assertion] ?? e.assertion})`)
+            .join('; ')}
+          .
+        </Text>
+      )}
+
+      {(d.declared_labels ?? []).length > 0 && (
+        <Text size="xs" c="dimmed" mt="xs">
+          Declared on the form: {d.declared_labels!.join(', ')}.
+        </Text>
+      )}
+
+      {noteId && (
+        <Stack gap="xs" mt="md">
+          <Button
+            variant="subtle"
+            size="xs"
+            onClick={() => setShowNote(!showNote)}
+            rightSection={<IconChevronDown size={14} />}
+            style={{ alignSelf: 'flex-start' }}
+          >
+            {showNote ? 'Hide the note' : 'Read the note'}
+          </Button>
+          {showNote && (
+            <Box
+              p="sm"
+              mah={320}
+              style={{
+                overflow: 'auto',
+                whiteSpace: 'pre-wrap',
+                fontFamily: 'var(--mantine-font-family-monospace)',
+                fontSize: 12,
+                backgroundColor: 'var(--mantine-color-dark-6)',
+                borderRadius: 'var(--mantine-radius-sm)',
+              }}
+            >
+              {noteText.isLoading
+                ? 'Loading…'
+                : noteText.error
+                  ? String(noteText.error)
+                  : noteText.data}
+            </Box>
+          )}
+        </Stack>
+      )}
+
+      <Text size="xs" c="dimmed" mt="md">
+        {d.scorer}. {d.validation}. The note is not de-identified and is shown here only to the
+        underwriter holding the case.
       </Text>
     </Paper>
   )

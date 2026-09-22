@@ -1,0 +1,325 @@
+{
+  "version": "1.0.0",
+  "note": "Generic name -> the conditions it is prescribed for, with the brand names an applicant in Bangladesh is likely to write down. Indications follow the BNF and MED-RT may_treat; brands are DGDA-registered products and global originators. A medication that is prescribed for several conditions lists them in order of likelihood and is marked ambiguous, which halves its points. Extend by adding rows; nothing here is learned.",
+  "conditions": {
+    "diabetes": {
+      "label": "Diabetes",
+      "weight": 45,
+      "declared_by": [{"key": "history.diabetes"}, {"key": "diabetes_duration", "not": "No diabetes"}]
+    },
+    "hypertension": {
+      "label": "Hypertension",
+      "weight": 35,
+      "declared_by": [{"key": "hypertension"}]
+    },
+    "high_cholesterol": {
+      "label": "High cholesterol or cardiovascular prevention",
+      "weight": 30,
+      "declared_by": [{"key": "high_cholesterol"}]
+    },
+    "coronary_heart_disease": {
+      "label": "Coronary heart disease (angina, stent, heart attack)",
+      "weight": 70,
+      "declared_by": []
+    },
+    "heart_failure": {
+      "label": "Heart failure",
+      "weight": 80,
+      "declared_by": []
+    },
+    "arrhythmia": {
+      "label": "Arrhythmia or long-term anticoagulation",
+      "weight": 65,
+      "declared_by": [{"key": "known_arrhythmia"}]
+    },
+    "venous_thromboembolism": {
+      "label": "Deep vein thrombosis or pulmonary embolism",
+      "weight": 45,
+      "declared_by": []
+    },
+    "stroke": {
+      "label": "Stroke or TIA",
+      "weight": 75,
+      "declared_by": []
+    },
+    "tuberculosis": {
+      "label": "Tuberculosis under treatment",
+      "weight": 85,
+      "declared_by": []
+    },
+    "hiv": {
+      "label": "HIV",
+      "weight": 85,
+      "declared_by": [{"key": "history.hiv"}]
+    },
+    "hepatitis_b": {
+      "label": "Chronic hepatitis B",
+      "weight": 70,
+      "declared_by": []
+    },
+    "hepatitis_c": {
+      "label": "Hepatitis C",
+      "weight": 65,
+      "declared_by": []
+    },
+    "asthma_copd": {
+      "label": "Asthma or COPD",
+      "weight": 40,
+      "declared_by": []
+    },
+    "epilepsy": {
+      "label": "Epilepsy",
+      "weight": 55,
+      "declared_by": []
+    },
+    "depression_anxiety": {
+      "label": "Depression or anxiety disorder",
+      "weight": 35,
+      "declared_by": []
+    },
+    "psychosis_bipolar": {
+      "label": "Bipolar disorder or psychosis",
+      "weight": 60,
+      "declared_by": []
+    },
+    "thyroid": {
+      "label": "Thyroid disease",
+      "weight": 20,
+      "declared_by": []
+    },
+    "cancer": {
+      "label": "Cancer, current or recent",
+      "weight": 85,
+      "declared_by": [{"key": "prior_skin_cancer"}]
+    },
+    "kidney_disease": {
+      "label": "Chronic kidney disease",
+      "weight": 80,
+      "declared_by": []
+    },
+    "autoimmune": {
+      "label": "Autoimmune or inflammatory disease (rheumatoid arthritis, lupus, colitis)",
+      "weight": 50,
+      "declared_by": []
+    },
+    "transplant": {
+      "label": "Organ transplant",
+      "weight": 85,
+      "declared_by": []
+    },
+    "dementia": {
+      "label": "Dementia",
+      "weight": 70,
+      "declared_by": [{"key": "memory_concerns"}]
+    },
+    "parkinsons": {
+      "label": "Parkinson's disease",
+      "weight": 65,
+      "declared_by": [{"key": "mobility_concerns"}]
+    },
+    "gout": {
+      "label": "Gout",
+      "weight": 15,
+      "declared_by": []
+    },
+    "osteoporosis": {
+      "label": "Osteoporosis",
+      "weight": 15,
+      "declared_by": []
+    },
+    "smoking": {
+      "label": "Smoking (cessation treatment)",
+      "weight": 30,
+      "declared_by": [{"key": "history.smoker"}, {"key": "smoker"}]
+    },
+    "alcohol_dependence": {
+      "label": "Alcohol dependence",
+      "weight": 60,
+      "declared_by": [{"key": "alcohol", "equals": "Regularly"}]
+    },
+    "opioid_dependence": {
+      "label": "Opioid dependence",
+      "weight": 75,
+      "declared_by": []
+    },
+    "steroid_dependent": {
+      "label": "A condition needing long-term steroids",
+      "weight": 45,
+      "declared_by": []
+    }
+  },
+  "medications": [
+    {"generic": "metformin", "brands": ["Comet", "Glucophage"], "atc": "A10BA02", "conditions": ["diabetes"], "note": "occasionally prescribed for polycystic ovary syndrome"},
+    {"generic": "glimepiride", "brands": ["Amaryl"], "atc": "A10BB12", "conditions": ["diabetes"]},
+    {"generic": "gliclazide", "brands": ["Diamicron"], "atc": "A10BB09", "conditions": ["diabetes"]},
+    {"generic": "glibenclamide", "brands": ["Daonil", "glyburide"], "atc": "A10BB01", "conditions": ["diabetes"]},
+    {"generic": "sitagliptin", "brands": ["Januvia", "Janumet"], "atc": "A10BH01", "conditions": ["diabetes"]},
+    {"generic": "vildagliptin", "brands": ["Galvus"], "atc": "A10BH02", "conditions": ["diabetes"]},
+    {"generic": "linagliptin", "brands": ["Trajenta"], "atc": "A10BH05", "conditions": ["diabetes"]},
+    {"generic": "empagliflozin", "brands": ["Jardiance"], "atc": "A10BK03", "conditions": ["diabetes", "heart_failure"], "ambiguous": true},
+    {"generic": "dapagliflozin", "brands": ["Forxiga", "Farxiga"], "atc": "A10BK01", "conditions": ["diabetes", "heart_failure", "kidney_disease"], "ambiguous": true},
+    {"generic": "pioglitazone", "brands": ["Actos"], "atc": "A10BG03", "conditions": ["diabetes"]},
+    {"generic": "acarbose", "brands": ["Glucobay"], "atc": "A10BF01", "conditions": ["diabetes"]},
+    {"generic": "insulin", "brands": ["Mixtard", "Actrapid", "Insulatard", "Humulin", "NovoRapid", "Humalog", "Lantus", "Basalog", "Levemir", "Tresiba", "insulin glargine", "insulin aspart", "insulin lispro"], "atc": "A10A", "conditions": ["diabetes"]},
+
+    {"generic": "amlodipine", "brands": ["Amdocal", "Camlodin", "Norvasc"], "atc": "C08CA01", "conditions": ["hypertension"]},
+    {"generic": "losartan", "brands": ["Osartil", "Angilock", "Cozaar"], "atc": "C09CA01", "conditions": ["hypertension"]},
+    {"generic": "telmisartan", "brands": ["Micardis"], "atc": "C09CA07", "conditions": ["hypertension"]},
+    {"generic": "olmesartan", "brands": ["Olmetec", "Benicar"], "atc": "C09CA08", "conditions": ["hypertension"]},
+    {"generic": "valsartan", "brands": ["Diovan"], "atc": "C09CA03", "conditions": ["hypertension", "heart_failure"], "ambiguous": true},
+    {"generic": "ramipril", "brands": ["Tritace", "Altace"], "atc": "C09AA05", "conditions": ["hypertension", "heart_failure"], "ambiguous": true},
+    {"generic": "enalapril", "brands": ["Renitec", "Vasotec"], "atc": "C09AA02", "conditions": ["hypertension", "heart_failure"], "ambiguous": true},
+    {"generic": "lisinopril", "brands": ["Zestril"], "atc": "C09AA03", "conditions": ["hypertension", "heart_failure"], "ambiguous": true},
+    {"generic": "bisoprolol", "brands": ["Concor"], "atc": "C07AB07", "conditions": ["hypertension", "coronary_heart_disease", "heart_failure"], "ambiguous": true},
+    {"generic": "atenolol", "brands": ["Tenormin"], "atc": "C07AB03", "conditions": ["hypertension", "coronary_heart_disease"], "ambiguous": true},
+    {"generic": "metoprolol", "brands": ["Betaloc", "Lopressor"], "atc": "C07AB02", "conditions": ["hypertension", "coronary_heart_disease", "heart_failure"], "ambiguous": true},
+    {"generic": "carvedilol", "brands": ["Dilatrend"], "atc": "C07AG02", "conditions": ["heart_failure", "hypertension"], "ambiguous": true},
+    {"generic": "hydrochlorothiazide", "brands": ["HCTZ", "Esidrex"], "atc": "C03AA03", "conditions": ["hypertension"]},
+    {"generic": "indapamide", "brands": ["Natrilix"], "atc": "C03BA11", "conditions": ["hypertension"]},
+    {"generic": "methyldopa", "brands": ["Aldomet"], "atc": "C02AB01", "conditions": ["hypertension"]},
+    {"generic": "hydralazine", "brands": ["Apresoline"], "atc": "C02DB02", "conditions": ["hypertension", "heart_failure"], "ambiguous": true},
+
+    {"generic": "atorvastatin", "brands": ["Atova", "Lipitor"], "atc": "C10AA05", "conditions": ["high_cholesterol", "coronary_heart_disease"], "ambiguous": true},
+    {"generic": "rosuvastatin", "brands": ["Rosuva", "Crestor"], "atc": "C10AA07", "conditions": ["high_cholesterol", "coronary_heart_disease"], "ambiguous": true},
+    {"generic": "simvastatin", "brands": ["Zocor"], "atc": "C10AA01", "conditions": ["high_cholesterol", "coronary_heart_disease"], "ambiguous": true},
+    {"generic": "ezetimibe", "brands": ["Ezetrol", "Zetia"], "atc": "C10AX09", "conditions": ["high_cholesterol"]},
+    {"generic": "fenofibrate", "brands": ["Lipanthyl"], "atc": "C10AB05", "conditions": ["high_cholesterol"]},
+
+    {"generic": "aspirin", "brands": ["Carva", "Ecosprin", "Disprin", "acetylsalicylic acid"], "atc": "B01AC06", "conditions": ["coronary_heart_disease", "stroke", "high_cholesterol"], "ambiguous": true, "note": "low-dose aspirin is usually secondary prevention after a cardiac or cerebrovascular event; occasionally primary prevention"},
+    {"generic": "clopidogrel", "brands": ["Plavix"], "atc": "B01AC04", "conditions": ["coronary_heart_disease", "stroke"], "ambiguous": true},
+    {"generic": "ticagrelor", "brands": ["Brilinta"], "atc": "B01AC24", "conditions": ["coronary_heart_disease"]},
+    {"generic": "isosorbide mononitrate", "brands": ["Imdur", "Monocard", "isosorbide dinitrate", "Isordil"], "atc": "C01DA14", "conditions": ["coronary_heart_disease"]},
+    {"generic": "nitroglycerin", "brands": ["GTN", "glyceryl trinitrate", "Nitrocard", "Nitroderm"], "atc": "C01DA02", "conditions": ["coronary_heart_disease"]},
+    {"generic": "ranolazine", "brands": ["Ranexa"], "atc": "C01EB18", "conditions": ["coronary_heart_disease"]},
+    {"generic": "trimetazidine", "brands": ["Vastarel"], "atc": "C01EB15", "conditions": ["coronary_heart_disease"]},
+
+    {"generic": "furosemide", "brands": ["Fusid", "Lasix", "frusemide"], "atc": "C03CA01", "conditions": ["heart_failure", "kidney_disease"], "ambiguous": true},
+    {"generic": "spironolactone", "brands": ["Aldactone"], "atc": "C03DA01", "conditions": ["heart_failure"], "ambiguous": true, "note": "also used for resistant hypertension and liver cirrhosis"},
+    {"generic": "sacubitril/valsartan", "brands": ["Entresto", "sacubitril"], "atc": "C09DX04", "conditions": ["heart_failure"]},
+    {"generic": "ivabradine", "brands": ["Procoralan", "Coralan"], "atc": "C01EB17", "conditions": ["heart_failure", "coronary_heart_disease"], "ambiguous": true},
+    {"generic": "digoxin", "brands": ["Lanoxin"], "atc": "C01AA05", "conditions": ["heart_failure", "arrhythmia"], "ambiguous": true},
+
+    {"generic": "warfarin", "brands": ["Marevan", "Coumadin"], "atc": "B01AA03", "conditions": ["arrhythmia", "venous_thromboembolism", "stroke"], "ambiguous": true, "note": "also after a valve replacement"},
+    {"generic": "rivaroxaban", "brands": ["Xarelto"], "atc": "B01AF01", "conditions": ["arrhythmia", "venous_thromboembolism", "stroke"], "ambiguous": true},
+    {"generic": "apixaban", "brands": ["Eliquis"], "atc": "B01AF02", "conditions": ["arrhythmia", "venous_thromboembolism", "stroke"], "ambiguous": true},
+    {"generic": "dabigatran", "brands": ["Pradaxa"], "atc": "B01AE07", "conditions": ["arrhythmia", "venous_thromboembolism", "stroke"], "ambiguous": true},
+    {"generic": "enoxaparin", "brands": ["Clexane", "Lovenox"], "atc": "B01AB05", "conditions": ["venous_thromboembolism"], "note": "also given in hospital as prophylaxis; a course at home is treatment"},
+    {"generic": "amiodarone", "brands": ["Cordarone"], "atc": "C01BD01", "conditions": ["arrhythmia"]},
+    {"generic": "flecainide", "brands": ["Tambocor"], "atc": "C01BC04", "conditions": ["arrhythmia"]},
+
+    {"generic": "isoniazid", "brands": ["INH", "Rimstar", "Myrin-P", "Rifinah", "4FDC"], "atc": "J04AC01", "conditions": ["tuberculosis"]},
+    {"generic": "rifampicin", "brands": ["Rifadin", "Rimactane", "rifampin"], "atc": "J04AB02", "conditions": ["tuberculosis"]},
+    {"generic": "pyrazinamide", "brands": [], "atc": "J04AK01", "conditions": ["tuberculosis"]},
+    {"generic": "ethambutol", "brands": ["Myambutol"], "atc": "J04AK02", "conditions": ["tuberculosis"]},
+
+    {"generic": "tenofovir", "brands": ["Viread", "TLD", "tenofovir disoproxil", "tenofovir alafenamide"], "atc": "J05AF07", "conditions": ["hiv", "hepatitis_b"], "ambiguous": true},
+    {"generic": "efavirenz", "brands": ["Sustiva", "Stocrin"], "atc": "J05AG03", "conditions": ["hiv"]},
+    {"generic": "dolutegravir", "brands": ["Tivicay"], "atc": "J05AJ03", "conditions": ["hiv"]},
+    {"generic": "lamivudine", "brands": ["Epivir", "3TC"], "atc": "J05AF05", "conditions": ["hiv", "hepatitis_b"], "ambiguous": true},
+    {"generic": "zidovudine", "brands": ["Retrovir", "AZT"], "atc": "J05AF01", "conditions": ["hiv"]},
+    {"generic": "lopinavir/ritonavir", "brands": ["Kaletra", "Aluvia", "ritonavir"], "atc": "J05AR10", "conditions": ["hiv"]},
+    {"generic": "entecavir", "brands": ["Baraclude"], "atc": "J05AF10", "conditions": ["hepatitis_b"]},
+    {"generic": "sofosbuvir", "brands": ["Sovaldi", "Hopetavir", "Harvoni", "Epclusa", "velpatasvir", "ledipasvir"], "atc": "J05AP08", "conditions": ["hepatitis_c"]},
+    {"generic": "daclatasvir", "brands": ["Daklinza"], "atc": "J05AP07", "conditions": ["hepatitis_c"]},
+
+    {"generic": "salbutamol", "brands": ["Ventolin", "Sultolin", "Azmasol", "albuterol"], "atc": "R03AC02", "conditions": ["asthma_copd"]},
+    {"generic": "salmeterol/fluticasone", "brands": ["Seretide", "Ticamet", "Bexitrol F", "Advair"], "atc": "R03AK06", "conditions": ["asthma_copd"]},
+    {"generic": "budesonide/formoterol", "brands": ["Symbicort"], "atc": "R03AK07", "conditions": ["asthma_copd"]},
+    {"generic": "beclometasone", "brands": ["Beclomin", "Clenil"], "atc": "R03BA01", "conditions": ["asthma_copd"]},
+    {"generic": "montelukast", "brands": ["Montair", "Monas", "Provair", "Singulair"], "atc": "R03DC03", "conditions": ["asthma_copd"], "note": "also prescribed for allergic rhinitis"},
+    {"generic": "tiotropium", "brands": ["Spiriva"], "atc": "R03BB04", "conditions": ["asthma_copd"]},
+    {"generic": "theophylline", "brands": ["Uniphyllin", "doxofylline"], "atc": "R03DA04", "conditions": ["asthma_copd"]},
+
+    {"generic": "sodium valproate", "brands": ["Epilim", "Valex", "valproic acid", "divalproex", "Depakote"], "atc": "N03AG01", "conditions": ["epilepsy", "psychosis_bipolar"], "ambiguous": true},
+    {"generic": "carbamazepine", "brands": ["Tegretol"], "atc": "N03AF01", "conditions": ["epilepsy", "psychosis_bipolar"], "ambiguous": true},
+    {"generic": "levetiracetam", "brands": ["Keppra", "Levipil"], "atc": "N03AX14", "conditions": ["epilepsy"]},
+    {"generic": "phenytoin", "brands": ["Dilantin", "Epanutin"], "atc": "N03AB02", "conditions": ["epilepsy"]},
+    {"generic": "lamotrigine", "brands": ["Lamictal"], "atc": "N03AX09", "conditions": ["epilepsy", "psychosis_bipolar"], "ambiguous": true},
+    {"generic": "topiramate", "brands": ["Topamax"], "atc": "N03AX11", "conditions": ["epilepsy"], "note": "also prescribed for migraine"},
+    {"generic": "clobazam", "brands": ["Frisium"], "atc": "N05BA09", "conditions": ["epilepsy"]},
+
+    {"generic": "sertraline", "brands": ["Zoloft", "Serolux"], "atc": "N06AB06", "conditions": ["depression_anxiety"]},
+    {"generic": "escitalopram", "brands": ["Lexapro", "Nexcital", "Cipralex"], "atc": "N06AB10", "conditions": ["depression_anxiety"]},
+    {"generic": "fluoxetine", "brands": ["Prozac"], "atc": "N06AB03", "conditions": ["depression_anxiety"]},
+    {"generic": "paroxetine", "brands": ["Seroxat", "Paxil"], "atc": "N06AB05", "conditions": ["depression_anxiety"]},
+    {"generic": "venlafaxine", "brands": ["Efexor", "Effexor"], "atc": "N06AX16", "conditions": ["depression_anxiety"]},
+    {"generic": "mirtazapine", "brands": ["Remeron"], "atc": "N06AX11", "conditions": ["depression_anxiety"]},
+    {"generic": "amitriptyline", "brands": ["Tryptin", "Elavil"], "atc": "N06AA09", "conditions": ["depression_anxiety"], "ambiguous": true, "note": "low doses are common for nerve pain and migraine"},
+    {"generic": "olanzapine", "brands": ["Zyprexa", "Oleanz"], "atc": "N05AH03", "conditions": ["psychosis_bipolar"]},
+    {"generic": "risperidone", "brands": ["Risperdal"], "atc": "N05AX08", "conditions": ["psychosis_bipolar"]},
+    {"generic": "quetiapine", "brands": ["Seroquel"], "atc": "N05AH04", "conditions": ["psychosis_bipolar"]},
+    {"generic": "haloperidol", "brands": ["Haldol", "Serenace"], "atc": "N05AD01", "conditions": ["psychosis_bipolar"]},
+    {"generic": "lithium", "brands": ["Priadel", "Camcolit", "lithium carbonate"], "atc": "N05AN01", "conditions": ["psychosis_bipolar"]},
+
+    {"generic": "levothyroxine", "brands": ["Thyrox", "Thyronorm", "Eltroxin", "thyroxine"], "atc": "H03AA01", "conditions": ["thyroid"]},
+    {"generic": "carbimazole", "brands": ["Neo-Mercazole", "methimazole"], "atc": "H03BB01", "conditions": ["thyroid"]},
+    {"generic": "propylthiouracil", "brands": ["PTU"], "atc": "H03BA02", "conditions": ["thyroid"]},
+
+    {"generic": "tamoxifen", "brands": ["Nolvadex"], "atc": "L02BA01", "conditions": ["cancer"]},
+    {"generic": "letrozole", "brands": ["Femara"], "atc": "L02BG04", "conditions": ["cancer"]},
+    {"generic": "anastrozole", "brands": ["Arimidex"], "atc": "L02BG03", "conditions": ["cancer"]},
+    {"generic": "imatinib", "brands": ["Glivec", "Gleevec"], "atc": "L01EA01", "conditions": ["cancer"]},
+    {"generic": "bicalutamide", "brands": ["Casodex"], "atc": "L02BB03", "conditions": ["cancer"]},
+    {"generic": "capecitabine", "brands": ["Xeloda"], "atc": "L01BC06", "conditions": ["cancer"]},
+    {"generic": "goserelin", "brands": ["Zoladex", "leuprolide", "leuprorelin"], "atc": "L02AE03", "conditions": ["cancer"]},
+
+    {"generic": "methotrexate", "brands": ["Trexall"], "atc": "L04AX03", "conditions": ["autoimmune", "cancer"], "ambiguous": true, "note": "weekly low-dose methotrexate is rheumatoid arthritis or psoriasis; high-dose is chemotherapy"},
+    {"generic": "hydroxychloroquine", "brands": ["Plaquenil"], "atc": "P01BA02", "conditions": ["autoimmune"]},
+    {"generic": "sulfasalazine", "brands": ["Salazopyrin"], "atc": "A07EC01", "conditions": ["autoimmune"]},
+    {"generic": "mesalazine", "brands": ["Asacol", "Pentasa", "mesalamine"], "atc": "A07EC02", "conditions": ["autoimmune"]},
+    {"generic": "leflunomide", "brands": ["Arava"], "atc": "L04AA13", "conditions": ["autoimmune"]},
+    {"generic": "azathioprine", "brands": ["Imuran"], "atc": "L04AX01", "conditions": ["autoimmune", "transplant"], "ambiguous": true},
+    {"generic": "adalimumab", "brands": ["Humira", "infliximab", "Remicade", "etanercept", "Enbrel"], "atc": "L04AB04", "conditions": ["autoimmune"]},
+    {"generic": "prednisolone", "brands": ["Cortan", "Precodil", "prednisone", "Deltacortril"], "atc": "H02AB06", "conditions": ["steroid_dependent"], "ambiguous": true, "note": "a short course is ordinary; a maintenance dose means asthma, an autoimmune disease or a kidney condition"},
+
+    {"generic": "tacrolimus", "brands": ["Prograf", "Advagraf"], "atc": "L04AD02", "conditions": ["transplant"]},
+    {"generic": "mycophenolate", "brands": ["CellCept", "Myfortic", "mycophenolic acid"], "atc": "L04AA06", "conditions": ["transplant", "autoimmune"], "ambiguous": true},
+    {"generic": "cyclosporine", "brands": ["Neoral", "Sandimmun", "ciclosporin"], "atc": "L04AD01", "conditions": ["transplant", "autoimmune"], "ambiguous": true},
+
+    {"generic": "erythropoietin", "brands": ["Eprex", "epoetin", "darbepoetin", "Aranesp"], "atc": "B03XA01", "conditions": ["kidney_disease"]},
+    {"generic": "sevelamer", "brands": ["Renvela", "Renagel"], "atc": "V03AE02", "conditions": ["kidney_disease"]},
+    {"generic": "calcitriol", "brands": ["Rocaltrol", "alfacalcidol", "One-Alpha"], "atc": "A11CC04", "conditions": ["kidney_disease"], "ambiguous": true, "note": "also given after parathyroid surgery and for some bone disease"},
+    {"generic": "ketoanalogues", "brands": ["Ketosteril"], "atc": "V06DD", "conditions": ["kidney_disease"]},
+
+    {"generic": "donepezil", "brands": ["Aricept"], "atc": "N06DA02", "conditions": ["dementia"]},
+    {"generic": "memantine", "brands": ["Ebixa", "Namenda"], "atc": "N06DX01", "conditions": ["dementia"]},
+    {"generic": "rivastigmine", "brands": ["Exelon"], "atc": "N06DA03", "conditions": ["dementia", "parkinsons"], "ambiguous": true},
+    {"generic": "levodopa", "brands": ["Sinemet", "Madopar", "carbidopa", "levodopa/carbidopa"], "atc": "N04BA02", "conditions": ["parkinsons"]},
+    {"generic": "pramipexole", "brands": ["Mirapex", "Sifrol", "ropinirole", "Requip"], "atc": "N04BC05", "conditions": ["parkinsons"], "ambiguous": true, "note": "low doses treat restless legs"},
+
+    {"generic": "allopurinol", "brands": ["Zyloric"], "atc": "M04AA01", "conditions": ["gout"]},
+    {"generic": "febuxostat", "brands": ["Uloric", "Adenuric"], "atc": "M04AA03", "conditions": ["gout"]},
+    {"generic": "colchicine", "brands": ["Colcrys"], "atc": "M04AC01", "conditions": ["gout"]},
+    {"generic": "alendronate", "brands": ["Fosamax", "alendronic acid", "risedronate", "Actonel"], "atc": "M05BA04", "conditions": ["osteoporosis"]},
+    {"generic": "denosumab", "brands": ["Prolia"], "atc": "M05BX04", "conditions": ["osteoporosis"]},
+
+    {"generic": "varenicline", "brands": ["Champix", "Chantix"], "atc": "N07BA03", "conditions": ["smoking"]},
+    {"generic": "nicotine replacement", "brands": ["Nicotinell", "NiQuitin", "Nicorette", "nicotine patch", "nicotine gum"], "atc": "N07BA01", "conditions": ["smoking"]},
+    {"generic": "bupropion", "brands": ["Zyban", "Wellbutrin"], "atc": "N06AX12", "conditions": ["smoking", "depression_anxiety"], "ambiguous": true},
+    {"generic": "disulfiram", "brands": ["Antabuse"], "atc": "N07BB01", "conditions": ["alcohol_dependence"]},
+    {"generic": "acamprosate", "brands": ["Campral"], "atc": "N07BB03", "conditions": ["alcohol_dependence"]},
+    {"generic": "naltrexone", "brands": ["Revia", "Nodict"], "atc": "N07BB04", "conditions": ["alcohol_dependence", "opioid_dependence"], "ambiguous": true},
+    {"generic": "buprenorphine", "brands": ["Subutex", "Suboxone"], "atc": "N07BC01", "conditions": ["opioid_dependence"]},
+    {"generic": "methadone", "brands": ["Physeptone"], "atc": "N07BC02", "conditions": ["opioid_dependence"]},
+
+    {"generic": "omeprazole", "brands": ["Seclo", "Losectil", "Xeldrin", "Losec"], "atc": "A02BC01", "conditions": []},
+    {"generic": "esomeprazole", "brands": ["Maxpro", "Nexum", "Nexium"], "atc": "A02BC05", "conditions": []},
+    {"generic": "pantoprazole", "brands": ["Pantonix", "Protonix"], "atc": "A02BC02", "conditions": []},
+    {"generic": "paracetamol", "brands": ["Napa", "Ace", "Panadol", "acetaminophen"], "atc": "N02BE01", "conditions": []},
+    {"generic": "diclofenac", "brands": ["Voltaren", "Dinac"], "atc": "M01AB05", "conditions": []},
+    {"generic": "ibuprofen", "brands": ["Brufen", "Advil"], "atc": "M01AE01", "conditions": []},
+    {"generic": "naproxen", "brands": ["Naprosyn"], "atc": "M01AE02", "conditions": []},
+    {"generic": "cetirizine", "brands": ["Alatrol", "Zyrtec"], "atc": "R06AE07", "conditions": []},
+    {"generic": "fexofenadine", "brands": ["Fexo", "Telfast", "Allegra"], "atc": "R06AX26", "conditions": []},
+    {"generic": "amoxicillin", "brands": ["Moxacil", "Fimoxyl", "Amoxil", "co-amoxiclav", "Augmentin"], "atc": "J01CA04", "conditions": []},
+    {"generic": "penicillin", "brands": ["penicillin V", "phenoxymethylpenicillin", "benzylpenicillin"], "atc": "J01CE", "conditions": []},
+    {"generic": "azithromycin", "brands": ["Zithromax", "Azin", "Zimax"], "atc": "J01FA10", "conditions": []},
+    {"generic": "ciprofloxacin", "brands": ["Ciprocin", "Cipro"], "atc": "J01MA02", "conditions": []},
+    {"generic": "metronidazole", "brands": ["Flagyl", "Filmet"], "atc": "J01XD01", "conditions": []},
+    {"generic": "domperidone", "brands": ["Motilium", "Omidon"], "atc": "A03FA03", "conditions": []},
+    {"generic": "ondansetron", "brands": ["Zofran", "Emistat"], "atc": "A04AA01", "conditions": []},
+    {"generic": "tamsulosin", "brands": ["Flomax", "Tamsin"], "atc": "G04CA02", "conditions": []},
+    {"generic": "sildenafil", "brands": ["Viagra"], "atc": "G04BE03", "conditions": []},
+    {"generic": "multivitamin", "brands": ["vitamin D", "calcium", "folic acid", "iron", "ferrous sulphate", "vitamin B12"], "atc": "A11", "conditions": []}
+  ]
+}

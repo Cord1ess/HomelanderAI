@@ -69,20 +69,37 @@ class Arm:
     # Exactly one of these. A file arm reads the bytes of the evidence kinds it
     # `accepts`. A form arm reads what the operator typed — the applicant's
     # declared answers, age and sex — and runs once per application, so its
-    # `accepts` is empty and no file is ever routed to it.
+    # `accepts` is empty and no file is ever routed to it. An arm that reads a
+    # file *against* the form — a note whose prescriptions are compared with
+    # what was declared — takes both, once per file.
     run: Callable[[bytes], ArmResult] | None = None
     run_form: Callable[[dict, int | None, str | None], ArmResult] | None = None
+    run_with_form: Callable[[bytes, dict], ArmResult] | None = None
 
     def __post_init__(self) -> None:
-        if (self.run is None) == (self.run_form is None):
-            raise ValueError(f"arm {self.name!r} must define exactly one of run / run_form")
+        modes = [m for m in (self.run, self.run_form, self.run_with_form) if m is not None]
+        if len(modes) != 1:
+            raise ValueError(
+                f"arm {self.name!r} must define exactly one of run / run_form / run_with_form"
+            )
         if self.run_form is not None and self.accepts:
             raise ValueError(f"form arm {self.name!r} must not accept evidence kinds")
+        if self.run_form is None and not self.accepts:
+            raise ValueError(f"file arm {self.name!r} must accept at least one evidence kind")
+
+    def read(self, raw: bytes, declared: dict) -> ArmResult:
+        """Run a file arm on one piece of evidence, with the form beside it
+        for the arms that compare the two."""
+        if self.run is not None:
+            return self.run(raw)
+        if self.run_with_form is not None:
+            return self.run_with_form(raw, declared)
+        raise TypeError(f"arm {self.name!r} reads the form, not a file")
 
 
 # Imported at the bottom on purpose: the arm modules do `from app.arms import
 # ArmResult`, and by this point ArmResult is defined, so there is no cycle.
-from app.arms import dr_fundus, ecg_12lead, mortality, tb_xray  # noqa: E402
+from app.arms import dr_fundus, ecg_12lead, medication_check, mortality, tb_xray  # noqa: E402
 
 
 def arms_for(kind: EvidenceKind | str) -> list[Arm]:
@@ -149,6 +166,18 @@ ARMS: dict[str, Arm] = {
         validation=ecg_12lead.VALIDATION,
         run=ecg_12lead.run,
         available=ecg_12lead.available,
+    ),
+    medication_check.NAME: Arm(
+        name=medication_check.NAME,
+        version=medication_check.VERSION,
+        arm_type="nlp",
+        intake_id="biobert",
+        accepts=frozenset({EvidenceKind.DOCUMENT}),
+        preprocessing_version=medication_check.PREPROCESSING_VERSION,
+        weight_hash=medication_check.WEIGHT_HASH,
+        validation=medication_check.VALIDATION,
+        run_with_form=medication_check.run_with_form,
+        available=medication_check.available,
     ),
     mortality.NAME: Arm(
         name=mortality.NAME,

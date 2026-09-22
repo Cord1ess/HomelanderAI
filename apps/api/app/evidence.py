@@ -30,7 +30,8 @@ class EvidenceKind(StrEnum):
     # A 12-lead tracing exported as a signal file, not a picture of one.
     ECG = "ecg"
     # Lab results, discharge summaries, physician notes, prescriptions. Stored
-    # and shown to the underwriter, but no arm reads them yet.
+    # as text and shown to the underwriter; the medication check reads the
+    # prescriptions in them against the declared history.
     DOCUMENT = "document"
     UNKNOWN = "unknown"
 

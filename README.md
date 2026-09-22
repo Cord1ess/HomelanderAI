@@ -132,6 +132,7 @@ docs/
   RETINA.md             how retinopathy screening works, and which numbers to trust
   MORTALITY.md          how the blood-panel arm turns nine values into a mortality ratio
   ECG.md                how the 12-lead ECG arm reads a tracing, and what its numbers mean
+  MEDICATIONS.md        how a note's prescriptions are checked against the declared history
   DATABASE.md           schema changes needed (handoff)
   DASHBOARD.md          screens, intake form, API contract (handoff)
   PHASE1_PLAN.md        TB screening + scoring, in three commits

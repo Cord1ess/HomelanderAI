@@ -1,0 +1,28 @@
+DISCHARGE SUMMARY (fictional, for demonstration)
+
+Patient: Mr. Abdul Karim, 54 M
+Admitted: 03/02/2026   Discharged: 07/02/2026
+Ward: Medicine, Unit 2
+
+Presenting complaint: Productive cough and fever for 5 days.
+
+Diagnosis: Community-acquired pneumonia, right lower zone. Resolved on IV then oral antibiotics.
+
+Past history: Known case of DM for 8 years. Pressure controlled on tablets.
+No history of asthma. Mother has thyroid disease and takes levothyroxine.
+Allergic to penicillin (rash 2019).
+
+Medications on discharge:
+1. Comet 500 mg 1+0+1 (continue)
+2. Amdocal 5 mg 1+0+0 (continue)
+3. Atova 10 mg 0+0+1 (continue)
+4. Carva 75 mg 0+1+0 (continue)
+5. Seclo 20 mg 1+0+1 for 2 weeks
+6. Azithromycin 500 mg 1+0+0 for 3 more days
+7. Napa 500 mg as needed for fever
+8. Sultolin inhaler 2 puffs as needed for wheeze
+
+Stopped warfarin in 2024 after completing 6 months for DVT.
+Consider adding insulin if HbA1c remains above 9 at next review.
+
+Follow-up: Medicine OPD in 2 weeks with CBC and HbA1c.

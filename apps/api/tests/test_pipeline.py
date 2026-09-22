@@ -88,11 +88,11 @@ def test_one_bad_file_does_not_sink_a_good_one():
     if not tb_xray.available():
         pytest.skip("vision extra not installed")
 
-    result = evaluate([(b"junk", "bad.txt"), (png(), "chest.png")], history())
+    result = evaluate([(b"\x00\x01junk", "bad.bin"), (png(), "chest.png")], history())
 
     assert result.status == STATUS_SCORED
     assert result.crs is not None
-    assert any("bad.txt" in e for e in result.errors), "the failure should still be recorded"
+    assert any("bad.bin" in e for e in result.errors), "the failure should still be recorded"
 
 
 # ── scoring path ─────────────────────────────────────────────────────────────
@@ -263,14 +263,14 @@ def test_unclassified_evidence_is_stored_but_not_scored():
 
 
 def test_evidence_no_model_reads_is_reported_not_dropped():
-    """Lab reports and notes have no arm yet. The underwriter is told they
-    exist and were not read, rather than the platform pretending otherwise."""
+    """A mammogram has no arm yet. The underwriter is told it exists and was
+    not read, rather than the platform pretending otherwise."""
     image = png()
-    processed = process_upload(image, "bloods.png")
+    processed = process_upload(image, "mammo.png")
     result = evaluate(
-        [(image, "bloods.png")],
+        [(image, "mammo.png")],
         history(),
-        kinds={processed.content_hash: EvidenceKind.DOCUMENT},
+        kinds={processed.content_hash: EvidenceKind.MAMMOGRAM},
     )
 
     assert result.runs == []

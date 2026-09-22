@@ -246,12 +246,14 @@ const MODELS: ModelDef[] = [
   },
   {
     id: 'biobert',
-    label: 'BioBERT',
-    modality: 'Clinical NLP · EHR',
+    label: 'Clinical notes and prescriptions',
+    modality: 'Medication check · disclosure',
     upload: {
       category: 'Clinical note',
       accept: DOCUMENT,
-      instruction: 'Clinical note / physician report — .pdf or .txt',
+      // A scanned PDF has no text layer and is refused with that reason; the
+      // note has to be the exported or typed text.
+      instruction: 'Discharge summary, prescription or physician report — .pdf (with text) or .txt',
     },
     fields: [],
   },

@@ -59,9 +59,9 @@ CATALOGUE: list[CatalogueEntry] = [
     ),
     CatalogueEntry(
         id="biobert",
-        label="Clinical notes",
-        evidence="Physician note (.pdf, .txt)",
-        screens_for="History extracted from written notes",
+        label="Clinical notes and prescriptions",
+        evidence="Discharge summary, prescription or physician note (.pdf with text, .txt)",
+        screens_for="Medications that imply a condition the form did not declare",
     ),
     CatalogueEntry(
         id="xgboost",

@@ -516,8 +516,9 @@ async def _store_evidence(
             rejected.append(f"{upload.filename}: {exc}")
             continue
 
-        # The signal keeps its own extension: what is on disk is what the arm read.
-        extension = "npy" if processed.source_format == "ecg" else "png"
+        # Each stored form keeps its own extension: what is on disk is what
+        # the arm read — a PNG, an ECG signal, or a note's text.
+        extension = {"ecg": "npy", "document": "txt"}.get(processed.source_format, "png")
         path = storage.write(
             principal.tenant_id,
             application.id,
@@ -555,6 +556,7 @@ async def _store_evidence(
                 file_type={
                     "dicom": EvidenceFileType.DICOM,
                     "ecg": EvidenceFileType.ECG,
+                    "document": EvidenceFileType.CLINICAL_NOTE,
                 }.get(processed.source_format, EvidenceFileType.IMAGE),
                 storage_path=path,
                 original_filename=upload.filename,
@@ -1529,6 +1531,10 @@ async def get_file(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="The record exists but its file is missing from storage.",
         )
+
+    # A note is served as the text it is, for the underwriter to read.
+    if absolute.suffix == ".txt":
+        return Response(content=absolute.read_bytes(), media_type="text/plain; charset=utf-8")
 
     # A stored ECG is a signal array. The review screen asks for a picture, so
     # it is drawn on the way out; the signal itself is what the model read.

@@ -132,7 +132,7 @@ def evaluate(
             if not arm.available():
                 errors.append(f"{arm.name}: unavailable")
                 continue
-            result = arm.run(item.data)
+            result = arm.read(item.data, declared_history or {})
             runs.append(
                 ArmRun(
                     arm_name=arm.name,
