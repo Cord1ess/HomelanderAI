@@ -4,10 +4,10 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useState } from 'react'
 
 import { getTenantSettings, updateTenantSettings } from '../../api/client'
+import { LastChanged } from './LastChanged'
 
 /**
- * The one company-wide setting: how long applicants are told a decision
- * usually takes.
+ * How long clients are told a decision usually takes.
  *
  * It is a promise, so it is stated in working days and applied to future
  * applicants only. An application already told "by Wednesday" keeps
@@ -34,6 +34,7 @@ export function TurnaroundCard() {
     onSuccess: (settings) => {
       setEdited(undefined)
       void queryClient.invalidateQueries({ queryKey: ['tenant-settings'] })
+      void queryClient.invalidateQueries({ queryKey: ['tenant-settings-history'] })
       void queryClient.invalidateQueries({ queryKey: ['auth', 'me'] })
       notifications.show({
         title: 'Saved',
@@ -59,7 +60,7 @@ export function TurnaroundCard() {
         Turnaround promise
       </Text>
       <Text size="sm" mt={4} mb="xs">
-        Applicants are told a decision usually takes this many working days.
+        Clients are told a decision usually takes this many working days.
         Weekends are not counted.
       </Text>
       <Group align="flex-end" gap="sm">
@@ -85,6 +86,7 @@ export function TurnaroundCard() {
       <Text size="xs" c="dimmed" mt="xs">
         Applies to applications submitted from now on. Dates already given are not moved.
       </Text>
+      <LastChanged fields={['turnaround_business_days']} />
     </Card>
   )
 }

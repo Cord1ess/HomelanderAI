@@ -4,7 +4,6 @@ import {
   Badge,
   Box,
   Button,
-  Card,
   Group,
   Paper,
   SimpleGrid,
@@ -17,20 +16,18 @@ import {
 } from '@mantine/core'
 import {
   IconAlertCircle,
-  IconCheck,
   IconClock,
   IconEye,
-  IconFlame,
   IconRefresh,
   IconSearch,
-  IconShieldCheck,
-  IconStethoscope,
 } from '@tabler/icons-react'
 import { keepPreviousData, useQuery } from '@tanstack/react-query'
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
 
 import { getQueue, type QueueItem } from '../../api/client'
+import { PageHeader } from '../../components/PageHeader'
+import { Stat } from '../../components/Stat'
 import { TierBadge } from '../../components/TierBadge'
 
 /**
@@ -61,124 +58,50 @@ export function EscalationsPage() {
     placeholderData: keepPreviousData,
   })
 
-  // Filter specifically for escalated / Tier 3 items
+  // The API decides the tier, with the carrier's thresholds. This screen used
+  // to add its own rule (score above 45), which put applications here that the
+  // system had not escalated and labelled the cut-off with a number that was
+  // never the real one.
   const allItems = data?.items ?? []
-  const escalatedRows = allItems.filter(
-    (item) => item.tier === 'elevated' || (item.crs != null && item.crs > 45),
-  )
+  const escalatedRows = allItems.filter((item) => item.tier === 'elevated')
 
   const pendingDecisionCount = escalatedRows.filter((item) => item.status !== 'decided').length
   const decidedCount = escalatedRows.filter((item) => item.status === 'decided').length
+  const waiting = escalatedRows.filter((item) => item.status !== 'decided')
   const avgCrs =
-    escalatedRows.length > 0
-      ? (
-          escalatedRows.reduce((acc, curr) => acc + (curr.crs ?? 0), 0) / escalatedRows.length
-        ).toFixed(1)
+    waiting.length > 0
+      ? (waiting.reduce((acc, curr) => acc + (curr.crs ?? 0), 0) / waiting.length).toFixed(1)
       : '—'
 
   return (
     <Stack gap="md">
-      {/* ── Header ─────────────────────────────────────────── */}
-      <Group justify="space-between" align="flex-end" wrap="wrap">
-        <div>
-          <Group gap="xs" align="center">
-            <Text size="lg" fw={700}>
-              Escalations Command Center
-            </Text>
-            <Badge color="grape" variant="filled" size="sm" leftSection={<IconFlame size={12} />}>
-              Medical Officer Review
-            </Badge>
-          </Group>
-          <Text size="xs" c="dimmed">
-            Mandatory human-in-the-loop review queue for Tier 3 (Elevated Risk) policy applications
-          </Text>
-        </div>
-        <Group gap="xs">
-          <Tooltip label="Refresh triage queue" withArrow>
-            <ActionIcon variant="light" color="grape" onClick={() => void refetch()} loading={isFetching}>
+      <PageHeader
+        screen="escalations"
+        actions={
+          <Tooltip label="Check for new escalations" withArrow>
+            <ActionIcon
+              variant="light"
+              color="grape"
+              aria-label="Refresh"
+              onClick={() => void refetch()}
+              loading={isFetching}
+            >
               <IconRefresh size={16} />
             </ActionIcon>
           </Tooltip>
-        </Group>
-      </Group>
-
-      {/* ── KPI Clinical Metrics Strip ───────────────────────── */}
-      <SimpleGrid cols={{ base: 1, sm: 2, md: 4 }} spacing="sm">
-        <Card p="sm" bd="1px solid var(--neo-danger)">
-          <Group justify="space-between">
-            <Text size="xs" c="dimmed" fw={600}>
-              Pending Medical Review
-            </Text>
-            <Badge color="red" variant="filled" size="xs">
-              SLA Priority
-            </Badge>
-          </Group>
-          <Text fz="xl" fw={700} c="red.4" mt={4}>
-            {pendingDecisionCount}
-          </Text>
-          <Text size="xs" c="dimmed">
-            Tier 3 cases awaiting your binding decision
-          </Text>
-        </Card>
-
-        <Card p="sm">
-          <Group justify="space-between">
-            <Text size="xs" c="dimmed" fw={600}>
-              Average Escalated CRS
-            </Text>
-            <IconFlame size={16} color="orange" />
-          </Group>
-          <Text fz="xl" fw={700} c="orange.4" mt={4} ff="monospace">
-            {avgCrs}
-          </Text>
-          <Text size="xs" c="dimmed">
-            Cut-off threshold: &gt; 50.0 points
-          </Text>
-        </Card>
-
-        <Card p="sm">
-          <Group justify="space-between">
-            <Text size="xs" c="dimmed" fw={600}>
-              Resolved & Bound
-            </Text>
-            <IconCheck size={16} color="teal" />
-          </Group>
-          <Text fz="xl" fw={700} c="teal.4" mt={4}>
-            {decidedCount}
-          </Text>
-          <Text size="xs" c="dimmed">
-            Completed Medical Professional sign-offs
-          </Text>
-        </Card>
-
-        <Card p="sm">
-          <Group justify="space-between">
-            <Text size="xs" c="dimmed" fw={600}>
-              Regulatory Stance
-            </Text>
-            <IconShieldCheck size={16} color="var(--mantine-color-clinical-3)" />
-          </Group>
-          <Text fz="sm" fw={600} mt={6}>
-            Zero Auto-Rejection
-          </Text>
-          <Text size="xs" c="dimmed">
-            Every elevated case receives human medical oversight
-          </Text>
-        </Card>
-      </SimpleGrid>
-
-      {/* ── Operational Guidance Banner ─────────────────────── */}
-      <Alert
-        color="grape"
-        variant="light"
-        icon={<IconStethoscope size={18} />}
-        title="Clinical Underwriting Protocol"
+        }
       >
-        <Text size="xs">
-          As a Medical Professional, verify the 18 DenseNet vision findings against declared
-          symptoms and the Grad-CAM lung heatmap overlay. Underwriters cannot finalize Tier 3 cases without your sign-off.
-        </Text>
-      </Alert>
+        <SimpleGrid cols={{ base: 1, sm: 3 }} spacing="xs">
+          <Stat
+            label="Waiting for your decision"
+            value={pendingDecisionCount}
+            color="red"
+            hint="Elevated risk. An underwriter cannot decide these."
+          />
+          <Stat label="Average score of those waiting" value={avgCrs} color="orange" hint="Out of 100" />
+          <Stat label="Decided" value={decidedCount} color="teal" hint="Escalations already closed" />
+        </SimpleGrid>
+      </PageHeader>
 
       {/* ── Search & Filter Bar ─────────────────────────────── */}
       <Group justify="space-between" align="center">
@@ -190,8 +113,8 @@ export function EscalationsPage() {
           onChange={(e) => setQuery(e.currentTarget.value)}
           w={280}
         />
-        <Text size="xs" c="dimmed">
-          Showing {escalatedRows.length} escalated application{escalatedRows.length === 1 ? '' : 's'}
+        <Text size="xs" style={{ color: 'var(--neo-muted)' }}>
+          {escalatedRows.length} escalated application{escalatedRows.length === 1 ? '' : 's'}
         </Text>
       </Group>
 
@@ -291,11 +214,11 @@ function EscalationRow({ row }: { row: QueueItem }) {
       <Table.Td>
         {isDecided ? (
           <Badge color="teal" variant="light" size="sm">
-            Adjudicated
+            Decided
           </Badge>
         ) : (
           <Badge color="orange" variant="light" size="sm">
-            Awaiting Medical Review
+            Waiting for your decision
           </Badge>
         )}
       </Table.Td>
@@ -308,7 +231,7 @@ function EscalationRow({ row }: { row: QueueItem }) {
           color="grape"
           leftSection={<IconEye size={13} />}
         >
-          {isDecided ? 'View audit' : 'Adjudicate'}
+          {isDecided ? 'Open' : 'Decide'}
         </Button>
       </Table.Td>
     </Table.Tr>

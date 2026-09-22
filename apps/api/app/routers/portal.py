@@ -29,6 +29,7 @@ from app.models import (
     Applicant,
     Application,
     RequestedDocument,
+    Tenant,
     UnderwriterDecision,
     UnderwriterDecisionType,
 )
@@ -205,9 +206,12 @@ async def _status_for(db: AsyncSession, applicant: Applicant) -> PortalStatusSch
         # not, and means the standard rate for the cover that was asked for.
         premium = decision.final_premium
         if premium is None:
+            tenant = await db.get(Tenant, applicant.tenant_id)
+            policy = plans.Policy.from_tenant(tenant) if tenant else plans.DEFAULT_POLICY
             premium = plans.monthly_premium(
                 plan_key,
                 float(application.coverage_amount) if application.coverage_amount else None,
+                policy,
             )
         offer = PortalOfferSchema(
             outcome=outcome,

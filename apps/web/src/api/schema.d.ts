@@ -196,10 +196,10 @@ export interface paths {
         };
         /**
          * The plan for each risk tier, priced for a given cover
-         * @description What each tier means for the policy.
+         * @description What each tier means for the policy, under this company's settings.
          *
          *     Premiums are worked out here rather than in the dashboard so one change to
-         *     `plans.py` moves every screen at once.
+         *     the company's policy moves every screen at once.
          */
         get: operations["get_pricing_api_pricing_get"];
         put?: never;
@@ -487,7 +487,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** This carrier's settings */
+        /** This company's settings */
         get: operations["get_settings_api_tenant_settings_get"];
         put?: never;
         post?: never;
@@ -495,12 +495,33 @@ export interface paths {
         options?: never;
         head?: never;
         /**
-         * Change this carrier's settings (admin only)
-         * @description Only an administrator sets the default. The figure is what every future
-         *     applicant is promised, which is a company decision rather than a case one.
-         *     Applications already submitted keep the date they were given.
+         * Change this company's settings (admin only)
+         * @description Only an administrator changes company defaults. Fields left out are left
+         *     alone. The relationship between the two tier boundaries is checked against
+         *     what will be stored, so sending one without the other cannot cross them.
          */
         patch: operations["update_settings_api_tenant_settings_patch"];
+        trace?: never;
+    };
+    "/api/tenant/settings/history": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Who changed which setting, and from what
+         * @description Newest first, the last 50. Any member of the company may read it: the
+         *     settings apply to everyone's work, so their history is not secret.
+         */
+        get: operations["settings_history_api_tenant_settings_history_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
         trace?: never;
     };
     "/api/portal/login": {
@@ -1222,6 +1243,25 @@ export interface components {
              */
             computedAt: string;
         };
+        /**
+         * SettingsChangeSchema
+         * @description One recorded change to the company's settings.
+         */
+        SettingsChangeSchema: {
+            /**
+             * Changedat
+             * Format: date-time
+             */
+            changedAt: string;
+            /** Actorname */
+            actorName: string | null;
+            /** Changes */
+            changes: {
+                [key: string]: {
+                    [key: string]: number | null;
+                };
+            };
+        };
         /** SubmitResponseSchema */
         SubmitResponseSchema: {
             /**
@@ -1259,10 +1299,27 @@ export interface components {
              */
             createdAt: string;
         };
-        /** TenantSettingsIn */
+        /**
+         * TenantSettingsIn
+         * @description A partial update: only the fields sent are changed.
+         *
+         *     Ranges here; the relationship between the two boundaries is checked in the
+         *     endpoint against the values that will actually be stored, because one may
+         *     be sent without the other.
+         */
         TenantSettingsIn: {
             /** Turnaroundbusinessdays */
-            turnaroundBusinessDays: number;
+            turnaroundBusinessDays?: number | null;
+            /** Tierlowmax */
+            tierLowMax?: number | null;
+            /** Tiermoderatemax */
+            tierModerateMax?: number | null;
+            /** Premiumlowbdt */
+            premiumLowBdt?: number | null;
+            /** Premiummoderatebdt */
+            premiumModerateBdt?: number | null;
+            /** Referencecoverbdt */
+            referenceCoverBdt?: number | null;
         };
         /** TenantSettingsSchema */
         TenantSettingsSchema: {
@@ -1270,6 +1327,16 @@ export interface components {
             name: string;
             /** Turnaroundbusinessdays */
             turnaroundBusinessDays: number;
+            /** Tierlowmax */
+            tierLowMax: number;
+            /** Tiermoderatemax */
+            tierModerateMax: number;
+            /** Premiumlowbdt */
+            premiumLowBdt: number;
+            /** Premiummoderatebdt */
+            premiumModerateBdt: number;
+            /** Referencecoverbdt */
+            referenceCoverBdt: number;
         };
         /**
          * TurnaroundIn
@@ -2216,6 +2283,37 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["TenantSettingsSchema"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    settings_history_api_tenant_settings_history_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: {
+                session_token?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SettingsChangeSchema"][];
                 };
             };
             /** @description Validation Error */

@@ -19,11 +19,10 @@ import {
   IconChevronsRight,
   IconFilePlus,
   IconFlame,
-  IconLayoutDashboard,
+  IconLayoutList,
   IconLogout,
   IconReceipt,
-  IconShieldCheck,
-  IconStethoscope,
+  IconSettings,
   IconUser,
   IconUserCircle,
   IconUsers,
@@ -33,26 +32,30 @@ import { NavLink as RouterLink, Outlet, useLocation, useNavigate } from 'react-r
 
 import { getNotifications } from '../../api/client'
 import { BrandIcon } from '../../components/BrandIcon'
+import { PageTransition } from '../../components/PageTransition'
 import { ThemeToggle } from '../../components/ThemeToggle'
 import { useAuth } from '../../context/AuthContext'
+import { navFor, type Screen, type ScreenId } from '../../screens'
 import { ROLE_LABEL } from '../../types/auth'
 import type { UserRole } from '../../types/auth'
 
 /**
- * ERP-style shell for the authenticated dashboard.
+ * The console shell: a sidebar of screens for this role, a slim header with
+ * the things that are not about any one screen (notifications, theme, account),
+ * and the screen itself.
  *
- * Role-aware: renders dedicated workspaces, customized navbars, and distinct
- * privilege badges for the three roles: Underwriter, Medical Professional and Administrator.
+ * The sidebar is built from src/screens.ts, so its labels are the same words
+ * as each screen's title. The header carries no title: every screen states its
+ * own, with a line under it saying what it is for.
  */
 export function AppLayout() {
-  const { user } = useAuth()
+  const { user, tenant } = useAuth()
   const [navOpened, { toggle: toggleNav }] = useDisclosure(true)
-  const [mobileOpened, { toggle: toggleMobile }] = useDisclosure(false)
+  const [mobileOpened, { toggle: toggleMobile, close: closeMobile }] = useDisclosure(false)
   const location = useLocation()
 
   const role = user?.role ?? 'underwriter'
-  const title = routeFor(location.pathname, role)?.title
-  const navItems = getNavForRole(role)
+  const navItems = navFor(role)
 
   // Shares its cache key with the notifications screen, so opening one and
   // marking something read updates the badge without a second request.
@@ -67,61 +70,54 @@ export function AppLayout() {
     <AppShell
       header={{ height: 44 }}
       navbar={{
-        width: navOpened ? 240 : 56,
+        width: navOpened ? 232 : 56,
         breakpoint: 'sm',
         collapsed: { mobile: !mobileOpened },
       }}
-      padding="md"
-      transitionDuration={150}
+      padding="lg"
+      transitionDuration={200}
     >
       <AppShell.Header>
         <Group h="100%" px="sm" justify="space-between" gap="sm" wrap="nowrap">
           <Group gap="sm" wrap="nowrap">
-            <Burger
-              opened={mobileOpened}
-              onClick={toggleMobile}
-              hiddenFrom="sm"
-              size="sm"
-            />
-            <ActionIcon
-              variant="subtle"
-              aria-label="Toggle sidebar"
-              onClick={toggleNav}
-              visibleFrom="sm"
-            >
-              {navOpened ? (
-                <IconChevronsLeft size={16} />
-              ) : (
-                <IconChevronsRight size={16} />
-              )}
-            </ActionIcon>
-            <Text size="sm" fw={600}>
-              {title}
+            <Burger opened={mobileOpened} onClick={toggleMobile} hiddenFrom="sm" size="sm" />
+            <Tooltip label={navOpened ? 'Hide the sidebar' : 'Show the sidebar'} withArrow>
+              <ActionIcon
+                variant="subtle"
+                aria-label={navOpened ? 'Hide the sidebar' : 'Show the sidebar'}
+                onClick={toggleNav}
+                visibleFrom="sm"
+              >
+                {navOpened ? <IconChevronsLeft size={16} /> : <IconChevronsRight size={16} />}
+              </ActionIcon>
+            </Tooltip>
+            <Text size="sm" fw={600} visibleFrom="xs">
+              {tenant?.name ?? 'HomelanderAI'}
             </Text>
-            <Badge color={ROLE_COLOR[role]} variant="filled" size="xs">
-              {ROLE_LABEL[role]}
-            </Badge>
           </Group>
 
           <Group gap={6} wrap="nowrap">
-            <ActionIcon
-              variant="subtle"
-              component={RouterLink}
-              to="/notifications"
-              aria-label="Notifications"
-            >
-              <IconBell size={18} />
-              {unread > 0 && (
-                <Badge
-                  size="xs"
-                  color="red"
-                  variant="filled"
-                  style={{ position: 'absolute', top: 2, right: 2 }}
-                >
-                  {unread}
-                </Badge>
-              )}
-            </ActionIcon>
+            <Tooltip label={unread > 0 ? `${unread} unread` : 'Notifications'} withArrow>
+              <ActionIcon
+                variant="subtle"
+                component={RouterLink}
+                to="/notifications"
+                aria-label={unread > 0 ? `Notifications, ${unread} unread` : 'Notifications'}
+              >
+                <IconBell size={18} />
+                {unread > 0 && (
+                  <Badge
+                    size="xs"
+                    color="red"
+                    variant="filled"
+                    className="unread-badge"
+                    style={{ position: 'absolute', top: 2, right: 2 }}
+                  >
+                    {unread}
+                  </Badge>
+                )}
+              </ActionIcon>
+            </Tooltip>
             <ThemeToggle />
             <UserMenu />
           </Group>
@@ -132,8 +128,8 @@ export function AppLayout() {
         <Group px={navOpened ? 'xs' : 0} py="xs" justify="center">
           <Box
             style={{
-              width: navOpened ? 88 : 40,
-              height: navOpened ? 88 : 40,
+              width: navOpened ? 72 : 36,
+              height: navOpened ? 72 : 36,
               borderRadius: '50%',
               overflow: 'hidden',
               display: 'flex',
@@ -142,32 +138,56 @@ export function AppLayout() {
               backgroundColor: '#fff', // the mark is drawn for a white disc
               border: '1px solid var(--neo-border-mid)',
               boxShadow: '0 2px 10px var(--neo-shadow)',
+              transition: 'width var(--motion-base) var(--ease-out), height var(--motion-base) var(--ease-out)',
             }}
           >
             <BrandIcon
-              width={navOpened ? 68 : 30}
-              height={navOpened ? 68 : 30}
+              width={navOpened ? 56 : 28}
+              height={navOpened ? 56 : 28}
               style={{ display: 'block', flex: 'none' }}
             />
           </Box>
         </Group>
 
         <Box flex={1} mt="xs">
-          {navItems.map((item) => (
+          {navItems.map((screen) => (
             <NavItem
-              key={item.to}
-              to={item.to}
-              label={item.label}
-              icon={item.icon}
+              key={screen.id}
+              screen={screen}
               collapsed={!navOpened}
-              active={location.pathname === item.to || (item.to !== '/queue' && location.pathname.startsWith(item.to))}
+              active={isActive(screen, location.pathname)}
+              onNavigate={closeMobile}
             />
           ))}
+        </Box>
+
+        {/* Who you are, where you are. */}
+        <Box px="sm" py="sm" style={{ borderTop: '1px solid var(--neo-border)' }}>
+          {navOpened ? (
+            <Group gap="xs" wrap="nowrap">
+              <Badge color={ROLE_COLOR[role]} variant="filled" size="xs">
+                {ROLE_LABEL[role]}
+              </Badge>
+              <Text size="xs" truncate style={{ color: 'var(--neo-muted)' }}>
+                {user?.fullName ?? user?.email ?? ''}
+              </Text>
+            </Group>
+          ) : (
+            <Tooltip label={`${user?.fullName ?? ''} (${ROLE_LABEL[role]})`} position="right" withArrow>
+              <Group justify="center">
+                <Badge color={ROLE_COLOR[role]} variant="filled" size="xs" circle>
+                  {ROLE_LABEL[role].charAt(0)}
+                </Badge>
+              </Group>
+            </Tooltip>
+          )}
         </Box>
       </AppShell.Navbar>
 
       <AppShell.Main>
-        <Outlet />
+        <PageTransition>
+          <Outlet />
+        </PageTransition>
       </AppShell.Main>
     </AppShell>
   )
@@ -180,106 +200,55 @@ const ROLE_COLOR: Record<UserRole, string> = {
   admin: 'orange',
 }
 
-function getNavForRole(role?: UserRole): { to: string; label: string; icon: () => JSX.Element }[] {
-  if (role === 'medical_professional') {
-    return [
-      { to: '/escalations', label: 'Escalations', icon: () => <IconFlame size={18} /> },
-      { to: '/queue', label: 'Clinical queue', icon: () => <IconStethoscope size={18} /> },
-      { to: '/applications/new', label: 'New applicant intake', icon: () => <IconFilePlus size={18} /> },
-      { to: '/pricing', label: 'Risk bands', icon: () => <IconReceipt size={18} /> },
-      { to: '/notifications', label: 'Notifications', icon: () => <IconBell size={18} /> },
-      { to: '/profile', label: 'My profile', icon: () => <IconUserCircle size={18} /> },
-    ]
-  }
-
-  if (role === 'admin') {
-    return [
-      { to: '/admin/users', label: 'Staff governance', icon: () => <IconUsers size={18} /> },
-      { to: '/queue', label: 'Carrier audit', icon: () => <IconShieldCheck size={18} /> },
-      { to: '/applications/new', label: 'New applicant intake', icon: () => <IconFilePlus size={18} /> },
-      { to: '/pricing', label: 'Policy pricing', icon: () => <IconReceipt size={18} /> },
-      { to: '/notifications', label: 'Notifications', icon: () => <IconBell size={18} /> },
-      { to: '/profile', label: 'My profile', icon: () => <IconUserCircle size={18} /> },
-    ]
-  }
-
-  // default: underwriter
-  return [
-    { to: '/queue', label: 'Intake queue', icon: () => <IconLayoutDashboard size={18} /> },
-    { to: '/applications/new', label: 'New applicant intake', icon: () => <IconFilePlus size={18} /> },
-    { to: '/pricing', label: 'Plan rate card', icon: () => <IconReceipt size={18} /> },
-    { to: '/notifications', label: 'Notifications', icon: () => <IconBell size={18} /> },
-    { to: '/profile', label: 'My profile', icon: () => <IconUserCircle size={18} /> },
-  ]
+const ICONS: Record<ScreenId, () => JSX.Element> = {
+  queue: () => <IconLayoutList size={18} />,
+  escalations: () => <IconFlame size={18} />,
+  intake: () => <IconFilePlus size={18} />,
+  review: () => <IconLayoutList size={18} />,
+  pricing: () => <IconReceipt size={18} />,
+  staff: () => <IconUsers size={18} />,
+  settings: () => <IconSettings size={18} />,
+  notifications: () => <IconBell size={18} />,
+  profile: () => <IconUserCircle size={18} />,
 }
 
-function routeFor(path: string, role?: UserRole) {
-  if (path === '/escalations') return { title: 'Escalation Command Center' }
-  if (path === '/admin/users') return { title: 'Carrier Staff & Access Governance' }
-  if (path === '/queue') {
-    if (role === 'medical_professional') return { title: 'Clinical Review Queue' }
-    if (role === 'admin') return { title: 'Carrier Submission Audit' }
-    return { title: 'Underwriting Intake Queue' }
-  }
-  if (path.startsWith('/applications/new')) return { title: 'New Applicant Intake Form' }
-  if (path.startsWith('/applications/')) return { title: 'Underwriting Adjudication' }
-  if (path.startsWith('/notifications')) return { title: 'Notifications' }
-  if (path.startsWith('/pricing')) return { title: 'Plan & Risk Structure' }
-  if (path.startsWith('/profile')) return { title: 'Operator Profile & Authority' }
-  return { title: 'HomelanderAI' }
+/** An open application belongs to "Applications"; the intake form does not. */
+function isActive(screen: Screen, pathname: string): boolean {
+  if (pathname === screen.path) return true
+  if (screen.id === 'queue') return pathname.startsWith('/applications/') && pathname !== '/applications/new'
+  return screen.id !== 'intake' && pathname.startsWith(screen.path)
 }
 
 function NavItem({
-  to,
-  label,
-  icon,
+  screen,
   collapsed,
   active,
+  onNavigate,
 }: {
-  to: string
-  label: string
-  icon: () => JSX.Element
+  screen: Screen
   collapsed: boolean
   active: boolean
+  onNavigate: () => void
 }) {
   const link = (
     <RouterLink
-      to={to}
+      to={screen.path}
       className="hl-nav-link"
       data-active={active}
-      style={
-        collapsed
-          ? { justifyContent: 'center', paddingInline: 0 }
-          : undefined
-      }
+      aria-current={active ? 'page' : undefined}
+      onClick={onNavigate}
+      style={collapsed ? { justifyContent: 'center', paddingInline: 0 } : undefined}
     >
       <ThemeIcon
-        variant={active ? 'filled' : 'transparent'}
-        color={active ? 'clinical' : 'gray'}
+        variant="transparent"
         size={22}
         radius="sm"
-        style={
-          active
-            ? {
-                backgroundColor: 'var(--neo-forest)',
-                color: 'var(--neo-forest-ink)',
-              }
-            : {
-                color: 'var(--neo-muted)',
-              }
-        }
+        style={{ color: active ? 'var(--neo-forest-ink)' : 'var(--neo-muted)' }}
       >
-        {icon()}
+        {ICONS[screen.id]()}
       </ThemeIcon>
       {!collapsed && (
-        <span
-          style={{
-            fontWeight: active ? 700 : 500,
-            fontSize: '0.825rem',
-          }}
-        >
-          {label}
-        </span>
+        <span style={{ fontWeight: active ? 700 : 500, fontSize: '0.825rem' }}>{screen.label}</span>
       )}
     </RouterLink>
   )
@@ -287,7 +256,7 @@ function NavItem({
   if (!collapsed) return link
 
   return (
-    <Tooltip label={label} position="right" withinPortal withArrow>
+    <Tooltip label={screen.label} position="right" withinPortal withArrow>
       {link}
     </Tooltip>
   )
@@ -301,21 +270,15 @@ function UserMenu() {
     <Menu position="bottom-end" withinPortal>
       <Menu.Target>
         <UnstyledButton aria-label="Account menu">
-          <ActionIcon variant="subtle">
+          <ActionIcon variant="subtle" component="span">
             <IconUser size={18} />
           </ActionIcon>
         </UnstyledButton>
       </Menu.Target>
-      <Menu.Dropdown miw={180}>
-        <Menu.Item leftSection={<IconUser size={14} />}>
-          {user?.email ?? 'unknown'}
-        </Menu.Item>
-        <Menu.Item
-          component={RouterLink}
-          to="/profile"
-          leftSection={<IconUserCircle size={14} />}
-        >
-          Profile & workspace
+      <Menu.Dropdown miw={200}>
+        <Menu.Label>{user?.email ?? 'Signed in'}</Menu.Label>
+        <Menu.Item component={RouterLink} to="/profile" leftSection={<IconUserCircle size={14} />}>
+          Your account
         </Menu.Item>
         <Menu.Divider />
         <Menu.Item

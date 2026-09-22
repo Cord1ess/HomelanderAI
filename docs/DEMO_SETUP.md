@@ -182,8 +182,8 @@ work even when the database machine cannot be reached.
 | Username | Password | Role | What it is for |
 |---|---|---|---|
 | `underwriter` | `admin123` | Underwriter | Takes applications in. Decides low and moderate cases. On an elevated case it can only escalate. |
-| `medical` | `admin123` | Medical Professional | Reads the clinical evidence on escalated cases and decides them. Has the Escalations inbox. |
-| `admin` | `admin123` | Administrator | Runs the carrier's workspace: creates staff accounts and sets the turnaround promise. Has Staff governance. |
+| `medical` | `admin123` | Medical Professional | Reads the clinical evidence on escalated cases and decides them. Has Escalations. |
+| `admin` | `admin123` | Administrator | Runs the carrier's workspace: creates staff accounts and sets the turnaround promise. Has Staff and Company settings. |
 
 Type the username where the sign-in form asks for a work email.
 
@@ -255,6 +255,22 @@ see. That is the argument for the whole product, and it is the thing to show.
 
 ---
 
+## Company settings
+
+Signed in as `admin`, **Company settings** in the sidebar holds three things:
+
+- **Risk-score boundaries.** Drag the two handles (or type) to move where low
+  becomes moderate and moderate becomes elevated. The preview shows how the
+  company's existing scores would fall under the proposed boundaries. Saving
+  affects new scores only: every score keeps the boundaries it was tiered
+  with, and the review screen shows them.
+- **Pricing policy.** The monthly premium for the two quotable plans at a
+  reference cover; the table shows what that quotes at common covers. Saving
+  changes every premium shown from then on, including the client's offer.
+- **Turnaround promise.** Working days until an answer, for new applications.
+
+Every change is recorded with who made it; each card shows the last one.
+
 ## The client portal
 
 An applicant can sign in to see where their application stands, when to expect
@@ -304,7 +320,7 @@ because email is not a confidential channel.
 ### Carrier registration
 
 The public sign-in page no longer offers "Create account". Staff accounts are
-made by an administrator under **Staff governance** in the console. The form that onboards a
+made by an administrator under **Staff** in the console. The form that onboards a
 whole new carrier still exists at `/auth/register-carrier`, but nothing links to
 it.
 

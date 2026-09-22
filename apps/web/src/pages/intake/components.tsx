@@ -23,6 +23,7 @@ export function Section({
         border: '1px solid var(--neo-border-mid)',
         borderRadius: '8px',
         padding: '1.25rem',
+        marginTop: '1rem',
         boxShadow: '0 4px 20px var(--neo-shadow)',
       }}
     >
@@ -33,14 +34,10 @@ export function Section({
           pb="xs"
           style={{ borderBottom: '1px solid var(--neo-border)' }}
         >
-          <Group gap="xs">
-            <Badge color="clinical" variant="filled" radius="sm" size="sm">
-              Section {n}
-            </Badge>
-            <Text fw={700} size="sm" c="var(--neo-ink)">
-              {title}
-            </Text>
-          </Group>
+          {/* The step number is in the stepper above; here just the name. */}
+          <Text fw={700} size="sm" c="var(--neo-ink)" data-section={n}>
+            {title}
+          </Text>
           <Badge
             size="xs"
             color={complete ? 'teal' : 'gray'}

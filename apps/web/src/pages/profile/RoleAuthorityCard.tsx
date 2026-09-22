@@ -19,7 +19,7 @@ export function RoleAuthorityCard({ roleInfo }: RoleAuthorityCardProps) {
     <Card>
       <Group justify="space-between" mb="xs">
         <Text fw={600} size="sm">
-          Role Authority & Adjudication Scope
+          What your role lets you do
         </Text>
         <Badge color={roleInfo.color} variant="light">
           {roleInfo.shortTitle}
@@ -38,7 +38,7 @@ export function RoleAuthorityCard({ roleInfo }: RoleAuthorityCardProps) {
         mb={6}
         style={{ textTransform: 'uppercase', letterSpacing: '0.04em' }}
       >
-        Authorized Responsibilities
+        You can
       </Text>
       <Stack gap={6} mb="md">
         {roleInfo.scope.map((item, idx) => (
@@ -60,7 +60,7 @@ export function RoleAuthorityCard({ roleInfo }: RoleAuthorityCardProps) {
         mb={6}
         style={{ textTransform: 'uppercase', letterSpacing: '0.04em' }}
       >
-        Operational Boundaries & Governance
+        You cannot
       </Text>
       <Stack gap={6}>
         {roleInfo.restrictions.map((item, idx) => (

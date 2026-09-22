@@ -287,13 +287,22 @@ export const reviseTurnaround = (id: string, body: { expectedBy: string; reason:
 
 export const getTenantSettings = () => request<TenantSettings>('/tenant/settings')
 
-/** Admin only. Applies to future applicants; existing dates are not moved. */
-export const updateTenantSettings = (body: { turnaroundBusinessDays: number }) =>
+export type TenantSettingsUpdate = Schemas['TenantSettingsIn']
+export type SettingsChange = Schemas['SettingsChangeSchema']
+
+/**
+ * Admin only. A partial update: only the fields sent change. Applies from now
+ * on; dates already promised and scores already computed are not moved.
+ */
+export const updateTenantSettings = (body: TenantSettingsUpdate) =>
   request<TenantSettings>('/tenant/settings', {
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
   })
+
+/** Who changed which setting, from what. Newest first. */
+export const getTenantSettingsHistory = () => request<SettingsChange[]>('/tenant/settings/history')
 
 /** Tick off one requested document as received. Idempotent. */
 export const fulfilEvidenceRequest = (id: string, documentId: string) =>

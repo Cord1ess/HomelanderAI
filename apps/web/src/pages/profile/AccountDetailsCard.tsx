@@ -48,7 +48,7 @@ export function AccountDetailsCard({ user, tenant, roleTitle }: AccountDetailsCa
     if (!fullName.trim()) {
       notifications.show({
         title: 'Name required',
-        message: 'Please enter a valid operator name.',
+        message: 'Enter your name.',
         color: 'red',
       })
       return
@@ -62,20 +62,17 @@ export function AccountDetailsCard({ user, tenant, roleTitle }: AccountDetailsCa
       })
       notifications.show({
         title: 'Profile updated',
-        message: 'Your account credentials have been updated successfully.',
+        message: 'Your details have been saved.',
         color: 'teal',
         icon: <IconCheck size={16} />,
       })
       setIsEditing(false)
-    } catch {
-      // Fallback update in case of demo mode or offline server
+    } catch (err) {
       notifications.show({
-        title: 'Profile updated',
-        message: 'Your account credentials have been saved for this session.',
-        color: 'teal',
-        icon: <IconCheck size={16} />,
+        title: 'Could not save',
+        message: err instanceof Error ? err.message : 'Something went wrong. Your changes were not saved.',
+        color: 'red',
       })
-      setIsEditing(false)
     } finally {
       setLoading(false)
     }
@@ -121,7 +118,7 @@ export function AccountDetailsCard({ user, tenant, roleTitle }: AccountDetailsCa
           leftSection={<IconMail size={14} />}
         />
         <TextInput
-          label="License / Operator ID"
+          label="Licence number"
           value={licenseNumber}
           onChange={(e) => setLicenseNumber(e.currentTarget.value)}
           readOnly={!isEditing}
@@ -134,7 +131,7 @@ export function AccountDetailsCard({ user, tenant, roleTitle }: AccountDetailsCa
           leftSection={<IconUserCheck size={14} />}
         />
         <TextInput
-          label="Carrier tenant"
+          label="Company"
           value={tenant?.name ?? 'Homelander Assurance'}
           readOnly
         />
@@ -142,8 +139,7 @@ export function AccountDetailsCard({ user, tenant, roleTitle }: AccountDetailsCa
       </SimpleGrid>
 
       <Text size="xs" c="dimmed" mt="sm">
-        Operator identity records are strictly scoped to your carrier tenant. Role assignments
-        are maintained by your organization administrator.
+        Your role is set by an administrator at your company; ask them if it needs to change.
       </Text>
     </Card>
   )

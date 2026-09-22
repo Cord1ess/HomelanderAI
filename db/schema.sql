@@ -71,8 +71,23 @@ CREATE TABLE tenants (
     -- made.
     turnaround_business_days INTEGER NOT NULL DEFAULT 2
         CHECK (turnaround_business_days BETWEEN 1 AND 30),
+    -- Risk-score tier boundaries, set by the carrier's admin. Every score
+    -- snapshots the boundaries it was tiered with (composite_scores.
+    -- tier_thresholds), so changing these affects new scores only.
+    tier_low_max        NUMERIC(5,2)  NOT NULL DEFAULT 30.00
+        CHECK (tier_low_max > 0 AND tier_low_max < 100),
+    tier_moderate_max   NUMERIC(5,2)  NOT NULL DEFAULT 65.00
+        CHECK (tier_moderate_max > 0 AND tier_moderate_max < 100),
+    CONSTRAINT ck_tenants_tier_order CHECK (tier_low_max < tier_moderate_max),
+    -- Pricing policy: the monthly premium for the low and moderate plans at
+    -- the reference cover; premiums scale linearly with the cover requested.
+    -- Elevated and unscorable tiers carry no rate on purpose (see plans.py).
+    premium_low_bdt      NUMERIC(12,2) NOT NULL DEFAULT 5000.00  CHECK (premium_low_bdt > 0),
+    premium_moderate_bdt NUMERIC(12,2) NOT NULL DEFAULT 7500.00  CHECK (premium_moderate_bdt > 0),
+    reference_cover_bdt  NUMERIC(14,2) NOT NULL DEFAULT 1000000.00 CHECK (reference_cover_bdt > 0),
     created_at          TIMESTAMPTZ  NOT NULL DEFAULT now()
 );
+
 
 -- ============================================================================
 -- USERS  [v2: + password_hash, is_active, last_login_at]
@@ -98,8 +113,23 @@ CREATE TABLE users (
 
 CREATE INDEX idx_users_tenant_id ON users(tenant_id);
 
+
+-- Every change to a company's settings (tenants.*), who made it and what it was before.
+-- Separate from audit_log, whose hash chain is per application; a company
+-- setting belongs to no application.
+CREATE TABLE tenant_settings_changes (
+    id           UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    tenant_id    UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+    actor_user_id UUID REFERENCES users(id) ON DELETE SET NULL,
+    changed_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
+    -- {field: {"from": x, "to": y}} for each field that changed.
+    changes      JSONB NOT NULL
+);
+
+CREATE INDEX idx_tenant_settings_changes_tenant ON tenant_settings_changes(tenant_id, changed_at DESC);
+
 -- ============================================================================
--- APPLICANTS  [unchanged — no name column is intentional, keep it that way]
+-- APPLICANTS
 -- ============================================================================
 
 CREATE TABLE applicants (

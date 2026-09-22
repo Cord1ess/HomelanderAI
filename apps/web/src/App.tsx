@@ -3,6 +3,7 @@ import { Navigate, Route, Routes } from 'react-router-dom'
 import { ProtectedRoute } from './components/auth/ProtectedRoute'
 import { AuthPage } from './pages/AuthPage'
 import { RegisterCarrierPage } from './pages/RegisterCarrierPage'
+import { SettingsPage } from './pages/admin/SettingsPage'
 import { StaffManagementPage } from './pages/admin/StaffManagementPage'
 import { EscalationsPage } from './pages/escalations/EscalationsPage'
 import { HomePage } from './pages/home/HomePage'
@@ -29,7 +30,8 @@ import { ReviewPage } from './pages/review/ReviewPage'
  * Guarded by ProtectedRoute -> AppLayout (the console):
  *   /queue                 Queue - role-tailored view
  *   /escalations           Escalation inbox. Medical Professional and Administrator only
- *   /admin/users           Staff accounts and carrier settings. Administrator only
+ *   /admin/users           Staff accounts. Administrator only
+ *   /admin/settings        Company settings. Administrator only
  *   /applications/new      Intake form
  *   /applications/:id      Review workspace
  *   /notifications         Notification list
@@ -67,6 +69,14 @@ export function App() {
           element={
             <ProtectedRoute allowedRoles={['admin']}>
               <StaffManagementPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/admin/settings"
+          element={
+            <ProtectedRoute allowedRoles={['admin']}>
+              <SettingsPage />
             </ProtectedRoute>
           }
         />

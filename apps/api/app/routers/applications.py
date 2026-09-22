@@ -119,22 +119,34 @@ async def get_pricing(
     coverage: float | None = Query(
         default=None, ge=0, description="Sum assured in BDT; premiums scale from it"
     ),
-    _: Principal = Depends(current_principal),
+    principal: Principal = Depends(current_principal),
+    db: AsyncSession = Depends(get_db),
 ) -> PricingSchema:
-    """What each tier means for the policy.
+    """What each tier means for the policy, under this company's settings.
 
     Premiums are worked out here rather than in the dashboard so one change to
-    `plans.py` moves every screen at once.
+    the company's policy moves every screen at once.
     """
-    thresholds = Thresholds()
+    tenant = await db.get(Tenant, principal.tenant_id)
+    thresholds = _thresholds_for(tenant)
+    policy = plans.Policy.from_tenant(tenant) if tenant else plans.DEFAULT_POLICY
     return PricingSchema(
         plans=[
-            PlanSchema.model_validate(plans.for_tier(tier, coverage))
+            PlanSchema.model_validate(plans.for_tier(tier, coverage, policy))
             for tier in ("low", "moderate", "elevated", "insufficient_evidence")
         ],
         low_max=thresholds.low_max,
         moderate_max=thresholds.moderate_max,
         coverage_amount=coverage,
+    )
+
+
+def _thresholds_for(tenant: Tenant | None) -> Thresholds:
+    """The company's tier boundaries, or the defaults with no company row."""
+    if tenant is None:
+        return Thresholds()
+    return Thresholds(
+        low_max=float(tenant.tier_low_max), moderate_max=float(tenant.tier_moderate_max)
     )
 
 
@@ -593,6 +605,9 @@ async def score_application(application_id: UUID) -> None:
                     )
 
             applicant = await db.get(Applicant, application.applicant_id)
+            # The company's tier boundaries. Snapshotted onto the score by
+            # save_evaluation, so a later change cannot re-tier this one.
+            thresholds = _thresholds_for(await db.get(Tenant, application.tenant_id))
             raw_declared = application.declared_history or {}
             declared = dict(raw_declared.get(SCORING_ARM, {}))
             for k, v in raw_declared.items():
@@ -609,7 +624,7 @@ async def score_application(application_id: UUID) -> None:
                 payloads,
                 declared,
                 _age_from(applicant.date_of_birth if applicant else None),
-                None,
+                thresholds,
                 kinds,
             )
 
@@ -799,6 +814,8 @@ async def get_application(
     principal: Principal = Depends(current_principal),
 ) -> ApplicationDetailSchema:
     application, applicant = await _load_owned(db, application_id, principal)
+    tenant = await db.get(Tenant, principal.tenant_id)
+    policy = plans.Policy.from_tenant(tenant) if tenant else plans.DEFAULT_POLICY
 
     score_row = (
         await db.execute(
@@ -915,6 +932,7 @@ async def get_application(
                 plans.for_tier(
                     score_row.tier.value if score_row else application.status.value,
                     float(application.coverage_amount) if application.coverage_amount else None,
+                    policy,
                 )
             )
             if (score_row or application.status == ApplicationStatus.INSUFFICIENT_EVIDENCE)

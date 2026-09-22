@@ -36,6 +36,8 @@ import type { ClassifiedFile, ClassifyResponse } from '../../api/client'
  */
 
 export interface EvidenceReviewProps {
+  /** Rendered as the last step of the intake form rather than a dialog. */
+  inline?: boolean
   opened: boolean
   /** Null while classification is still running. */
   result: ClassifyResponse | null
@@ -48,6 +50,7 @@ export interface EvidenceReviewProps {
 }
 
 export function EvidenceReview({
+  inline = false,
   opened,
   result,
   overrides,
@@ -67,15 +70,13 @@ export function EvidenceReview({
 
   const armsFor = (kind: string) => choices.find((c) => c.kind === kind)?.arms ?? []
 
-  return (
-    <Modal
-      opened={opened}
-      onClose={onCancel}
-      title="Check what each document is"
-      size="lg"
-      closeOnClickOutside={!submitting}
-    >
+  const body = (
       <Stack gap="md">
+        {inline && (
+          <Text fw={600} size="sm">
+            Check what each document is
+          </Text>
+        )}
         <Text size="sm" c="dimmed">
           The models cannot tell when they have been given the wrong kind of
           document. Confirm each one before scoring starts.
@@ -190,13 +191,26 @@ export function EvidenceReview({
 
         <Group justify="space-between">
           <Button variant="subtle" size="xs" onClick={onCancel} disabled={submitting}>
-            Back to the form
+            {inline ? 'Back' : 'Back to the form'}
           </Button>
           <Button size="xs" onClick={onConfirm} disabled={!ready} loading={submitting}>
-            Confirm and submit
+            {inline ? 'Submit application' : 'Confirm and submit'}
           </Button>
         </Group>
       </Stack>
+  )
+
+  if (inline) return body
+
+  return (
+    <Modal
+      opened={opened}
+      onClose={onCancel}
+      title="Check what each document is"
+      size="lg"
+      closeOnClickOutside={!submitting}
+    >
+      {body}
     </Modal>
   )
 }

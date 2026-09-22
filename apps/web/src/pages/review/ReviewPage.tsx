@@ -3,11 +3,9 @@ import {
   Badge,
   Box,
   Button,
-  Center,
   Divider,
   Group,
   Image,
-  Loader,
   NumberInput,
   Paper,
   SimpleGrid,
@@ -45,8 +43,13 @@ import {
   type Finding,
   type Plan,
 } from '../../api/client'
+import { PageHeader } from '../../components/PageHeader'
+import { StatusBadge } from '../../components/StatusBadge'
+import { ScoringProgress } from './ScoringProgress'
+import { ErrorState, LoadingState } from '../../components/states'
 import { TierBadge, type Tier } from '../../components/TierBadge'
 import { useAuth } from '../../context/AuthContext'
+import { ROLE_LABEL } from '../../types/auth'
 
 /**
  * Review workspace — the underwriter, alone, a day or two later.
@@ -121,11 +124,10 @@ function FindingBar({ finding, scale }: { finding: Finding; scale: number }) {
       >
         <Box
           h="100%"
+          className="finding-bar__fill"
           style={{
             width: `${Math.min(width, 100)}%`,
-            backgroundColor: toward
-              ? 'var(--mantine-color-clinical-3)'
-              : 'var(--neo-muted)',
+            backgroundColor: toward ? 'var(--neo-accent)' : 'var(--neo-muted)',
             borderRadius: 3,
           }}
         />
@@ -255,17 +257,23 @@ export function ReviewPage() {
 
   if (isPending) {
     return (
-      <Center mih={300}>
-        <Loader color="clinical" type="dots" />
-      </Center>
+      <Stack gap="md">
+        <PageHeader screen="review" title="Opening the application" />
+        <LoadingState label="Loading the evidence and the score" />
+      </Stack>
     )
   }
 
   if (error || !data) {
     return (
-      <Alert color="red" variant="light" icon={<IconAlertTriangle size={18} />} title="Could not open this application">
-        {error instanceof Error ? error.message : 'Unknown error'}
-      </Alert>
+      <Stack gap="md">
+        <PageHeader screen="review" title="Application" />
+        <ErrorState
+          title="Could not open this application"
+          error={error}
+          retry={() => void queryClient.invalidateQueries({ queryKey: ['application', id] })}
+        />
+      </Stack>
     )
   }
 
@@ -367,6 +375,15 @@ function Review({ data, state }: { data: ApplicationDetail; state: ReviewState }
 
   return (
     <Stack gap="md">
+      <PageHeader
+        screen="review"
+        title={
+          <span>
+            Application <span className="hl-mono">{data.reference}</span>
+          </span>
+        }
+      />
+
       {/* ── Header ─────────────────────────────────────────── */}
       <Paper p="sm" bd="1px solid var(--mantine-color-default-border)">
         <Group justify="space-between" wrap="wrap" gap="md">
@@ -382,7 +399,7 @@ function Review({ data, state }: { data: ApplicationDetail; state: ReviewState }
             </div>
             <Divider orientation="vertical" />
             <div className="hl-kv">
-              <span className="hl-kv-label">Applicant</span>
+              <span className="hl-kv-label">Client</span>
               <span className="hl-kv-value">{data.applicant.name || '—'}</span>
             </div>
             <div className="hl-kv">
@@ -468,7 +485,7 @@ function Review({ data, state }: { data: ApplicationDetail; state: ReviewState }
           </Group>
           {data.score && (
             <Group gap="sm">
-              <div className="hl-kv" style={{ alignItems: 'flex-end' }}>
+              <div className="hl-kv score-reveal" style={{ alignItems: 'flex-end' }}>
                 <span className="hl-kv-label">Risk score</span>
                 <span className="hl-kv-value" style={{ fontSize: '1.1rem' }}>
                   {data.score.crs.toFixed(1)}
@@ -480,11 +497,7 @@ function Review({ data, state }: { data: ApplicationDetail; state: ReviewState }
         </Group>
       </Paper>
 
-      {pending && (
-        <Alert color="blue" variant="light" title="Still being evaluated">
-          The model is reading the evidence now. This screen updates on its own.
-        </Alert>
-      )}
+      {pending && <ScoringProgress status={data.status} />}
 
       {data.status === 'insufficient_evidence' && (
         <Alert color="yellow" variant="light" icon={<IconAlertTriangle size={18} />} title="Could not be scored">
@@ -551,7 +564,7 @@ function Review({ data, state }: { data: ApplicationDetail; state: ReviewState }
         {/* ── Right · why this score ────────────────────────── */}
         <Stack gap="md">
           <Paper p="sm" bd="1px solid var(--mantine-color-default-border)">
-            <Group justify="space-between" mb="sm">
+            <Group justify="space-between" mb={4}>
               <Text fw={600} size="sm">
                 What moved the score
               </Text>
@@ -559,6 +572,11 @@ function Review({ data, state }: { data: ApplicationDetail; state: ReviewState }
                 {shown.length} of {findings.length} shown
               </Text>
             </Group>
+            <Text size="xs" mb="sm" style={{ color: 'var(--neo-muted)' }}>
+              Findings from the image, ranked by how much each moved the score. The first
+              figure is how confident the model is that the finding is present; the second is
+              its push on the score, up or down.
+            </Text>
 
             {findings.length === 0 ? (
               <Text size="sm" c="dimmed">
@@ -586,8 +604,11 @@ function Review({ data, state }: { data: ApplicationDetail; state: ReviewState }
           </Paper>
 
           <Paper p="sm" bd="1px solid var(--mantine-color-default-border)">
-            <Text fw={600} size="sm" mb="sm">
+            <Text fw={600} size="sm" mb={4}>
               What the declared history changed
+            </Text>
+            <Text size="xs" mb="sm" style={{ color: 'var(--neo-muted)' }}>
+              Points added or removed by the answers given at intake, applied after the image score.
             </Text>
             {adjustments.length === 0 ? (
               <Text size="sm" c="dimmed">
@@ -747,51 +768,45 @@ function Review({ data, state }: { data: ApplicationDetail; state: ReviewState }
           <Text fw={600} size="sm">
             Decision
           </Text>
-          {isMedical ? (
-            <Badge color="grape" variant="light" size="xs">
-              Medical Professional Authority
-            </Badge>
-          ) : isUnderwriter ? (
-            <Badge color="clinical" variant="light" size="xs">
-              Underwriter Review
-            </Badge>
-          ) : null}
+          {user && (
+            <Text size="xs" style={{ color: 'var(--neo-muted)' }}>
+              Deciding as {ROLE_LABEL[user.role]}
+            </Text>
+          )}
         </Group>
+        {!decided && (
+          <Text size="xs" mb="sm" style={{ color: 'var(--neo-muted)' }}>
+            Pick one. It is recorded under your name, written to the audit trail, and cannot be
+            changed afterwards. The client is emailed that there is an update.
+          </Text>
+        )}
 
-        {/* Medical Professional high-risk guidance */}
         {isMedical && isElevated && !decided && (
-          <Alert
-            color="grape"
-            variant="light"
-            icon={<IconShieldCheck size={18} />}
-            title="Medical Professional Clinical Review"
-            mb="sm"
-          >
+          <Alert color="grape" variant="light" icon={<IconShieldCheck size={18} />} title="Elevated risk" mb="sm">
             <Text size="xs">
-              This application has been scored as <strong>Tier 3 (Elevated Risk)</strong>. As a Medical Professional,
-              you hold binding authority to audit sub-scores, review Grad-CAM heatmaps, apply actuarial rate adjustments, or finalize approval.
+              The models put this application in the elevated tier. Only a medical professional can
+              approve it, and that is you. Read the image and the findings, then decide.
             </Text>
           </Alert>
         )}
 
-        {/* Underwriter Tier 3 Mandatory Escalation Notice */}
         {isUnderwriter && isElevated && !decided && (
-          <Alert
-            color="red"
-            variant="light"
-            icon={<IconAlertTriangle size={18} />}
-            title="Mandatory Escalation Required"
-            mb="sm"
-          >
+          <Alert color="red" variant="light" icon={<IconAlertTriangle size={18} />} title="Elevated risk" mb="sm">
             <Text size="xs">
-              This application has an elevated risk score (Tier 3). Carrier governance requires mandatory escalation to a Medical Professional.
-              Approval actions are disabled for junior underwriters on Tier 3 cases.
+              The models put this application in the elevated tier. You can escalate it to a
+              medical professional; approving it is not available to you.
             </Text>
           </Alert>
         )}
 
         {decided ? (
-          <Alert icon={<IconCircleCheck size={18} />} color="teal" variant="light" title="Decision recorded">
+          <Alert
+            icon={<IconCircleCheck size={18} />}
+            color="teal"
+            variant="light"
+            title="Decision recorded"
+            className="decision-recorded"
+          >
             <Text size="sm">
               <strong>
                 {DECISIONS.find((d) => d.value === data.decision?.decision)?.label ??
@@ -801,12 +816,12 @@ function Review({ data, state }: { data: ApplicationDetail; state: ReviewState }
               {relativeTime(data.decision?.decidedAt)}.
               {data.decision?.finalPremium != null &&
                 ` Final premium ${Number(data.decision.finalPremium).toLocaleString()}.`}{' '}
-              Decisions are write-once and can no longer be edited.
+              A recorded decision cannot be changed.
             </Text>
           </Alert>
         ) : !scored && data.status !== 'insufficient_evidence' && data.status !== 'awaiting_evidence' ? (
           <Text size="sm" c="dimmed">
-            A decision can be recorded once the evaluation finishes.
+            A decision can be recorded once the models have finished reading the evidence.
           </Text>
         ) : (
           <>
@@ -850,7 +865,7 @@ function Review({ data, state }: { data: ApplicationDetail; state: ReviewState }
                   return (
                     <Tooltip
                       key={d.value}
-                      label="Tier 3 applications require escalation to a Medical Professional"
+                      label="Elevated risk: escalate this to a medical professional"
                       withArrow
                     >
                       <div>{btn}</div>
@@ -885,7 +900,7 @@ function Review({ data, state }: { data: ApplicationDetail; state: ReviewState }
 
             <Group justify="space-between" mt="md">
               <Text size="xs" c="dimmed">
-                There is no reject button. Escalation to a human underwriter is the path.
+                There is no decline here. If this should not be approved, escalate it.
               </Text>
               <Button
                 size="xs"
@@ -897,7 +912,7 @@ function Review({ data, state }: { data: ApplicationDetail; state: ReviewState }
                 onClick={() => state.submit.mutate()}
                 loading={state.submit.isPending}
               >
-                Submit decision
+                Record decision
               </Button>
             </Group>
           </>
@@ -939,7 +954,7 @@ function PlanPanel({
             Recommended plan
           </Text>
           <Text size="xs" c="dimmed">
-            What this risk tier means for the policy
+            What this tier is offered under your company's plans. A starting point for the rate, not the rate.
           </Text>
         </div>
         <Badge variant="light" color="clinical" size="lg">
@@ -1002,23 +1017,6 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
         {children}
       </Text>
     </div>
-  )
-}
-
-function StatusBadge({ status }: { status: ApplicationDetail['status'] }) {
-  const meta: Record<string, { label: string; color: string }> = {
-    submitted: { label: 'Evaluation pending', color: 'gray' },
-    processing: { label: 'Evaluating', color: 'blue' },
-    scored: { label: 'Ready for review', color: 'teal' },
-    insufficient_evidence: { label: 'More evidence needed', color: 'yellow' },
-    awaiting_evidence: { label: 'Waiting on applicant', color: 'orange' },
-    decided: { label: 'Decided', color: 'gray' },
-  }
-  const m = meta[status] ?? { label: status, color: 'gray' }
-  return (
-    <Badge color={m.color} variant="light" size="sm">
-      {m.label}
-    </Badge>
   )
 }
 

@@ -93,10 +93,40 @@ class TurnaroundIn(BaseSchema):
 class TenantSettingsSchema(BaseSchema):
     name: str
     turnaround_business_days: int
+    # Risk-score tier boundaries: low is up to and including low_max, moderate
+    # up to and including moderate_max, elevated above that.
+    tier_low_max: float
+    tier_moderate_max: float
+    # Pricing policy: monthly premium for the two quotable plans at the
+    # reference cover; premiums scale linearly with the cover requested.
+    premium_low_bdt: float
+    premium_moderate_bdt: float
+    reference_cover_bdt: float
 
 
 class TenantSettingsIn(BaseSchema):
-    turnaround_business_days: int = Field(..., ge=1, le=30)
+    """A partial update: only the fields sent are changed.
+
+    Ranges here; the relationship between the two boundaries is checked in the
+    endpoint against the values that will actually be stored, because one may
+    be sent without the other.
+    """
+
+    turnaround_business_days: int | None = Field(default=None, ge=1, le=30)
+    tier_low_max: float | None = Field(default=None, gt=0, lt=100)
+    tier_moderate_max: float | None = Field(default=None, gt=0, lt=100)
+    premium_low_bdt: float | None = Field(default=None, gt=0, le=10_000_000)
+    premium_moderate_bdt: float | None = Field(default=None, gt=0, le=10_000_000)
+    reference_cover_bdt: float | None = Field(default=None, gt=0, le=1_000_000_000)
+
+
+class SettingsChangeSchema(BaseSchema):
+    """One recorded change to the company's settings."""
+
+    changed_at: datetime
+    actor_name: str | None
+    # {field: {"from": x, "to": y}}
+    changes: dict[str, dict[str, float | int | None]]
 
 
 # ── requested documents ──────────────────────────────────────────────────────

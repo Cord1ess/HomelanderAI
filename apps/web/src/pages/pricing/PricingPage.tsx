@@ -2,9 +2,7 @@ import {
   Alert,
   Badge,
   Card,
-  Center,
   Group,
-  Loader,
   NumberInput,
   Paper,
   SimpleGrid,
@@ -12,11 +10,13 @@ import {
   Table,
   Text,
 } from '@mantine/core'
-import { IconAlertTriangle, IconInfoCircle } from '@tabler/icons-react'
+import { IconInfoCircle } from '@tabler/icons-react'
 import { useQuery } from '@tanstack/react-query'
 import { useState } from 'react'
 
 import { getPricing } from '../../api/client'
+import { PageHeader } from '../../components/PageHeader'
+import { ErrorState, LoadingState } from '../../components/states'
 import { TierBadge, type Tier } from '../../components/TierBadge'
 
 /**
@@ -35,7 +35,7 @@ const PRESETS = [500_000, 1_000_000, 2_500_000, 5_000_000]
 export function PricingPage() {
   const [coverage, setCoverage] = useState<number>(1_000_000)
 
-  const { data, isPending, error } = useQuery({
+  const { data, isPending, error, refetch } = useQuery({
     queryKey: ['pricing', coverage],
     queryFn: () => getPricing(coverage),
     staleTime: 5 * 60 * 1000,
@@ -43,17 +43,19 @@ export function PricingPage() {
 
   if (isPending) {
     return (
-      <Center mih={240}>
-        <Loader color="clinical" type="dots" />
-      </Center>
+      <Stack gap="lg" maw={980}>
+        <PageHeader screen="pricing" />
+        <LoadingState label="Working out the plans" />
+      </Stack>
     )
   }
 
   if (error || !data) {
     return (
-      <Alert color="red" variant="light" icon={<IconAlertTriangle size={18} />} title="Could not load pricing">
-        {error instanceof Error ? error.message : 'Unknown error'}
-      </Alert>
+      <Stack gap="lg" maw={980}>
+        <PageHeader screen="pricing" />
+        <ErrorState title="Could not load the plans" error={error} retry={() => void refetch()} />
+      </Stack>
     )
   }
 
@@ -66,16 +68,7 @@ export function PricingPage() {
 
   return (
     <Stack gap="lg" maw={980}>
-      <div>
-        <Text size="lg" fw={600}>
-          Pricing structure
-        </Text>
-        <Text size="sm" c="dimmed" maw={680}>
-          What the platform recommends at each risk tier, and the premium that
-          goes with it. Every recommendation still needs an underwriter to
-          record the decision — nothing here is issued automatically.
-        </Text>
-      </div>
+      <PageHeader screen="pricing" />
 
       <Paper p="md" bd="1px solid var(--mantine-color-default-border)">
         <Group align="flex-end" gap="md" wrap="wrap">

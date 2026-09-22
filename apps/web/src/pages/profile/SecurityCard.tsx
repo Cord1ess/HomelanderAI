@@ -116,11 +116,12 @@ export function SecurityCard() {
         color="teal"
         variant="light"
         icon={<IconShield size={16} />}
-        title="Encrypted Session & PII Isolation"
+        title="Your session"
       >
         <Text size="xs">
-          Your session is verified with an httpOnly encrypted JWT cookie. Medical imagery
-          and applicant health disclosures are cryptographically isolated within your carrier tenant.
+          You are signed in with a cookie only this browser holds; it expires on its own.
+          Everything you see is filtered to your company: no screen or request can show
+          another company's applications.
         </Text>
       </Alert>
     </Card>

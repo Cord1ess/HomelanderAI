@@ -24,6 +24,40 @@ REFERENCE_COVER_BDT = 1_000_000.0
 
 
 @dataclass(frozen=True)
+class Policy:
+    """A company's pricing policy: the rates behind the two quotable plans.
+
+    Set by the company's administrator (tenants.premium_low_bdt and friends);
+    the defaults are Idea.md's figures. Elevated and unscorable tiers have no
+    rate here because they carry none anywhere: a price on a case a person has
+    not yet looked at would imply an outcome that has not been decided.
+    """
+
+    premium_low_bdt: float = 5_000.0
+    premium_moderate_bdt: float = 7_500.0
+    reference_cover_bdt: float = REFERENCE_COVER_BDT
+
+    def base_for(self, tier: str) -> float | None:
+        if tier == "low":
+            return self.premium_low_bdt
+        if tier == "moderate":
+            return self.premium_moderate_bdt
+        return None
+
+    @classmethod
+    def from_tenant(cls, tenant) -> "Policy":
+        """From a Tenant row. Typed loosely so this module stays free of ORM imports."""
+        return cls(
+            premium_low_bdt=float(tenant.premium_low_bdt),
+            premium_moderate_bdt=float(tenant.premium_moderate_bdt),
+            reference_cover_bdt=float(tenant.reference_cover_bdt),
+        )
+
+
+DEFAULT_POLICY = Policy()
+
+
+@dataclass(frozen=True)
 class Plan:
     tier: str
     name: str
@@ -31,8 +65,8 @@ class Plan:
     recommendation: str
     # The human step that has to happen before anything is issued.
     human_step: str
-    # Monthly premium at REFERENCE_COVER_BDT, or None where no rate is offered
-    # without a person looking first.
+    # Idea.md's monthly premium at REFERENCE_COVER_BDT, kept as documentation
+    # of where the defaults came from. The live figure is the company's Policy.
     base_monthly_bdt: float | None
     wellness_discount_eligible: bool = False
 
@@ -73,22 +107,27 @@ PLANS: dict[str, Plan] = {
 }
 
 
-def monthly_premium(tier: str, coverage_amount: float | None) -> float | None:
+def monthly_premium(
+    tier: str, coverage_amount: float | None, policy: Policy = DEFAULT_POLICY
+) -> float | None:
     """Illustrative monthly premium for a tier at the requested cover.
 
     Returns None when the tier carries no quotable rate, or when no coverage
     amount was requested — a premium invented from a missing number is worse
     than no premium at all.
     """
-    plan = PLANS.get(tier)
-    if plan is None or plan.base_monthly_bdt is None or not coverage_amount:
+    base = policy.base_for(tier)
+    if tier not in PLANS or base is None or not coverage_amount:
         return None
 
-    return round(plan.base_monthly_bdt * (float(coverage_amount) / REFERENCE_COVER_BDT), 2)
+    return round(base * (float(coverage_amount) / policy.reference_cover_bdt), 2)
 
 
-def for_tier(tier: str, coverage_amount: float | None = None) -> dict | None:
-    """The plan for a tier, with the premium worked out for this application."""
+def for_tier(
+    tier: str, coverage_amount: float | None = None, policy: Policy = DEFAULT_POLICY
+) -> dict | None:
+    """The plan for a tier, with the premium worked out for this application
+    under this company's policy."""
     plan = PLANS.get(tier)
     if plan is None:
         return None
@@ -98,8 +137,8 @@ def for_tier(tier: str, coverage_amount: float | None = None) -> dict | None:
         "name": plan.name,
         "recommendation": plan.recommendation,
         "human_step": plan.human_step,
-        "base_monthly_bdt": plan.base_monthly_bdt,
-        "reference_cover_bdt": REFERENCE_COVER_BDT,
-        "monthly_premium_bdt": monthly_premium(tier, coverage_amount),
+        "base_monthly_bdt": policy.base_for(tier),
+        "reference_cover_bdt": policy.reference_cover_bdt,
+        "monthly_premium_bdt": monthly_premium(tier, coverage_amount, policy),
         "wellness_discount_eligible": plan.wellness_discount_eligible,
     }

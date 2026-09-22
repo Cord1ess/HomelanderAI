@@ -15,13 +15,14 @@ import {
   Select,
   SimpleGrid,
   Stack,
+  Stepper,
   Table,
   Text,
   TextInput,
 } from '@mantine/core'
 import { Dropzone } from '@mantine/dropzone'
 import { useForm } from '@mantine/form'
-import { IconAlertCircle, IconCircleCheck, IconFileUpload, IconX } from '@tabler/icons-react'
+import { IconAlertCircle, IconCheck, IconCircleCheck, IconFileUpload, IconX } from '@tabler/icons-react'
 import { useQuery } from '@tanstack/react-query'
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
@@ -34,6 +35,7 @@ import {
   type PortalCredentials,
   type SubmitResponse,
 } from '../../api/client'
+import { PageHeader } from '../../components/PageHeader'
 import { EvidenceReview } from './EvidenceReview'
 import { Section } from './components'
 
@@ -449,7 +451,9 @@ export function IntakePage() {
   // The review step between pressing submit and anything being scored.
   // `classified` is null until the API answers; `overrides` holds the
   // operator's corrections, keyed by filename.
-  const [reviewOpen, setReviewOpen] = useState(false)
+  // Which of the four steps is open. The last one is the check of what each
+  // file is, which used to be a dialog; as a step it is part of the form.
+  const [step, setStep] = useState(0)
   const [classified, setClassified] = useState<ClassifyResponse | null>(null)
   const [overrides, setOverrides] = useState<Record<string, string>>({})
 
@@ -598,7 +602,6 @@ export function IntakePage() {
     Boolean(form.values.coverageType) && (form.values.coverageAmount ?? 0) > 0,
     modelsSectionComplete,
   ]
-  const completeCount = sections.filter(Boolean).length
 
   const canSubmit = sections[0] && sections[1] && modelsSectionComplete
 
@@ -615,7 +618,7 @@ export function IntakePage() {
   const handleSubmit = async () => {
     if (!canSubmit) return
     setSubmitError(null)
-    setReviewOpen(true)
+    setStep(3)
 
     // Normally already done as the files landed. This covers the case where
     // that background request failed or is still in flight.
@@ -659,7 +662,6 @@ export function IntakePage() {
         files: uploads.map((u) => ({ ...u, kind: kindFor(u.file) })),
         facePhoto: facePhoto,
       })
-      setReviewOpen(false)
       setSubmitted(result)
     } catch (err) {
       // Keep the form exactly as it was. The operator has a client sitting
@@ -699,39 +701,17 @@ export function IntakePage() {
 
   return (
     <Stack gap="lg" maw={980}>
-      {/* Sticky progress hint */}
-      <Paper
-        p="sm"
-        pos="sticky"
-        top={0}
-        style={{ zIndex: 10 }}
-        bd="1px solid var(--mantine-color-default-border)"
-        bg="var(--mantine-color-body)"
+      <PageHeader screen="intake" />
+
+      <Stepper
+        active={step}
+        onStepClick={setStep}
+        allowNextStepsSelect={false}
+        size="sm"
+        completedIcon={<IconCheck size={16} />}
       >
-        <Group justify="space-between">
-          <Text size="xs" c="dimmed">
-            {completeCount} of 3 sections complete
-          </Text>
-          <Text size="xs" fw={600} c={canSubmit ? 'teal' : 'dimmed'}>
-            {canSubmit ? 'Ready to submit' : 'Not ready to submit'}
-          </Text>
-        </Group>
-      </Paper>
-
-      <div>
-        <Text size="xs" c="dimmed" tt="uppercase" fw={600} className="hl-eyebrow">
-          New application
-        </Text>
-        <Text size="lg" fw={600}>
-          Review a new client
-        </Text>
-        <Text size="sm" c="dimmed" maw={680}>
-          Fill this in with the client in front of you. One page, one submit —
-          nothing is lost if you jump around or the client corrects themselves.
-          The reference number is assigned by the system when you submit.
-        </Text>
-      </div>
-
+        <Stepper.Step label="Client" description="Who is applying" allowStepSelect={step > 0}>
+          <div key="client" className="page-enter">
       {/* ── Section 1 · Applicant ─────────────────────────────── */}
       <Section n="1" title="Applicant" complete={sections[0]}>
         <TextInput
@@ -781,6 +761,11 @@ export function IntakePage() {
 
       <Divider my="xs" />
 
+          </div>
+        </Stepper.Step>
+
+        <Stepper.Step label="Cover" description="What they are asking for" allowStepSelect={step > 1}>
+          <div key="cover" className="page-enter">
       {/* ── Section 2 · Coverage requested ─────────────────────── */}
       <Section n="2" title="Coverage requested" complete={sections[1]}>
         <Group align="flex-end">
@@ -811,6 +796,11 @@ export function IntakePage() {
 
       <Divider my="xs" />
 
+          </div>
+        </Stepper.Step>
+
+        <Stepper.Step label="Evidence" description="What to screen, and with what" allowStepSelect={step > 2}>
+          <div key="evidence" className="page-enter">
       {/* ── Section 3 · Models ─────────────────────────────────── */}
       <Section n="3" title="Models" complete={sections[2]}>
         <Text size="sm" c="dimmed">
@@ -932,7 +922,28 @@ export function IntakePage() {
         </Group>
       </Section>
 
-      <Divider my="xs" />
+          </div>
+        </Stepper.Step>
+
+        <Stepper.Step label="Check" description="Confirm what each file is">
+          <div key="check" className="page-enter">
+            <Paper p="md" bd="1px solid var(--neo-border-mid)" mt="md">
+              <EvidenceReview
+                inline
+                opened
+                result={classified}
+                overrides={overrides}
+                onOverride={(filename, kind) =>
+                  setOverrides((prev) => ({ ...prev, [filename]: kind }))
+                }
+                onConfirm={() => void sendApplication()}
+                onCancel={() => setStep(2)}
+                submitting={submitting}
+              />
+            </Paper>
+          </div>
+        </Stepper.Step>
+      </Stepper>
 
       {/*
         A failed submit must never clear the form: the operator has a client in
@@ -948,32 +959,36 @@ export function IntakePage() {
         >
           <Text size="sm">{submitError}</Text>
           <Text size="xs" c="dimmed" mt={4}>
-            Nothing has been lost — everything you entered is still here. Try again.
+            Nothing has been lost. Everything you entered is still here. Try again.
           </Text>
         </Alert>
       )}
 
-      <Group justify="space-between" align="flex-start">
-        <Text size="xs" c="dimmed" maw={460}>
-          Needs a name and phone, a coverage type and amount, and at least one
-          model with its report attached. Scoring starts as soon as you submit
-          and takes a few seconds — the queue updates itself.
-        </Text>
-        <Button size="sm" disabled={!canSubmit} loading={submitting} onClick={handleSubmit}>
-          Submit application
-        </Button>
-      </Group>
-      <EvidenceReview
-        opened={reviewOpen}
-        result={classified}
-        overrides={overrides}
-        onOverride={(filename, kind) =>
-          setOverrides((prev) => ({ ...prev, [filename]: kind }))
-        }
-        onConfirm={() => void sendApplication()}
-        onCancel={() => setReviewOpen(false)}
-        submitting={submitting}
-      />
+      {/* The last step carries its own buttons. */}
+      {step < 3 && (
+        <Group justify="space-between" align="center">
+          <Button variant="subtle" size="sm" disabled={step === 0} onClick={() => setStep(step - 1)}>
+            Back
+          </Button>
+          <Group gap="sm" align="center">
+            <Text size="xs" c="dimmed" ta="right" maw={420}>
+              {step === 0 && 'A name and a phone number are needed. Everything else here is optional.'}
+              {step === 1 && 'The cover type and amount decide which plan is offered.'}
+              {step === 2 &&
+                'At least one model with its report attached. Next you confirm what each file is; nothing is scored until then.'}
+            </Text>
+            {step < 2 ? (
+              <Button size="sm" disabled={!sections[step]} onClick={() => setStep(step + 1)}>
+                Continue
+              </Button>
+            ) : (
+              <Button size="sm" disabled={!canSubmit} onClick={handleSubmit}>
+                Check the files
+              </Button>
+            )}
+          </Group>
+        </Group>
+      )}
 
       {submitting && (
         <Group gap="xs" c="dimmed">

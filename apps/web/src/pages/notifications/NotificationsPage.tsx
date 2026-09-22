@@ -1,10 +1,12 @@
-import { Alert, Badge, Group, Paper, SegmentedControl, Skeleton, Stack, Text } from '@mantine/core'
+import { Alert, Badge, Group, Paper, SegmentedControl, Stack, Text } from '@mantine/core'
 import { IconAlertTriangle, IconAt } from '@tabler/icons-react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 
 import { getNotifications, markNotificationRead } from '../../api/client'
+import { PageHeader } from '../../components/PageHeader'
+import { EmptyState, LoadingState } from '../../components/states'
 
 /**
  * Notifications — in-app only in Phase 1. No email, no SMS.
@@ -47,15 +49,10 @@ export function NotificationsPage() {
 
   return (
     <Stack gap="md">
-      <Group justify="space-between">
-        <div>
-          <Text size="sm" fw={600}>
-            Notifications
-          </Text>
-          <Text size="xs" c="dimmed">
-            {unreadCount > 0 ? `${unreadCount} unread` : 'You are all caught up'}
-          </Text>
-        </div>
+      <PageHeader
+        screen="notifications"
+        description={unreadCount > 0 ? `${unreadCount} unread.` : 'You are all caught up.'}
+        actions={
         <SegmentedControl
           size="xs"
           value={filter}
@@ -65,7 +62,8 @@ export function NotificationsPage() {
             { value: 'unread', label: `Unread (${unreadCount})` },
           ]}
         />
-      </Group>
+        }
+      />
 
       {error && (
         <Alert
@@ -80,13 +78,7 @@ export function NotificationsPage() {
 
       <Paper bd="1px solid var(--mantine-color-default-border)" p={0} style={{ overflow: 'hidden' }}>
         <Stack gap={0}>
-          {isPending && (
-            <Stack gap="xs" p="md">
-              <Skeleton height={16} />
-              <Skeleton height={16} />
-              <Skeleton height={16} />
-            </Stack>
-          )}
+          {isPending && <LoadingState label="Loading notifications" />}
 
           {!isPending &&
             visible.map((n) => {
@@ -163,9 +155,10 @@ export function NotificationsPage() {
             })}
 
           {!isPending && visible.length === 0 && !error && (
-            <Text ta="center" c="dimmed" py="lg" size="sm">
-              No {filter === 'unread' ? 'unread ' : ''}notifications.
-            </Text>
+            <EmptyState
+              title={filter === 'unread' ? 'Nothing unread' : 'No notifications yet'}
+              text="You are told here when an application your company is handling changes: a score lands, a document arrives, a decision is recorded."
+            />
           )}
         </Stack>
       </Paper>

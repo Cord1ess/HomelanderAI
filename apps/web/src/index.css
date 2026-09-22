@@ -157,6 +157,162 @@ body {
 .home-rise-2 { animation-delay: 0.15s; }
 .home-rise-3 { animation-delay: 0.25s; }
 
+/* ── Console: screens, headers, states ─────────────────────────────── */
+
+/* Each screen rises in as it opens (PageTransition keys this on the path). */
+@keyframes page-enter {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.page-enter {
+  animation: page-enter var(--motion-slow) var(--ease-out) both;
+}
+
+.page-header {
+  padding-bottom: 0.25rem;
+}
+
+/* Loading, empty and error, drawn the same way everywhere. */
+.state-block {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.6rem;
+  min-height: 200px;
+  padding: 2rem 1rem;
+  border: 1px dashed var(--neo-border-mid);
+  border-radius: var(--mantine-radius-md);
+  color: var(--neo-ink);
+  animation: page-enter var(--motion-base) var(--ease-out) both;
+}
+
+.state-block--error {
+  border-color: var(--neo-danger);
+  background: var(--neo-danger-soft);
+}
+
+/* A row whose status changed since the last poll, or that just appeared,
+   flashes once with the accent tint and settles. */
+@keyframes row-flash {
+  0%   { background-color: var(--neo-accent-soft); }
+  100% { background-color: transparent; }
+}
+
+.queue-row[data-changed] {
+  animation: row-flash calc(var(--motion-slow) * 4) var(--ease-out) both;
+}
+
+.queue-row[data-openable] {
+  cursor: pointer;
+}
+
+/* "Reading evidence": the one status where something is happening now. */
+@keyframes status-pulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50%      { opacity: 0.35; transform: scale(0.7); }
+}
+
+.status-dot {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+  animation: status-pulse 1.4s var(--ease-in-out) infinite;
+}
+
+/* ── Review screen ──────────────────────────────────────────────────── */
+
+/* Three stages while the models run; the current one breathes. */
+.stage-track {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 0.5rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.stage-track__step {
+  font-size: 0.74rem;
+  font-weight: 600;
+  color: var(--neo-muted);
+  opacity: 0.55;
+}
+
+.stage-track__step::before {
+  content: '';
+  display: block;
+  height: 4px;
+  margin-bottom: 0.5rem;
+  border-radius: 2px;
+  background: var(--neo-border-mid);
+}
+
+.stage-track__step[data-reached='true'] {
+  opacity: 1;
+  color: var(--neo-ink);
+}
+
+.stage-track__step[data-reached='true']::before {
+  background: var(--neo-accent);
+}
+
+.stage-track__step[data-current='true']::before {
+  animation: status-pulse 1.6s var(--ease-in-out) infinite;
+}
+
+/* The score, once it exists, rises in rather than appearing. */
+.score-reveal {
+  animation: page-enter var(--motion-slow) var(--ease-out) both;
+}
+
+/* Finding bars grow from zero to their value. */
+@keyframes bar-grow {
+  from { transform: scaleX(0); }
+  to   { transform: scaleX(1); }
+}
+
+.finding-bar__fill {
+  transform-origin: left center;
+  animation: bar-grow var(--motion-slow) var(--ease-out) both;
+}
+
+/* A recorded decision lands with a little weight. */
+@keyframes settle {
+  from { opacity: 0; transform: translateY(-4px) scale(0.99); }
+  to   { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+.decision-recorded {
+  animation: settle var(--motion-slow) var(--ease-out) both;
+}
+
+/* Settings previews: a figure that changes as you drag settles in place. */
+.threshold-preview__count,
+.pricing-preview__cell {
+  transition: color var(--motion-fast) var(--ease-out);
+}
+
+.threshold-preview {
+  padding: 0.4rem 0.5rem;
+  border: 1px solid var(--neo-border);
+  border-radius: var(--mantine-radius-sm);
+}
+
+/* The unread count on the bell draws the eye once, then sits still. */
+@keyframes badge-pop {
+  0%   { transform: scale(0.6); opacity: 0; }
+  70%  { transform: scale(1.15); opacity: 1; }
+  100% { transform: scale(1); }
+}
+
+.unread-badge {
+  animation: badge-pop var(--motion-slow) var(--ease-out) both;
+}
+
 /* ── Colour variables ───────────────────────────────────────────────── */
 
 /* `--neo-*` used to be declared here for the landing page only, light

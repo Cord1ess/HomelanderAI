@@ -1,9 +1,10 @@
 import { Grid, Stack } from '@mantine/core'
 
 import { useAuth } from '../../context/AuthContext'
+import { PageHeader } from '../../components/PageHeader'
 import type { UserRole } from '../../types/auth'
 import { AccountDetailsCard } from './AccountDetailsCard'
-import { ConsolePreferencesCard } from './ConsolePreferencesCard'
+import { AppearanceCard } from './AppearanceCard'
 import { ProfileHeader } from './ProfileHeader'
 import { RoleAuthorityCard } from './RoleAuthorityCard'
 import { SecurityCard } from './SecurityCard'
@@ -27,22 +28,21 @@ const ROLE_META: Record<
   }
 > = {
   underwriter: {
-    title: 'Licensed Medical Underwriter',
+    title: 'Underwriter',
     shortTitle: 'Underwriter',
     color: 'clinical',
     description:
-      'Primary operator responsible for intake interviews, evidence ingestion, and adjudication of Tier 1 (Low) and Tier 2 (Moderate) applications.',
+      'You take applications in and decide the ones the models put in the low and moderate tiers.',
     scope: [
-      'Client intake interviews and structured questionnaire recording',
-      'Evidence attachment and model arm specification (Chest X-ray / DenseNet)',
-      'Adjudication & rate adjustment for Tier 1 (score up to 30) & Tier 2 (score above 30, up to 65)',
-      'Direct escalation routing to a Medical Professional for Tier 3 cases',
-      'Requesting supplementary clinical documentation from applicants',
+      'Take a new application: the client\'s details, their cover, their evidence',
+      'Confirm what each file is before the models read it',
+      'Decide applications in the low and moderate tiers, and set the premium on an adjusted approval',
+      'Escalate an elevated-risk application to a medical professional',
+      'Ask the client for documents, and move the answer date with a reason',
     ],
     restrictions: [
-      'Binding approval prohibited on Tier 3 (Elevated Risk) cases without Medical Professional sign-off',
-      'Cannot edit or delete carrier-level underwriting policy guidelines',
-      'Cannot provision or deactivate colleague accounts (Administrator exclusive)',
+      'Cannot approve an application the models put in the elevated tier; that needs a medical professional',
+      'Cannot add staff or change company settings',
     ],
   },
   medical_professional: {
@@ -50,33 +50,32 @@ const ROLE_META: Record<
     shortTitle: 'Medical Professional',
     color: 'grape',
     description:
-      'Clinical review authority for this carrier: reads the medical evidence on escalated applications and decides the Tier 3 (Elevated Risk) cases an underwriter may not.',
+      'You read the medical evidence on escalated applications and decide them. Everything an underwriter can do, you can do too.',
     scope: [
-      'Full adjudication discretion across all risk tiers (Tier 1, Tier 2, Tier 3)',
-      'Mandatory review and binding sign-off on escalated high-risk applications',
-      'Detailed inspection of 18-finding vision probability & Grad-CAM explainability heatmaps',
-      'Application of customized actuarial rate surcharges and final premium binding',
-      'Queue monitoring and review backlog prioritization within this carrier',
+      'Decide applications in every tier, including the elevated ones underwriters escalate',
+      'See the image, the heatmap and the findings behind every score',
+      'Set the premium on an adjusted approval',
+      'Take applications in and ask clients for documents, like an underwriter',
     ],
     restrictions: [
-      'Cannot provision staff or change carrier settings (Administrator exclusive)',
-      'Adjudication decisions are write-once per regulatory compliance audit trail',
+      'Cannot add staff or change company settings',
+      'A recorded decision cannot be changed, by anyone',
     ],
   },
   admin: {
-    title: 'Carrier Administrator',
+    title: 'Administrator',
     shortTitle: 'Administrator',
     color: 'orange',
     description:
-      'Runs this carrier workspace: staff accounts, carrier settings such as the turnaround promise, and audit trail inspection.',
+      'You run this company\'s workspace: who can sign in, and the defaults every application follows.',
     scope: [
-      'Carrier settings, including the working-day turnaround promised to applicants',
-      'User management: creating, onboarding, and deactivating operator accounts',
-      'Audit log inspection and compliance verification across all submissions',
-      'Underwriting workflow operational health monitoring',
+      'Add staff and set their role',
+      'Set the answer date promised to clients, in working days',
+      'See every application and its audit trail',
+      'Take applications in, like an underwriter',
     ],
     restrictions: [
-      'Does not perform routine medical intake or clinical score adjudication',
+      'Cannot decide an application; decisions are recorded by underwriters and medical professionals',
     ],
   },
 }
@@ -87,6 +86,7 @@ export function ProfilePage() {
 
   return (
     <Stack gap="lg">
+      <PageHeader screen="profile" />
       <ProfileHeader
         user={user}
         tenant={tenant}
@@ -105,7 +105,7 @@ export function ProfilePage() {
 
         <Grid.Col span={{ base: 12, md: 5 }}>
           <Stack gap="md">
-            <ConsolePreferencesCard />
+            <AppearanceCard />
             <SecurityCard />
           </Stack>
         </Grid.Col>

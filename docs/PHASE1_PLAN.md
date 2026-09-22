@@ -25,9 +25,10 @@ below is justified against it.
 | Requested documents | **Done** — `awaiting_evidence` status; asking for documents no longer spends the write-once decision |
 | Turnaround timing | **Done** — carrier default in working days, a date fixed at submit, revisable per case with a reason; never a countdown |
 | Retina arm rebuilt | **Done** — the pixel-counting `eyepacs_dr` and its invented 0.942 are gone; `dr_fundus` is a frozen FLAIR backbone plus our own head, external referable-DR AUC 0.945 on 1,600 unseen photographs. See [RETINA.md](RETINA.md) |
+| Company settings | **Done** — per-company tier boundaries and pricing policy, admin-only, every change logged with who and from what; new scores and new quotes only, nothing already scored moves |
 | Client portal | **Done** — sign-in generated at intake and emailed (or shown once to the operator); read-only status, date, requested documents and the recorded offer; no score, tier or finding by construction; portal and staff tokens refused by each other |
 
-200 tests passing. The whole path runs end to end: an application submitted
+245 tests passing. The whole path runs end to end: an application submitted
 through the form is de-identified, stored, scored in the background, and shown
 to an underwriter with the image, the heatmap, the findings that moved the
 score, and the history rules that adjusted it.

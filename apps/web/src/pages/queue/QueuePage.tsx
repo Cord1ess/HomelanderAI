@@ -4,7 +4,6 @@ import {
   Badge,
   Box,
   Button,
-  Card,
   Group,
   SegmentedControl,
   SimpleGrid,
@@ -16,55 +15,42 @@ import {
   Tooltip,
 } from '@mantine/core'
 import {
-  IconAlertTriangle,
+  IconArrowRight,
   IconFlame,
+  IconInfoCircle,
+  IconPlus,
   IconRefresh,
   IconSearch,
-  IconShieldCheck,
-  IconUsers,
-  IconVersions,
 } from '@tabler/icons-react'
 import { keepPreviousData, useQuery } from '@tanstack/react-query'
 import { useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 
 import { getQueue, type ApplicationStatus, type QueueItem } from '../../api/client'
-import { AppButton } from '../../components/AppButton'
+import { PageHeader } from '../../components/PageHeader'
+import { Stat } from '../../components/Stat'
+import { StatusBadge } from '../../components/StatusBadge'
+import { EmptyState, ErrorState } from '../../components/states'
 import { TierBadge, type Tier } from '../../components/TierBadge'
 import { useAuth } from '../../context/AuthContext'
+import { STATUS_META, STATUS_ORDER } from '../../status'
 import type { UserRole } from '../../types/auth'
-import { ROLE_LABEL } from '../../types/auth'
 
 /**
- * Queue (home) — every application for the signed-in carrier, newest first.
+ * Applications: every one the signed-in company has taken, newest first.
  *
  * Polls every 30 seconds because scoring runs in the background: an application
- * submitted a moment ago arrives here as "Evaluating" and becomes "Ready for
- * review" without anybody reloading the page.
+ * submitted a moment ago arrives here as "Reading evidence" and becomes "Ready
+ * to decide" without anybody reloading. A row whose status changed since the
+ * last poll flashes once, so the change is seen rather than discovered.
  */
-
-const STATUS_META: Record<ApplicationStatus, { label: string; color: string }> = {
-  submitted: { label: 'Evaluation pending', color: 'gray' },
-  processing: { label: 'Evaluating', color: 'blue' },
-  scored: { label: 'Ready for review', color: 'teal' },
-  insufficient_evidence: { label: 'More evidence needed', color: 'yellow' },
-  // Distinct from the line above: this one waits on the applicant, that one
-  // on the operator. Orange, not yellow, so the two do not read as the same.
-  awaiting_evidence: { label: 'Waiting on applicant', color: 'orange' },
-  decided: { label: 'Decided', color: 'gray' },
-}
 
 const FILTERS: { value: ApplicationStatus | 'all'; label: string }[] = [
   { value: 'all', label: 'All' },
-  { value: 'submitted', label: 'Evaluation pending' },
-  { value: 'processing', label: 'Evaluating' },
-  { value: 'scored', label: 'Ready for review' },
-  { value: 'insufficient_evidence', label: 'More evidence needed' },
-  { value: 'awaiting_evidence', label: 'Waiting on applicant' },
-  { value: 'decided', label: 'Decided' },
+  ...STATUS_ORDER.map((value) => ({ value, label: STATUS_META[value].label })),
 ]
 
-/** "Tue 29 Sep" — a date, deliberately not a countdown. */
+/** "Tue 29 Sep": a date, deliberately not a countdown. */
 function formatDay(isoDate: string): string {
   // Parsed as local midnight, not UTC: a bare date given a "Z" would show as
   // the previous day for anyone east of Greenwich.
@@ -85,6 +71,42 @@ function relativeTime(iso: string): string {
   const days = Math.round(hours / 24)
   return days === 1 ? 'yesterday' : `${days} days ago`
 }
+
+function formatTaka(value: string | number): string {
+  return `৳${Math.round(Number(value)).toLocaleString('en-IN')}`
+}
+
+/**
+ * Which rows changed since the last poll, by id.
+ *
+ * The first load flashes nothing: everything is new to the screen, not new to
+ * the world. After that, a row flashes when it appears or when its status
+ * moves, which is exactly the two things worth noticing.
+ *
+ * The comparison is against the previous *data*, not the previous render, so
+ * the flagged set holds until the next poll and the animation gets to finish.
+ * (React Query keeps the same array reference while the data is unchanged.)
+ */
+function useChangedRows(rows: QueueItem[] | undefined): Set<string> {
+  const [memo, setMemo] = useState<{
+    rows: QueueItem[]
+    seen: Map<string, ApplicationStatus>
+    changed: Set<string>
+  } | null>(null)
+
+  if (rows && memo?.rows !== rows) {
+    const changed = new Set<string>()
+    if (memo) {
+      for (const row of rows) {
+        if (memo.seen.get(row.id) !== row.status) changed.add(row.id)
+      }
+    }
+    setMemo({ rows, seen: new Map(rows.map((r) => [r.id, r.status])), changed })
+  }
+  return memo?.changed ?? EMPTY
+}
+
+const EMPTY: Set<string> = new Set()
 
 export function QueuePage() {
   const { user } = useAuth()
@@ -108,58 +130,24 @@ export function QueuePage() {
 
   const elevatedCount = rawRows.filter((r) => r.tier === 'elevated').length
   const rows = escalatedOnly ? rawRows.filter((r) => r.tier === 'elevated') : rawRows
+  const changed = useChangedRows(data?.items)
 
-  const isAdmin = user?.role === 'admin'
   const isMedical = user?.role === 'medical_professional'
 
-  const tier1Count = rawRows.filter((r) => r.tier === 'low').length
-  const tier2Count = rawRows.filter((r) => r.tier === 'moderate').length
-  const tier3Count = rawRows.filter((r) => r.tier === 'elevated').length
   const decidedCount = rawRows.filter((r) => r.status === 'decided').length
   const pendingCount = rawRows.filter((r) => r.status !== 'decided').length
+  const readingCount = rawRows.filter((r) => r.status === 'processing').length
 
   return (
     <Stack gap="md">
-      {/* ── Role-Tailored Header ─────────────────────────────── */}
-      <Group justify="space-between" align="flex-end" wrap="wrap">
-        <div>
-          <Group gap="xs" align="center">
-            <Text size="lg" fw={700}>
-              {isMedical
-                ? 'Clinical Review & Triage Queue'
-                : isAdmin
-                ? 'Carrier Submission Audit & Governance'
-                : 'Underwriter Intake & Review Queue'}
-            </Text>
-            {isMedical ? (
-              <Badge color="grape" variant="filled" size="xs">
-                {ROLE_LABEL.medical_professional}
-              </Badge>
-            ) : isAdmin ? (
-              <Badge color="orange" variant="filled" size="xs">
-                {ROLE_LABEL.admin}
-              </Badge>
-            ) : (
-              <Badge color="clinical" variant="filled" size="xs">
-                Underwriter
-              </Badge>
-            )}
-          </Group>
-          <Text size="xs" c="dimmed">
-            {isMedical
-              ? 'Clinical review authority: audit Grad-CAM heatmaps, verify DenseNet findings, and adjudicate escalated cases.'
-              : isAdmin
-              ? 'Carrier organization governance: monitor operator throughput, application lifecycles, and cryptographic audit trails.'
-              : 'Frontline workspace: intake new clients and adjudicate Tier 1 & 2 policy applications.'}
-          </Text>
-        </div>
-
-        <div>
-          {isMedical ? (
-            <Group gap="xs">
-              <AppButton to="/applications/new" icon="plus" size="xs">
-                New Applicant Intake
-              </AppButton>
+      <PageHeader
+        screen="queue"
+        actions={
+          <>
+            <Button component={Link} to="/applications/new" size="xs" leftSection={<IconPlus size={14} />}>
+              New application
+            </Button>
+            {isMedical && (
               <Button
                 component={Link}
                 to="/escalations"
@@ -168,153 +156,38 @@ export function QueuePage() {
                 variant="light"
                 leftSection={<IconFlame size={14} />}
               >
-                Open Escalations Inbox
+                Escalations
               </Button>
-            </Group>
-          ) : isAdmin ? (
-            <Group gap="xs">
-              <AppButton to="/applications/new" icon="plus" size="xs">
-                New Applicant Intake
-              </AppButton>
-              <Button
-                component={Link}
-                to="/admin/users"
-                color="orange"
-                size="xs"
-                variant="light"
-                leftSection={<IconUsers size={14} />}
-              >
-                Manage Staff Directory
-              </Button>
-            </Group>
-          ) : (
-            <AppButton to="/applications/new" icon="plus">
-              Review a new client
-            </AppButton>
-          )}
-        </div>
-      </Group>
+            )}
+          </>
+        }
+      >
+        {/* Four real counts, the same for every role. */}
+        <SimpleGrid cols={{ base: 2, md: 4 }} spacing="xs">
+          <Stat label="Applications" value={total} hint="Everything your company has taken" />
+          <Stat
+            label="Waiting for a decision"
+            value={pendingCount}
+            color="orange"
+            hint={readingCount > 0 ? `${readingCount} being read right now` : undefined}
+          />
+          <Stat
+            label="Elevated risk"
+            value={elevatedCount}
+            color="red"
+            hint={isMedical ? 'Waiting for your decision' : 'Need a medical professional'}
+          />
+          <Stat label="Decided" value={decidedCount} color="teal" />
+        </SimpleGrid>
+      </PageHeader>
 
-      {/* ── Role-Specific KPI Metrics Strip ──────────────────── */}
-      {isMedical ? (
-        <SimpleGrid cols={{ base: 1, sm: 2, md: 4 }} spacing="xs">
-          <Card p="xs" bd="1px solid var(--neo-danger)">
-            <Text size="xs" c="dimmed" fw={600}>
-              ⚡ Mandatory Escalations
-            </Text>
-            <Text fz="lg" fw={700} c="red.4">
-              {tier3Count}
-            </Text>
-          </Card>
-          <Card p="xs">
-            <Text size="xs" c="dimmed" fw={600}>
-              Pending Sign-off
-            </Text>
-            <Text fz="lg" fw={700} c="orange.4">
-              {pendingCount}
-            </Text>
-          </Card>
-          <Card p="xs">
-            <Text size="xs" c="dimmed" fw={600}>
-              Grad-CAM Verified
-            </Text>
-            <Text fz="lg" fw={700} c="clinical.4">
-              {rawRows.filter((r) => r.status === 'scored').length}
-            </Text>
-          </Card>
-          <Card p="xs">
-            <Text size="xs" c="dimmed" fw={600}>
-              Finalized Decisions
-            </Text>
-            <Text fz="lg" fw={700} c="teal.4">
-              {decidedCount}
-            </Text>
-          </Card>
-        </SimpleGrid>
-      ) : isAdmin ? (
-        <SimpleGrid cols={{ base: 1, sm: 2, md: 4 }} spacing="xs">
-          <Card p="xs">
-            <Text size="xs" c="dimmed" fw={600}>
-              Total Carrier Ingestion
-            </Text>
-            <Text fz="lg" fw={700}>
-              {total}
-            </Text>
-          </Card>
-          <Card p="xs">
-            <Text size="xs" c="dimmed" fw={600}>
-              Active Backlog
-            </Text>
-            <Text fz="lg" fw={700} c="orange.4">
-              {pendingCount}
-            </Text>
-          </Card>
-          <Card p="xs">
-            <Text size="xs" c="dimmed" fw={600}>
-              Bound Policies
-            </Text>
-            <Text fz="lg" fw={700} c="teal.4">
-              {decidedCount}
-            </Text>
-          </Card>
-          <Card p="xs">
-            <Text size="xs" c="dimmed" fw={600}>
-              Cryptographic Audit
-            </Text>
-            <Text fz="lg" fw={700} c="teal.4">
-              100% Compliant
-            </Text>
-          </Card>
-        </SimpleGrid>
-      ) : (
-        <SimpleGrid cols={{ base: 1, sm: 2, md: 4 }} spacing="xs">
-          <Card p="xs">
-            <Text size="xs" c="dimmed" fw={600}>
-              Assigned in Queue
-            </Text>
-            <Text fz="lg" fw={700}>
-              {total}
-            </Text>
-          </Card>
-          <Card p="xs">
-            <Text size="xs" c="dimmed" fw={600}>
-              Tier 1 Fast-Track Ready
-            </Text>
-            <Text fz="lg" fw={700} c="teal.4">
-              {tier1Count}
-            </Text>
-          </Card>
-          <Card p="xs">
-            <Text size="xs" c="dimmed" fw={600}>
-              Tier 2 Moderate Review
-            </Text>
-            <Text fz="lg" fw={700} c="yellow.4">
-              {tier2Count}
-            </Text>
-          </Card>
-          <Card p="xs">
-            <Text size="xs" c="dimmed" fw={600}>
-              Tier 3 Awaiting Medical Review
-            </Text>
-            <Text fz="lg" fw={700} c="red.4">
-              {tier3Count}
-            </Text>
-          </Card>
-        </SimpleGrid>
-      )}
-
-      {/* Medical Professional priority triage banner */}
+      {/* The medical professional's own work, called out above the list. */}
       {isMedical && elevatedCount > 0 && (
-        <Alert
-          color="grape"
-          variant="light"
-          icon={<IconFlame size={16} />}
-          title="Medical Review Triage Active"
-        >
+        <Alert color="grape" variant="light" icon={<IconFlame size={16} />} title="Waiting for a medical decision">
           <Group justify="space-between" align="center" wrap="wrap" gap="xs">
             <Text size="xs">
-              <strong>{elevatedCount}</strong> high-risk (Tier 3 Elevated) application
-              {elevatedCount > 1 ? 's' : ''} awaiting mandatory Medical Professional review.
+              <strong>{elevatedCount}</strong> application{elevatedCount > 1 ? 's are' : ' is'} at elevated
+              risk and can only be decided by a medical professional.
             </Text>
             <Button
               size="compact-xs"
@@ -322,13 +195,13 @@ export function QueuePage() {
               variant={escalatedOnly ? 'filled' : 'light'}
               onClick={() => setEscalatedOnly(!escalatedOnly)}
             >
-              {escalatedOnly ? 'Show all cases' : 'Filter to Escalated cases'}
+              {escalatedOnly ? 'Show all applications' : 'Show only these'}
             </Button>
           </Group>
         </Alert>
       )}
 
-      <Group gap="xs" wrap="nowrap">
+      <Group gap="xs" wrap="wrap">
         <SegmentedControl
           size="xs"
           value={status}
@@ -350,95 +223,133 @@ export function QueuePage() {
         <Box style={{ flex: 1 }} />
         <TextInput
           size="xs"
-          placeholder="Search ref or name"
+          placeholder="Search by reference or name"
+          aria-label="Search applications"
           leftSection={<IconSearch size={14} />}
           value={query}
           onChange={(e) => setQuery(e.currentTarget.value)}
-          w={220}
+          w={240}
         />
-        <Tooltip label="Refresh" withArrow>
-          <ActionIcon variant="subtle" onClick={() => void refetch()} loading={isFetching}>
+        <Tooltip label="Check for changes now" withArrow>
+          <ActionIcon variant="subtle" aria-label="Refresh" onClick={() => void refetch()} loading={isFetching}>
             <IconRefresh size={16} />
           </ActionIcon>
         </Tooltip>
       </Group>
 
-      {error && (
-        <Alert
-          color="red"
-          variant="light"
-          icon={<IconAlertTriangle size={16} />}
-          title="Could not load the queue"
-        >
-          {error instanceof Error ? error.message : 'Unknown error'}
-        </Alert>
+      {error && !data && (
+        <ErrorState title="Could not load the applications" error={error} retry={() => void refetch()} />
       )}
 
-      <Box
-        style={{
-          border: '1px solid var(--mantine-color-default-border)',
-          borderRadius: 'var(--mantine-radius-sm)',
-          overflow: 'hidden',
-        }}
-      >
-        <Table.ScrollContainer minWidth={760}>
-          <Table highlightOnHover>
-            <Table.Thead>
-              <Table.Tr>
-                <Table.Th>Reference</Table.Th>
-                <Table.Th>Applicant</Table.Th>
-                <Table.Th>Cover</Table.Th>
-                <Table.Th>Submitted</Table.Th>
-                <Table.Th>Expected by</Table.Th>
-                <Table.Th>Status</Table.Th>
-                <Table.Th>Risk score</Table.Th>
-                <Table.Th>Tier</Table.Th>
-                <Table.Th w={90}>Action</Table.Th>
-              </Table.Tr>
-            </Table.Thead>
-            <Table.Tbody>
-              {isPending &&
-                [0, 1, 2].map((i) => (
-                  <Table.Tr key={`skeleton-${i}`}>
-                    <Table.Td colSpan={9}>
-                      <Skeleton height={18} />
+      {!(error && !data) && (
+        <Box
+          style={{
+            border: '1px solid var(--neo-border-mid)',
+            borderRadius: 'var(--mantine-radius-sm)',
+            overflow: 'hidden',
+          }}
+        >
+          <Table.ScrollContainer minWidth={820}>
+            <Table highlightOnHover>
+              <Table.Thead>
+                <Table.Tr>
+                  <Table.Th>Reference</Table.Th>
+                  <Table.Th>Client</Table.Th>
+                  <Table.Th>Cover</Table.Th>
+                  <Table.Th>Submitted</Table.Th>
+                  <Table.Th>Answer promised</Table.Th>
+                  <Table.Th>Status</Table.Th>
+                  <Table.Th>
+                    <Group gap={4} wrap="nowrap">
+                      Score
+                      <Tooltip
+                        label="The models' composite risk score, 0 to 100. Advice for the person deciding, never a decision."
+                        withArrow
+                        multiline
+                        maw={260}
+                      >
+                        <IconInfoCircle size={13} style={{ color: 'var(--neo-muted)' }} />
+                      </Tooltip>
+                    </Group>
+                  </Table.Th>
+                  <Table.Th>Tier</Table.Th>
+                  <Table.Th w={56} aria-label="Open" />
+                </Table.Tr>
+              </Table.Thead>
+              <Table.Tbody>
+                {isPending &&
+                  [0, 1, 2].map((i) => (
+                    <Table.Tr key={`skeleton-${i}`}>
+                      <Table.Td colSpan={9}>
+                        <Skeleton height={18} />
+                      </Table.Td>
+                    </Table.Tr>
+                  ))}
+
+                {!isPending &&
+                  rows.map((row) => (
+                    <Row key={row.id} row={row} userRole={user?.role} changed={changed.has(row.id)} />
+                  ))}
+
+                {!isPending && rows.length === 0 && (
+                  <Table.Tr>
+                    <Table.Td colSpan={9} p={0}>
+                      {total === 0 ? (
+                        <EmptyState
+                          title="No applications yet"
+                          text="Take the first one and it will appear here. The models read the evidence in the background and the row updates on its own."
+                          action={
+                            <Button component={Link} to="/applications/new" size="xs" leftSection={<IconPlus size={14} />}>
+                              New application
+                            </Button>
+                          }
+                        />
+                      ) : (
+                        <EmptyState
+                          title="Nothing matches"
+                          text={
+                            escalatedOnly
+                              ? 'No application at elevated risk matches this filter.'
+                              : 'No application has this status, or none matches the search.'
+                          }
+                        />
+                      )}
                     </Table.Td>
                   </Table.Tr>
-                ))}
+                )}
+              </Table.Tbody>
+            </Table>
+          </Table.ScrollContainer>
+        </Box>
+      )}
 
-              {!isPending && rows.map((row) => <Row key={row.id} row={row} userRole={user?.role} />)}
-
-              {!isPending && rows.length === 0 && !error && (
-                <Table.Tr>
-                  <Table.Td colSpan={9}>
-                    <Text ta="center" c="dimmed" py="lg" size="sm">
-                      {total === 0
-                        ? 'No applications yet. Start by reviewing a new client.'
-                        : 'No applications match the current filter.'}
-                    </Text>
-                  </Table.Td>
-                </Table.Tr>
-              )}
-            </Table.Tbody>
-          </Table>
-        </Table.ScrollContainer>
-      </Box>
+      <Text size="xs" style={{ color: 'var(--neo-muted)' }}>
+        Scores and tiers are the models' advice. A person records every decision, under their own name.
+      </Text>
     </Stack>
   )
 }
 
-function Row({ row, userRole }: { row: QueueItem; userRole?: UserRole }) {
-  const meta = STATUS_META[row.status]
-  // Anything already evaluated is worth opening — including an application that
+function Row({ row, userRole, changed }: { row: QueueItem; userRole?: UserRole; changed: boolean }) {
+  const navigate = useNavigate()
+  // Anything already evaluated is worth opening, including an application that
   // could not be scored, because that screen explains why.
-  const openable = row.status === 'scored' || row.status === 'decided' ||
-    row.status === 'insufficient_evidence' || row.status === 'awaiting_evidence'
+  const openable =
+    row.status === 'scored' ||
+    row.status === 'decided' ||
+    row.status === 'insufficient_evidence' ||
+    row.status === 'awaiting_evidence'
   const isElevated = row.tier === 'elevated'
   const isMedical = userRole === 'medical_professional'
   const isUnderwriter = userRole === 'underwriter'
+  const href = `/applications/${row.id}`
 
   return (
     <Table.Tr
+      className="queue-row"
+      data-changed={changed || undefined}
+      data-openable={openable || undefined}
+      onClick={openable ? () => navigate(href) : undefined}
       style={
         isElevated && isMedical
           ? { backgroundColor: 'color-mix(in srgb, var(--mantine-color-grape-6) 8%, transparent)' }
@@ -454,10 +365,12 @@ function Row({ row, userRole }: { row: QueueItem; userRole?: UserRole }) {
             <Tooltip
               label={
                 isUnderwriter
-                  ? 'Elevated risk — mandatory escalation to a medical professional'
-                  : 'Mandatory medical review case'
+                  ? 'Elevated risk. You can escalate this, not approve it.'
+                  : 'Elevated risk. Needs a medical professional to decide.'
               }
               withArrow
+              multiline
+              maw={240}
             >
               <Badge size="xs" variant="filled" color="red">
                 Tier 3
@@ -469,26 +382,26 @@ function Row({ row, userRole }: { row: QueueItem; userRole?: UserRole }) {
       <Table.Td fz="sm">{row.applicantName ?? '—'}</Table.Td>
       <Table.Td fz="sm" ff="monospace">
         {/* How much is at stake, so triage is not done on risk alone. */}
-        {row.coverageAmount ? `৳${Math.round(Number(row.coverageAmount)).toLocaleString('en-IN')}` : '—'}
+        {row.coverageAmount ? formatTaka(row.coverageAmount) : '—'}
       </Table.Td>
-      <Table.Td fz="sm" c="dimmed">
+      <Table.Td fz="sm" style={{ color: 'var(--neo-muted)' }}>
         {relativeTime(row.submittedAt)}
       </Table.Td>
-      {/* The date the applicant was given. Red once it has passed while the
-          carrier still holds the case, so a late file is visible from the
-          queue and not only from inside it. */}
-      <Table.Td fz="sm" c={row.overdue ? 'red' : 'dimmed'}>
+      {/* The date the client was given. Red once it has passed while the
+          company still holds the case; not while waiting on the client, whose
+          delay it would be. */}
+      <Table.Td fz="sm" style={{ color: row.overdue ? 'var(--neo-danger)' : 'var(--neo-muted)' }}>
         {row.expectedBy ? formatDay(row.expectedBy) : '—'}
         {row.overdue && (
-          <Badge ml={6} size="xs" color="red" variant="light">
-            Late
-          </Badge>
+          <Tooltip label="The date promised to the client has passed" withArrow>
+            <Badge ml={6} size="xs" color="red" variant="light">
+              Late
+            </Badge>
+          </Tooltip>
         )}
       </Table.Td>
       <Table.Td>
-        <Badge color={meta?.color ?? 'gray'} variant="light" size="sm">
-          {meta?.label ?? row.status}
-        </Badge>
+        <StatusBadge status={row.status} />
       </Table.Td>
       <Table.Td>
         {row.crs != null ? (
@@ -496,7 +409,7 @@ function Row({ row, userRole }: { row: QueueItem; userRole?: UserRole }) {
             {row.crs.toFixed(1)}
           </Text>
         ) : (
-          <Text fz="sm" c="dimmed">
+          <Text fz="sm" style={{ color: 'var(--neo-muted)' }}>
             —
           </Text>
         )}
@@ -505,38 +418,31 @@ function Row({ row, userRole }: { row: QueueItem; userRole?: UserRole }) {
         {row.tier ? (
           <TierBadge tier={row.tier as Tier} />
         ) : (
-          <Text fz="sm" c="dimmed">
+          <Text fz="sm" style={{ color: 'var(--neo-muted)' }}>
             —
           </Text>
         )}
       </Table.Td>
-      <Table.Td>
+      <Table.Td onClick={(e) => e.stopPropagation()}>
         {openable ? (
-          <Tooltip
-            label={
-              isElevated && isMedical
-                ? `Medical review for ${row.reference}`
-                : isElevated && isUnderwriter
-                ? `Review ${row.reference} (Escalation required)`
-                : `Review ${row.reference}`
-            }
-            withArrow
-          >
+          <Tooltip label={`Open ${row.reference}`} withArrow>
             <ActionIcon
               variant="light"
               color={isElevated && isMedical ? 'grape' : 'clinical'}
               component={Link}
-              to={`/applications/${row.id}`}
-              aria-label={`Review ${row.reference}`}
+              to={href}
+              aria-label={`Open ${row.reference}`}
             >
-              {isElevated && isMedical ? (
-                <IconShieldCheck size={16} />
-              ) : (
-                <IconVersions size={16} />
-              )}
+              <IconArrowRight size={16} />
             </ActionIcon>
           </Tooltip>
-        ) : null}
+        ) : (
+          <Tooltip label="Opens once the models have finished reading" withArrow>
+            <ActionIcon variant="subtle" disabled aria-label="Not ready yet">
+              <IconArrowRight size={16} />
+            </ActionIcon>
+          </Tooltip>
+        )}
       </Table.Td>
     </Table.Tr>
   )

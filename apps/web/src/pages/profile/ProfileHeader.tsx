@@ -1,4 +1,4 @@
-import { Avatar, Badge, Group, Paper, Text, Tooltip } from '@mantine/core'
+import { Avatar, Badge, Group, Paper, Text } from '@mantine/core'
 
 import type { Tenant, User } from '../../types/auth'
 
@@ -64,13 +64,8 @@ export function ProfileHeader({
         </Group>
 
         <Group gap="xs">
-          <Tooltip label="Multi-tenant cryptographic data boundary active" withArrow>
-            <Badge variant="outline" color="gray" size="md">
-              Carrier: {tenant?.name ?? 'Demo Carrier'}
-            </Badge>
-          </Tooltip>
-          <Badge variant="dot" color="teal" size="md">
-            Active Session
+          <Badge variant="outline" color="gray" size="md">
+            {tenant?.name ?? 'Your company'}
           </Badge>
         </Group>
       </Group>

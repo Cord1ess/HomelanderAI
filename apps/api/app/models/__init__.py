@@ -29,7 +29,7 @@ from app.models.evaluation import (
     RiskTier,
     SubScore,
 )
-from app.models.tenant import Tenant
+from app.models.tenant import Tenant, TenantSettingsChange
 from app.models.user import User, UserRole
 
 __all__ = [
@@ -55,6 +55,7 @@ __all__ = [
     "RiskTier",
     "SubScore",
     "Tenant",
+    "TenantSettingsChange",
     "UnderwriterDecision",
     "UnderwriterDecisionType",
     "User",
