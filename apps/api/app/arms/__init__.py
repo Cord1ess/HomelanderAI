@@ -65,13 +65,24 @@ class Arm:
     # How the arm was tested, in one line. Every screen that shows a score also
     # shows this, so the caveat cannot be left behind in a document.
     validation: str
-    run: Callable[[bytes], ArmResult]
     available: Callable[[], bool]
+    # Exactly one of these. A file arm reads the bytes of the evidence kinds it
+    # `accepts`. A form arm reads what the operator typed — the applicant's
+    # declared answers, age and sex — and runs once per application, so its
+    # `accepts` is empty and no file is ever routed to it.
+    run: Callable[[bytes], ArmResult] | None = None
+    run_form: Callable[[dict, int | None, str | None], ArmResult] | None = None
+
+    def __post_init__(self) -> None:
+        if (self.run is None) == (self.run_form is None):
+            raise ValueError(f"arm {self.name!r} must define exactly one of run / run_form")
+        if self.run_form is not None and self.accepts:
+            raise ValueError(f"form arm {self.name!r} must not accept evidence kinds")
 
 
-# Imported at the bottom on purpose: tb_xray and dr_fundus do `from app.arms
-# import ArmResult`, and by this point ArmResult is defined, so there is no cycle.
-from app.arms import dr_fundus, tb_xray  # noqa: E402
+# Imported at the bottom on purpose: the arm modules do `from app.arms import
+# ArmResult`, and by this point ArmResult is defined, so there is no cycle.
+from app.arms import dr_fundus, mortality, tb_xray  # noqa: E402
 
 
 def arms_for(kind: EvidenceKind | str) -> list[Arm]:
@@ -83,6 +94,11 @@ def arms_for(kind: EvidenceKind | str) -> list[Arm]:
     answer rather than an error.
     """
     return [a for a in ARMS.values() if kind in a.accepts]
+
+
+def form_arms() -> list[Arm]:
+    """The arms that read the intake form rather than a file."""
+    return [a for a in ARMS.values() if a.run_form is not None]
 
 
 def arm_for_intake(intake_id: str) -> Arm | None:
@@ -121,5 +137,19 @@ ARMS: dict[str, Arm] = {
         validation=dr_fundus.VALIDATION,
         run=dr_fundus.run,
         available=dr_fundus.available,
+    ),
+    mortality.NAME: Arm(
+        name=mortality.NAME,
+        version=mortality.VERSION,
+        arm_type="tabular",
+        # The form panel keeps the id the original idea document gave the
+        # actuarial arm; its answers are stored on past applications under it.
+        intake_id="xgboost",
+        accepts=frozenset(),
+        preprocessing_version=mortality.PREPROCESSING_VERSION,
+        weight_hash=mortality.WEIGHT_HASH,
+        validation=mortality.VALIDATION,
+        available=mortality.available,
+        run_form=mortality.run_form,
     ),
 }

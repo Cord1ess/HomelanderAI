@@ -11,7 +11,7 @@ land, a thin layer writes `Evaluation` into `model_runs`, `sub_scores`,
 
 from dataclasses import dataclass, field
 
-from app.arms import ArmResult, arms_for
+from app.arms import ArmResult, arms_for, form_arms
 from app.evidence import EvidenceKind, label
 from app.intake import IntakeError, ProcessedFile, process_upload
 from app.scoring import INSUFFICIENT, Adjustment, ScoreResult, Thresholds, score
@@ -62,6 +62,8 @@ def evaluate(
     age: int | None = None,
     thresholds: Thresholds | None = None,
     kinds: dict[str, EvidenceKind] | None = None,
+    sex: str | None = None,
+    models_requested: list[str] | None = None,
 ) -> Evaluation:
     """Run the pipeline over uploaded evidence.
 
@@ -72,6 +74,11 @@ def evaluate(
     it are stored but not scored: an unclassified file handed to an arbitrary
     model is how a retina model comes to report 98.8 on a chest X-ray.
 
+    `models_requested` is the list of intake-form panels the operator chose.
+    Arms that read the form rather than a file run only when their panel is
+    among them, so an application with a chest X-ray alone is not told that
+    nine blood values are missing.
+
     Never raises. Every failure becomes an `insufficient_evidence` evaluation
     carrying the reason, because an underwriter with an error page is worse off
     than one with an honest "cannot assess".
@@ -79,6 +86,8 @@ def evaluate(
     t = thresholds or Thresholds()
     errors: list[str] = []
     processed: list[ProcessedFile] = []
+    requested = set(models_requested or [])
+    form_readers = [a for a in form_arms() if a.intake_id in requested]
 
     # 1. De-identify and normalise. Unreadable files are recorded and skipped
     #    rather than aborting the whole application.
@@ -88,7 +97,7 @@ def evaluate(
         except IntakeError as exc:
             errors.append(f"{filename or 'file'}: {exc}")
 
-    if not processed:
+    if not processed and not form_readers:
         errors.append("No readable evidence was provided")
         return _insufficient(errors, t, processed)
 
@@ -135,12 +144,32 @@ def evaluate(
             if result.error:
                 errors.append(f"{arm.name}: {result.error}")
 
+    # The arms that read the form. Their "evidence" is what the operator typed,
+    # so the input signature recorded against the run is a hash of that.
+    for arm in form_readers:
+        if not arm.available():
+            errors.append(f"{arm.name}: unavailable")
+            continue
+        result = arm.run_form(declared_history or {}, age, sex)
+        runs.append(
+            ArmRun(
+                arm_name=arm.name,
+                arm_version=arm.version,
+                evidence_hash=str(result.details.get("input_hash", "")),
+                result=result,
+            )
+        )
+        if result.error:
+            errors.append(f"{arm.name}: {result.error}")
+
     usable = [r for r in runs if r.result.usable]
     if not usable:
         return _insufficient(errors, t, processed, runs)
 
     # 3. Highest score governs. A concerning finding on one film must not be
     #    averaged away by a clean one — screening escalates on the worst view.
+    #    The same rule holds across arms: the most concerning reading, from
+    #    whichever model produced it, is the one the underwriter must see.
     vision_score = max(r.result.score for r in usable)
 
     scored: ScoreResult = score(vision_score, declared_history, age=age, thresholds=t)

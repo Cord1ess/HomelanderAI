@@ -238,11 +238,24 @@ const MODELS: ModelDef[] = [
   },
   {
     id: 'xgboost',
-    label: 'XGBoost',
-    modality: 'Actuarial · tabular',
+    label: 'Blood panel and lifestyle',
+    modality: 'Mortality · phenotypic age',
     upload: null,
+    // The nine blood values are Levine's Phenotypic Age inputs, in the units a
+    // Bangladeshi laboratory prints. The keys and units are read by
+    // `apps/api/app/arms/mortality.py`; a value typed in the wrong unit is
+    // refused there rather than silently scored decades older.
     fields: [
-      { kind: 'number', key: 'height_cm', label: 'Height (cm)', description: 'Feeds the tabular BMI feature.' },
+      { kind: 'number', key: 'albumin_g_dl', label: 'Serum albumin (g/dL)', description: 'Liver function test. Typical 3.5–5.0.' },
+      { kind: 'number', key: 'creatinine_mg_dl', label: 'Serum creatinine (mg/dL)', description: 'Typical 0.6–1.2.' },
+      { kind: 'number', key: 'glucose_mg_dl', label: 'Glucose (mg/dL)', description: 'Fasting if available. Typical 70–100.' },
+      { kind: 'number', key: 'crp_mg_l', label: 'C-reactive protein (mg/L)', description: 'Typical under 3. Enter 0 for "below detection".' },
+      { kind: 'number', key: 'lymphocyte_pct', label: 'Lymphocytes (%)', description: 'From the CBC differential. Typical 20–40.' },
+      { kind: 'number', key: 'mcv_fl', label: 'Mean cell volume (fL)', description: 'From the CBC. Typical 80–100.' },
+      { kind: 'number', key: 'rdw_pct', label: 'Red cell distribution width, RDW-CV (%)', description: 'From the CBC. Typical 11.5–14.5. Not RDW-SD.' },
+      { kind: 'number', key: 'alp_u_l', label: 'Alkaline phosphatase (U/L)', description: 'Liver function test. Typical 40–130.' },
+      { kind: 'number', key: 'wbc_10e3_ul', label: 'White blood cells (×10³/µL)', description: 'From the CBC. Typical 4–11.' },
+      { kind: 'number', key: 'height_cm', label: 'Height (cm)' },
       { kind: 'number', key: 'weight_kg', label: 'Weight (kg)' },
       { kind: 'select', key: 'alcohol', label: 'Alcohol use', data: ['None', 'Occasionally', 'Regularly'], placeholder: 'Select' },
       { kind: 'select', key: 'activity', label: 'Physical activity', data: ['Sedentary', 'Light', 'Moderate', 'Active'], placeholder: 'Select' },

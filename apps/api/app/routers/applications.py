@@ -37,7 +37,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app import audit as audit_chain
 from app import catalogue, mailer, persistence, plans, storage, triage, turnaround
 from app import evidence as evidence_kinds
-from app.arms import arm_for_intake, arms_for
+from app.arms import arm_for_intake, arms_for, form_arms
 from app.core.security import generate_password, generate_portal_id, hash_password
 from app.db.session import AsyncSessionLocal, get_db
 from app.deps import Principal, current_principal
@@ -52,6 +52,8 @@ from app.models import (
     EvidenceFile,
     EvidenceFileType,
     ExplanationArtifact,
+    ModelArm,
+    ModelArmType,
     ModelRun,
     Notification,
     NotificationChannel,
@@ -71,6 +73,7 @@ from app.schemas.application import (
     AdjustmentSchema,
     ApplicantIn,
     ApplicationDetailSchema,
+    ArmRunSchema,
     AuditEntrySchema,
     AuditTrailSchema,
     ClassifiedFileSchema,
@@ -371,7 +374,12 @@ async def submit_application(
         db, principal, application, files, file_arms, file_kinds
     )
 
-    if not stored:
+    # An arm that reads the form has something to do even with no file: the
+    # operator's answers are its evidence.
+    scoreable = bool(stored) or any(
+        arm.intake_id in intake.models_requested for arm in form_arms()
+    )
+    if not scoreable:
         # Nothing scoreable arrived. Say so on the row rather than leaving it
         # queued forever behind a background task that has nothing to do.
         application.status = ApplicationStatus.INSUFFICIENT_EVIDENCE
@@ -394,7 +402,7 @@ async def submit_application(
     await db.commit()
     await db.refresh(application)
 
-    if stored:
+    if scoreable:
         background.add_task(score_application, application.id)
 
     # Emailed when there is an address and a mail server; otherwise handed to
@@ -611,6 +619,8 @@ async def score_application(application_id: UUID) -> None:
                 _age_from(applicant.date_of_birth if applicant else None),
                 None,
                 kinds,
+                applicant.sex if applicant else None,
+                list(application.models_requested or []),
             )
 
             await persistence.save_evaluation(db, application, evaluation, started_at)
@@ -811,8 +821,9 @@ async def get_application(
 
     runs = (
         await db.execute(
-            select(ModelRun, SubScore)
+            select(ModelRun, SubScore, ModelArm)
             .outerjoin(SubScore, SubScore.model_run_id == ModelRun.id)
+            .join(ModelArm, ModelArm.id == ModelRun.model_arm_id)
             .where(ModelRun.application_id == application.id)
             .order_by(ModelRun.started_at)
         )
@@ -822,25 +833,40 @@ async def get_application(
     model_info: ModelInfoSchema | None = None
     errors: list[str] = []
     vision_score: float | None = None
+    arms: list[ArmRunSchema] = []
 
-    for run, sub in runs:
+    for run, sub, arm_row in runs:
         if run.error_message:
             errors.append(run.error_message)
-        if sub is None:
+        arms.append(
+            ArmRunSchema(
+                arm=arm_row.name,
+                arm_type=arm_row.arm_type.value,
+                version=arm_row.version,
+                score=float(sub.calibrated_score) if sub is not None else None,
+                details=(sub.details or {}) if sub is not None else {},
+                error=run.error_message,
+            )
+        )
+        # The image panel reads one vision arm: the one with the governing
+        # score, since the highest reading is what the tier was set from.
+        if sub is None or arm_row.arm_type is not ModelArmType.VISION:
+            continue
+        if vision_score is not None and float(sub.calibrated_score) <= vision_score:
             continue
 
         details = sub.details or {}
         probabilities = details.get("findings") or {}
         contributions = details.get("contributions") or {}
         # Every label the arm reported, whichever half of the pair it came from.
-        for label in sorted(set(probabilities) | set(contributions)):
-            findings.append(
-                FindingSchema(
-                    label=label,
-                    probability=float(probabilities.get(label, 0.0)),
-                    contribution=float(contributions.get(label, 0.0)),
-                )
+        findings = [
+            FindingSchema(
+                label=label,
+                probability=float(probabilities.get(label, 0.0)),
+                contribution=float(contributions.get(label, 0.0)),
             )
+            for label in sorted(set(probabilities) | set(contributions))
+        ]
         vision_score = float(sub.calibrated_score)
         model_info = ModelInfoSchema(
             scorer=details.get("scorer"),
@@ -944,6 +970,7 @@ async def get_application(
         else [],
         findings=findings,
         model_info=model_info,
+        arms=arms,
         files=files,
         decision=decision,
         requested_documents=requested,

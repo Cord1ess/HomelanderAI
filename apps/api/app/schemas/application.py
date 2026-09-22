@@ -163,6 +163,22 @@ class ModelInfoSchema(BaseSchema):
     cv_auc: float | None = None
 
 
+class ArmRunSchema(BaseSchema):
+    """One model's reading of this application, as it was stored.
+
+    `details` is the arm's own report, whose shape differs per arm — the chest
+    model reports 18 findings, the mortality arm a phenotypic age and a
+    contribution per blood marker. The review screen picks the panel by `arm`.
+    """
+
+    arm: str
+    arm_type: str
+    version: str
+    score: float | None = None
+    details: dict = Field(default_factory=dict)
+    error: str | None = None
+
+
 class ClassifiedFileSchema(BaseSchema):
     """One file as triage sees it, for the intake review screen.
 
@@ -289,6 +305,9 @@ class ApplicationDetailSchema(BaseSchema):
     adjustments: list[AdjustmentSchema] = Field(default_factory=list)
     findings: list[FindingSchema] = Field(default_factory=list)
     model_info: ModelInfoSchema | None = None
+    # Every arm that ran, with its own score and report. `findings` and
+    # `model_info` above describe the governing vision arm only.
+    arms: list[ArmRunSchema] = Field(default_factory=list)
     files: list[FileSchema] = Field(default_factory=list)
     decision: DecisionSchema | None = None
     # What the underwriter has asked the applicant for, fulfilled or not. The

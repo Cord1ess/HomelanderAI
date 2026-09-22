@@ -1,0 +1,98 @@
+{
+  "model": "phenotypic_age",
+  "version": "1.0.0",
+  "source": "Levine ME et al. An epigenetic biomarker of aging for lifespan and healthspan. Aging 2018;10:573-591, with the 2019 correction. Coefficients at full precision from the BioAge reference implementation (dayoonkwon/BioAge, phenoage_calc.R, 'orig' branch).",
+  "trained_on": "NHANES III (1988-1994), n=9,926, penalised Cox regression over 42 markers",
+  "inputs": {
+    "albumin_g_dl": "serum albumin, g/dL",
+    "creatinine_mg_dl": "serum creatinine, mg/dL",
+    "glucose_mg_dl": "fasting or serum glucose, mg/dL",
+    "crp_mg_l": "C-reactive protein, mg/L",
+    "lymphocyte_pct": "lymphocytes, % of white cells",
+    "mcv_fl": "mean cell volume, fL",
+    "rdw_pct": "red cell distribution width (RDW-CV), %",
+    "alp_u_l": "alkaline phosphatase, U/L",
+    "wbc_10e3_ul": "white blood cell count, 10^3 cells/uL"
+  },
+  "coefficients": {
+    "intercept": -19.90667,
+    "albumin_g_l": -0.03359355,
+    "creatinine_umol_l": 0.009506491,
+    "glucose_mmol_l": 0.1953192,
+    "ln_crp_mg_dl": 0.09536762,
+    "lymphocyte_pct": -0.01199984,
+    "mcv_fl": 0.02676401,
+    "rdw_pct": 0.3306156,
+    "alp_u_l": 0.001868778,
+    "wbc_10e3_ul": 0.05542406,
+    "age_years": 0.08035356
+  },
+  "gompertz": {
+    "ten_year_scale": 1.51714,
+    "ten_year_rate": 0.007692696,
+    "age_scale": 0.0055305,
+    "age_slope": 0.090165,
+    "age_intercept": 141.50225
+  },
+  "plausible": {
+    "albumin_g_dl": [
+      1.5,
+      6.0
+    ],
+    "creatinine_mg_dl": [
+      0.2,
+      15.0
+    ],
+    "glucose_mg_dl": [
+      30.0,
+      700.0
+    ],
+    "crp_mg_l": [
+      0.0,
+      400.0
+    ],
+    "lymphocyte_pct": [
+      1.0,
+      90.0
+    ],
+    "mcv_fl": [
+      50.0,
+      140.0
+    ],
+    "rdw_pct": [
+      8.0,
+      35.0
+    ],
+    "alp_u_l": [
+      10.0,
+      2000.0
+    ],
+    "wbc_10e3_ul": [
+      0.5,
+      100.0
+    ]
+  },
+  "reference": {
+    "albumin_g_dl": 4.195,
+    "creatinine_mg_dl": 0.902,
+    "glucose_mg_dl": 101.303,
+    "crp_mg_l": 4.481,
+    "lymphocyte_pct": 30.367,
+    "mcv_fl": 89.289,
+    "rdw_pct": 13.16,
+    "alp_u_l": 71.929,
+    "wbc_10e3_ul": 7.322
+  },
+  "validation": "our replication on NHANES 1999-2018, 21959 adults aged 20-84: 10-year mortality AUC 0.887 vs 0.861 for chronological age; US cohort, NOT validated in South Asia",
+  "validation_numbers": {
+    "n_adults": 33939,
+    "n_ten_year": 21959,
+    "deaths_ten_year": 3458,
+    "auc_chronological_age": 0.8609,
+    "auc_phenotypic_age": 0.8872,
+    "odds_ratio_per_year_age_adjusted": 1.0784,
+    "acceleration_mean_years": -3.711,
+    "acceleration_sd_years": 9.256
+  },
+  "notes": "acceleration_mean_years: the average NHANES 1999-2018 adult reads younger than their age under this 1988-94 calibration, so a modern peer sits below ratio 1.0. The score compares with the formula's own baseline, as published."
+}

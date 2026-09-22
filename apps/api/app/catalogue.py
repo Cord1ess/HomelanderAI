@@ -59,9 +59,9 @@ CATALOGUE: list[CatalogueEntry] = [
     ),
     CatalogueEntry(
         id="xgboost",
-        label="Lifestyle and measurements",
-        evidence="No upload — answered on the form",
-        screens_for="Actuarial risk from demographics",
+        label="Blood panel and lifestyle",
+        evidence="No upload — nine routine blood values typed from the lab report",
+        screens_for="Mortality relative to age (phenotypic age)",
     ),
     CatalogueEntry(
         id="neuro",

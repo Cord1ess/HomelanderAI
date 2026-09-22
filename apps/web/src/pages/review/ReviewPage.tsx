@@ -41,6 +41,7 @@ import {
   requestEvidence,
   reviseTurnaround,
   type ApplicationDetail,
+  type ArmRun,
   type DecisionType,
   type Finding,
   type Plan,
@@ -347,6 +348,13 @@ function Review({ data, state }: { data: ApplicationDetail; state: ReviewState }
   const heatmap = files.find((f) => f.kind === 'gradcam')
   const heatmapAvailable = Boolean(heatmap)
 
+  // Each arm's own report. The image and findings panels above belong to the
+  // vision arm; an application scored from the blood panel alone has neither,
+  // and showing "no image was stored" for it would read as a fault.
+  const arms = data.arms ?? []
+  const mortality = arms.find((a) => a.arm === 'mortality')
+  const hasVision = arms.some((a) => a.armType === 'vision') || Boolean(evidence)
+
   // Ranked by absolute contribution: the findings that moved the score most, in
   // either direction. Not by probability — the two disagree, and contribution
   // is the one that explains the number.
@@ -502,6 +510,7 @@ function Review({ data, state }: { data: ApplicationDetail; state: ReviewState }
         </Alert>
       )}
 
+      {hasVision && (
       <SimpleGrid cols={{ base: 1, lg: 2 }} spacing="md">
         {/* ── Left · the image ──────────────────────────────── */}
         <Paper p="sm" bd="1px solid var(--mantine-color-default-border)">
@@ -635,6 +644,10 @@ function Review({ data, state }: { data: ApplicationDetail; state: ReviewState }
           )}
         </Stack>
       </SimpleGrid>
+      )}
+
+      {/* ── The blood panel, against age ─────────────────────── */}
+      {mortality && <MortalityPanel run={mortality} />}
 
       {/* ── What this means for the policy ──────────────────── */}
       {data.plan && <PlanPanel plan={data.plan} coverage={data.coverage} />}
@@ -910,6 +923,152 @@ function Review({ data, state }: { data: ApplicationDetail; state: ReviewState }
 }
 
 const bdt = (n: number) => `৳${Math.round(n).toLocaleString('en-IN')}`
+
+/**
+ * Phenotypic age from a routine blood panel, beside the applicant's real age.
+ *
+ * The number to read is the gap. Nine markers go through Levine's published
+ * formula and come out as the age whose average mortality matches this panel;
+ * the gap becomes a mortality ratio against a same-age peer, and that ratio is
+ * what the score is. Each marker's share of the gap is shown in years relative
+ * to a typical adult, so the underwriter can see which value is doing the work.
+ * A single abnormal RDW moves it more than anything else — that is the formula,
+ * not a bug, and it is why the value is shown next to the years.
+ */
+function MortalityPanel({ run }: { run: ArmRun }) {
+  const d = run.details as {
+    phenotypic_age?: number
+    chronological_age?: number
+    acceleration_years?: number
+    mortality_ratio?: number
+    standard_max_ratio?: number
+    senior_min_ratio?: number
+    inputs?: Record<string, number>
+    labels?: Record<string, string>
+    reference?: Record<string, number>
+    contributions?: Record<string, number>
+    scorer?: string
+    validation?: string
+  }
+
+  if (run.error || d.phenotypic_age == null) {
+    return (
+      <Paper p="md" bd="1px solid var(--mantine-color-default-border)">
+        <Text fw={600} size="sm">
+          Blood panel
+        </Text>
+        <Text size="sm" c="dimmed" mt={4}>
+          Could not be assessed: {run.error ?? 'no result was stored'}.
+        </Text>
+      </Paper>
+    )
+  }
+
+  const gap = d.acceleration_years ?? 0
+  const ratio = d.mortality_ratio ?? 1
+  const older = gap > 0
+  const contributions = Object.entries(d.contributions ?? {}).sort(
+    (a, b) => Math.abs(b[1]) - Math.abs(a[1]),
+  )
+  const scale = Math.max(...contributions.map(([, y]) => Math.abs(y)), 0.5)
+
+  return (
+    <Paper p="md" bd="1px solid var(--mantine-color-default-border)">
+      <Group justify="space-between" align="flex-start" mb="sm">
+        <div>
+          <Text fw={600} size="sm">
+            Blood panel: phenotypic age
+          </Text>
+          <Text size="xs" c="dimmed">
+            The age whose average mortality matches this blood panel
+          </Text>
+        </div>
+        {run.score != null && (
+          <Badge variant="light" color={older ? 'orange' : 'teal'} size="lg">
+            arm score {run.score.toFixed(1)}
+          </Badge>
+        )}
+      </Group>
+
+      <SimpleGrid cols={{ base: 1, sm: 3 }} spacing="md">
+        <Field label="Chronological age">{d.chronological_age}</Field>
+        <Field label="Phenotypic age">{d.phenotypic_age?.toFixed(1)}</Field>
+        <Field label="Difference">
+          <Text span c={older ? 'orange' : 'teal'} fw={700}>
+            {gap >= 0 ? '+' : ''}
+            {gap.toFixed(1)} years
+          </Text>
+        </Field>
+      </SimpleGrid>
+
+      <Text size="sm" mt="md">
+        Mortality about <Text span fw={700}>{ratio.toFixed(2)}×</Text> that of a person of the same
+        age. Standard rates run to {d.standard_max_ratio ?? 1.25}×; above {d.senior_min_ratio ?? 2}×
+        a senior underwriter reviews.
+      </Text>
+
+      {contributions.length > 0 && (
+        <Stack gap="sm" mt="md">
+          <Text size="xs" c="dimmed" tt="uppercase" fw={600} lts={0.4}>
+            Years each value adds, against a typical adult
+          </Text>
+          {contributions.map(([key, years]) => (
+            <div key={key}>
+              <Group justify="space-between" mb={4} wrap="nowrap">
+                <Text size="xs">
+                  {d.labels?.[key] ?? key}
+                  <Text span c="dimmed">
+                    {' '}
+                    · {d.inputs?.[key]}
+                    {d.reference?.[key] != null && ` (typical ${d.reference[key]})`}
+                  </Text>
+                </Text>
+                <Text size="xs" ff="monospace" c={years > 0 ? 'orange' : 'teal'}>
+                  {years >= 0 ? '+' : ''}
+                  {years.toFixed(1)} y
+                </Text>
+              </Group>
+              <Box
+                h={6}
+                w="100%"
+                style={{ backgroundColor: 'var(--mantine-color-dark-5)', borderRadius: 3 }}
+              >
+                <Box
+                  h="100%"
+                  style={{
+                    width: `${Math.min((Math.abs(years) / scale) * 100, 100)}%`,
+                    backgroundColor: years > 0
+                      ? 'var(--mantine-color-orange-5)'
+                      : 'var(--mantine-color-teal-5)',
+                    borderRadius: 3,
+                  }}
+                />
+              </Box>
+            </div>
+          ))}
+        </Stack>
+      )}
+
+      <Stack gap={2} mt="md">
+        {d.scorer && (
+          <Text size="xs" c="dimmed">
+            {d.scorer}
+          </Text>
+        )}
+        {d.validation && (
+          <Text size="xs" c="yellow.7">
+            {d.validation}
+          </Text>
+        )}
+        <Text size="xs" c="dimmed">
+          Relative to a same-age peer under the formula's US calibration. Not an absolute
+          probability, and not a diagnosis.
+        </Text>
+      </Stack>
+    </Paper>
+  )
+}
+
 
 /**
  * What the tier means for the policy, priced against the cover the applicant
