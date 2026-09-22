@@ -22,6 +22,7 @@ import logging
 from dataclasses import dataclass
 from io import BytesIO
 
+from app import ecg
 from app.evidence import EvidenceKind
 
 log = logging.getLogger(__name__)
@@ -73,6 +74,21 @@ def classify(raw: bytes, filename: str = "", clinical_tags: dict | None = None) 
     which is a route to a human rather than an error page.
     """
     name = (filename or "").lower()
+
+    # A stored ECG, or an export that reads as one. Checked before the document
+    # suffixes, because an ECG export is usually a .csv.
+    if ecg.is_canonical(raw):
+        return Verdict(EvidenceKind.ECG, "12-lead ECG signal")
+    if name.endswith((".csv", ".txt", ".tsv")):
+        try:
+            signal = ecg.parse_csv(raw)
+        except ecg.NotAnEcg:
+            pass
+        else:
+            return Verdict(
+                EvidenceKind.ECG,
+                f"12 leads at {signal.sample_rate:g} Hz, {signal.seconds:.0f} s of signal",
+            )
 
     if name.endswith(_DOCUMENT_SUFFIXES):
         return Verdict(

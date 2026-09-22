@@ -31,6 +31,8 @@ class EvidenceFileType(enum.StrEnum):
     LAB_REPORT = "lab_report"
     CLINICAL_NOTE = "clinical_note"
     QUESTIONNAIRE = "questionnaire"
+    # A 12-lead tracing stored as a signal array, not an image.
+    ECG = "ecg"
 
 
 class Application(Base):

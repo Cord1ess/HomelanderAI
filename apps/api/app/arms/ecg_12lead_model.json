@@ -1,0 +1,100 @@
+{
+  "model": "ribeiro2020_dx+lima2021_age",
+  "version": "1.0.0",
+  "sources": {
+    "dx": {
+      "paper": "Ribeiro AH et al. Automatic diagnosis of the 12-lead ECG using a deep neural network. Nat Commun 2020;11:1760",
+      "weights": "https://zenodo.org/records/3765717 (model.zip, CC-BY-4.0)",
+      "zip_sha256": "fbecab655252a347ff8393205a2c38fb2a3ff212cb75a603b05227db79efe17f",
+      "trained_on": "CODE cohort, Brazil, 2,322,513 ECGs"
+    },
+    "age": {
+      "paper": "Lima EM et al. Deep neural network-estimated electrocardiographic age as a mortality predictor. Nat Commun 2021;12:5117",
+      "weights": "https://zenodo.org/records/4892365 (model.zip, CC-BY-4.0)",
+      "zip_sha256": "ba28cd59963ab791e3eac1169717b373726eac2ef57e112ee7bbb353265e3ab1",
+      "trained_on": "CODE cohort, Brazil, 1,558,415 patients"
+    },
+    "test_set": "CODE-test, https://zenodo.org/records/3765780 (827 ECGs, CC-BY-4.0)"
+  },
+  "classes": [
+    "1dAVb",
+    "RBBB",
+    "LBBB",
+    "SB",
+    "AF",
+    "ST"
+  ],
+  "labels": {
+    "1dAVb": "first-degree AV block",
+    "RBBB": "right bundle branch block",
+    "LBBB": "left bundle branch block",
+    "SB": "sinus bradycardia",
+    "AF": "atrial fibrillation",
+    "ST": "sinus tachycardia"
+  },
+  "thresholds": {
+    "1dAVb": 0.1163,
+    "RBBB": 0.0876,
+    "LBBB": 0.0563,
+    "SB": 0.3657,
+    "AF": 0.476,
+    "ST": 0.1018
+  },
+  "thresholds_note": "The probability above which each abnormality is reported. Recovered from the authors' published decisions on CODE-test: at these values our port agrees with them on 99.6-100% of tracings per class.",
+  "weights": {
+    "AF": 1.0,
+    "LBBB": 0.9,
+    "RBBB": 0.6,
+    "1dAVb": 0.5,
+    "SB": 0.35,
+    "ST": 0.35
+  },
+  "weights_note": "How far a reported abnormality moves the score, out of 100: atrial fibrillation and left bundle branch block warrant senior review on their own; a right bundle branch block or first-degree block an adjusted look; sinus brady- or tachycardia are usually situational and only a prompt.",
+  "dx_validation": "our PyTorch port on CODE-test (827 ECGs, cardiologist labels): AUC 0.994 1dAVb, 0.999 RBBB, 1.000 LBBB, 0.997 SB, 0.997 AF, 0.999 ST; F1 at the authors' thresholds 0.84 / 0.94 / 1.00 / 0.86 / 0.78 / 0.95. Brazilian cohort, NOT validated in South Asia",
+  "dx_validation_numbers": {
+    "auc": {
+      "1dAVb": 0.994,
+      "RBBB": 0.999,
+      "LBBB": 1.0,
+      "SB": 0.997,
+      "AF": 0.997,
+      "ST": 0.999
+    },
+    "f1_at_threshold": {
+      "1dAVb": 0.842,
+      "RBBB": 0.944,
+      "LBBB": 1.0,
+      "SB": 0.857,
+      "AF": 0.783,
+      "ST": 0.947
+    },
+    "agreement_with_authors": {
+      "1dAVb": 0.9964,
+      "RBBB": 1.0,
+      "LBBB": 1.0,
+      "SB": 0.9988,
+      "AF": 0.9976,
+      "ST": 0.9988
+    },
+    "n": 827
+  },
+  "age_validation": "our run on CODE-test (827 ECGs): MAE 11.6 y, r 0.60, mean error +4.6 y; the published figure is 8.4 y on CODE-15%. Reads young adults about 15 y older and the over-80s about 10 y younger, so the gap is shown against what the model reads for a typical person of that age, and it is a prompt, never a score",
+  "age_calibration": {
+    "note": "Least-squares fit of the model's output against true age on CODE-test: expected_ecg_age = slope * age + intercept. The reported gap is ecg_age - expected_ecg_age.",
+    "slope": 0.54,
+    "intercept": 30.1,
+    "mae_years": 11.6,
+    "n": 827,
+    "notable_gap_years": 8.0
+  },
+  "converted_weights": {
+    "dx": {
+      "file": "ecg_dx.safetensors",
+      "sha256": "41eaf12c22494c5641a14981591c26c8bd01ccaae015a0ccbcd5483da543644c"
+    },
+    "age": {
+      "file": "ecg_age.safetensors",
+      "sha256": "a8899cb5e72befff371fb35d3e0bcb57f198de6be2d07694a27bc0dec94130f6"
+    }
+  }
+}

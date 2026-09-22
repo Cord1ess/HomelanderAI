@@ -331,8 +331,22 @@ interface ReviewState {
 }
 
 /** Derive a human-readable image label from whichever arm produced the evidence. */
+// Whole years between the date of birth and the submission, as the API counted them.
+function ageAt(dateOfBirth: string | null | undefined, when: string | null | undefined): number | null {
+  if (!dateOfBirth) return null
+  const born = new Date(dateOfBirth)
+  const at = when ? new Date(when) : new Date()
+  let years = at.getFullYear() - born.getFullYear()
+  const beforeBirthday =
+    at.getMonth() < born.getMonth() ||
+    (at.getMonth() === born.getMonth() && at.getDate() < born.getDate())
+  if (beforeBirthday) years -= 1
+  return years >= 0 ? years : null
+}
+
 function imageLabelFor(modelsRequested: string[]): string {
   if (modelsRequested.includes('eyepacs')) return 'Retinal photo'
+  if (modelsRequested.includes('ecg')) return '12-lead ECG'
   return 'Chest X-ray'
 }
 
@@ -353,6 +367,7 @@ function Review({ data, state }: { data: ApplicationDetail; state: ReviewState }
   // and showing "no image was stored" for it would read as a fault.
   const arms = data.arms ?? []
   const mortality = arms.find((a) => a.arm === 'mortality')
+  const ecg = arms.find((a) => a.arm === 'ecg_12lead')
   const hasVision = arms.some((a) => a.armType === 'vision') || Boolean(evidence)
 
   // Ranked by absolute contribution: the findings that moved the score most, in
@@ -552,7 +567,9 @@ function Review({ data, state }: { data: ApplicationDetail; state: ReviewState }
           </Box>
           <Text size="xs" c="dimmed" mt="sm">
             {heatmapAvailable
-              ? 'The overlay marks the region that moved the score most — not a diagnosis.'
+              ? ecg
+                ? 'The shading marks where in the tracing the network looked for the reported abnormality — not a diagnosis.'
+                : 'The overlay marks the region that moved the score most — not a diagnosis.'
               : 'No heatmap was produced for this image.'}
           </Text>
         </Paper>
@@ -645,6 +662,9 @@ function Review({ data, state }: { data: ApplicationDetail; state: ReviewState }
         </Stack>
       </SimpleGrid>
       )}
+
+      {/* ── The tracing: what was reported, and the ECG age ──── */}
+      {ecg && <EcgPanel run={ecg} age={ageAt(data.applicant.dateOfBirth, data.submittedAt)} />}
 
       {/* ── The blood panel, against age ─────────────────────── */}
       {mortality && <MortalityPanel run={mortality} />}
@@ -1224,6 +1244,192 @@ function MortalityPanel({ run }: { run: ArmRun }) {
         Relative to a same-age, same-sex peer under a US calibration. Not an absolute
         probability, not validated in South Asia, and not a diagnosis. The smoking box reads
         "current or former"; the model learned "current", so a former smoker is scored as one.
+      </Text>
+    </Paper>
+  )
+}
+
+// What the ECG arm stores per run (`apps/api/app/arms/ecg_12lead.py`).
+interface EcgDetails {
+  probabilities?: Record<string, number>
+  thresholds?: Record<string, number>
+  weights?: Record<string, number>
+  labels?: Record<string, string>
+  reported?: string[]
+  reported_labels?: string[]
+  focus?: string
+  ecg_age?: number
+  age_calibration?: { slope: number; intercept: number; mae_years: number; notable_gap_years: number }
+  age_validation?: string
+  scorer?: string
+  validation?: string
+}
+
+function EcgPanel({ run, age }: { run: ArmRun; age: number | null }) {
+  const d = run.details as EcgDetails
+
+  if (run.error || !d.probabilities) {
+    return (
+      <Paper p="md" bd="1px solid var(--mantine-color-default-border)">
+        <Text fw={600} size="sm">
+          12-lead ECG
+        </Text>
+        <Text size="sm" c="dimmed" mt={4}>
+          Could not be read: {run.error ?? 'no result was stored'}.
+        </Text>
+      </Paper>
+    )
+  }
+
+  const reported = d.reported ?? []
+  const classes = Object.keys(d.probabilities)
+  // Reported first, then by how close the rest came to their threshold.
+  const ordered = [...classes].sort((a, b) => {
+    const ra = reported.includes(a) ? 1 : 0
+    const rb = reported.includes(b) ? 1 : 0
+    if (ra !== rb) return rb - ra
+    const ca = (d.probabilities?.[a] ?? 0) / (d.thresholds?.[a] ?? 1)
+    const cb = (d.probabilities?.[b] ?? 0) / (d.thresholds?.[b] ?? 1)
+    return cb - ca
+  })
+
+  // The age model is imprecise (MAE about 12 years on the public test set), so
+  // the gap is measured against what it reads for a typical person of this age,
+  // and only a gap past the paper's eight years is worth a word.
+  const fit = d.age_calibration
+  const expected = age != null && fit ? fit.slope * age + fit.intercept : null
+  const gap = d.ecg_age != null && expected != null ? d.ecg_age - expected : null
+  const notable = gap != null && fit ? Math.abs(gap) >= fit.notable_gap_years : false
+
+  return (
+    <Paper p="md" bd="1px solid var(--mantine-color-default-border)">
+      <Group justify="space-between" align="flex-start" mb="sm">
+        <div>
+          <Text fw={600} size="sm">
+            12-lead ECG
+          </Text>
+          <Text size="xs" c="dimmed">
+            Six rhythm and conduction abnormalities at the authors' operating thresholds, and an
+            ECG age
+          </Text>
+        </div>
+        {run.score != null && (
+          <Badge variant="light" color={reported.length ? 'orange' : 'teal'} size="lg">
+            arm score {run.score.toFixed(1)}
+          </Badge>
+        )}
+      </Group>
+
+      <Text size="sm">
+        {reported.length === 0 ? (
+          <>None of the six abnormalities reported.</>
+        ) : (
+          <>
+            Reported:{' '}
+            <Text span fw={700} c="orange">
+              {(d.reported_labels ?? reported).join(', ')}
+            </Text>
+            .
+          </>
+        )}
+      </Text>
+
+      <SimpleGrid cols={{ base: 1, md: 2 }} spacing="md" mt="md">
+        <Paper p="sm" bd="1px solid var(--mantine-color-dark-4)">
+          <Text size="xs" fw={600} tt="uppercase" lts={0.4} c="dimmed" mb="xs">
+            Probability against threshold
+          </Text>
+          <Stack gap={6}>
+            {ordered.map((c) => {
+              const p = d.probabilities?.[c] ?? 0
+              const thr = d.thresholds?.[c] ?? 0.5
+              const hit = reported.includes(c)
+              // The bar runs to the threshold at 50% width, so "over the line"
+              // is visible without reading the numbers.
+              const width = Math.min(100, (p / thr) * 50)
+              return (
+                <div key={c}>
+                  <Group justify="space-between" mb={2} wrap="nowrap">
+                    <Text size="xs" className="hl-ellipsis" fw={hit ? 600 : 400}>
+                      {d.labels?.[c] ?? c}
+                      {c === d.focus && (
+                        <Text span c="dimmed">
+                          {' '}
+                          · shaded on the tracing
+                        </Text>
+                      )}
+                    </Text>
+                    <Text size="xs" ff="monospace" c={hit ? 'orange' : 'dimmed'}>
+                      {p.toFixed(3)} / {thr.toFixed(3)}
+                    </Text>
+                  </Group>
+                  <Box h={6} w="100%" style={{ position: 'relative', backgroundColor: 'var(--mantine-color-dark-5)', borderRadius: 3 }}>
+                    <Box
+                      h="100%"
+                      style={{
+                        width: `${width}%`,
+                        backgroundColor: hit ? 'var(--mantine-color-orange-5)' : 'var(--mantine-color-dark-3)',
+                        borderRadius: 3,
+                      }}
+                    />
+                    <Box
+                      style={{
+                        position: 'absolute',
+                        left: '50%',
+                        top: -2,
+                        width: 1,
+                        height: 10,
+                        backgroundColor: 'var(--mantine-color-gray-5)',
+                      }}
+                    />
+                  </Box>
+                </div>
+              )
+            })}
+          </Stack>
+          <Text size="xs" c="dimmed" mt="sm">
+            The tick is each abnormality's own threshold, recovered from the authors' published
+            decisions; a reading past it is reported. Weights out of 100:{' '}
+            {Object.entries(d.weights ?? {})
+              .map(([c, w]) => `${d.labels?.[c] ?? c} ${Math.round(w * 100)}`)
+              .join(', ')}
+            .
+          </Text>
+        </Paper>
+
+        <Paper p="sm" bd="1px solid var(--mantine-color-dark-4)">
+          <Group justify="space-between" mb="xs">
+            <Text size="xs" fw={600} tt="uppercase" lts={0.4} c="dimmed">
+              ECG age
+            </Text>
+            {gap != null && (
+              <Badge size="xs" variant="light" color={notable && gap > 0 ? 'orange' : 'teal'}>
+                {gap >= 0 ? '+' : ''}
+                {gap.toFixed(0)} y vs typical
+              </Badge>
+            )}
+          </Group>
+          <SimpleGrid cols={3} spacing="sm">
+            <Field label="Age">{age ?? '—'}</Field>
+            <Field label="ECG reads">{d.ecg_age != null ? d.ecg_age.toFixed(0) : '—'}</Field>
+            <Field label="Typical read">{expected != null ? expected.toFixed(0) : '—'}</Field>
+          </SimpleGrid>
+          <Text size="xs" c="dimmed" mt="sm">
+            {notable && gap != null && gap > 0
+              ? `The tracing reads ${gap.toFixed(0)} years older than the model reads for a typical person of this age. In the paper, an ECG age more than eight years above the true age carried 1.79× the mortality. A prompt to look, not part of the score.`
+              : 'Within the range the model reads for a typical person of this age. Not part of the score.'}
+          </Text>
+          {d.age_validation && (
+            <Text size="xs" c="yellow.7" mt="xs">
+              {d.age_validation}
+            </Text>
+          )}
+        </Paper>
+      </SimpleGrid>
+
+      <Text size="xs" c="dimmed" mt="md">
+        {d.scorer}. {d.validation}. Trained on Brazilian tracings; not a diagnosis, and a
+        reported abnormality is a reason to obtain the cardiologist's report.
       </Text>
     </Paper>
   )

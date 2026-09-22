@@ -131,6 +131,7 @@ docs/
   TB.md                 how TB screening works, start to finish
   RETINA.md             how retinopathy screening works, and which numbers to trust
   MORTALITY.md          how the blood-panel arm turns nine values into a mortality ratio
+  ECG.md                how the 12-lead ECG arm reads a tracing, and what its numbers mean
   DATABASE.md           schema changes needed (handoff)
   DASHBOARD.md          screens, intake form, API contract (handoff)
   PHASE1_PLAN.md        TB screening + scoring, in three commits
@@ -151,7 +152,7 @@ The ML libraries are heavy, so they're optional extras. Skip them unless you're 
 cd apps/api
 uv sync --extra vision   # torch (CPU), TorchXRayVision, Grad-CAM, scikit-learn  (~2-3 GB)
 uv sync --extra nlp      # spaCy, scispaCy, negspaCy, transformers — the clinical-notes service
-uv sync --extra train    # xgboost — only to retrain the mortality arm's survival model
+uv sync --extra train    # xgboost, h5py — retraining the survival model; converting the ECG weights
 ```
 
 The API runs fine without either — an arm whose libraries are missing reports
@@ -192,6 +193,16 @@ them on first use and refuses a file that does not match its pinned hash;
 `python scripts/fetch_dr_data.py models` fetches them ahead of time. How the
 retina arm works, and which of its numbers can be trusted, is in
 [docs/RETINA.md](docs/RETINA.md).
+
+The ECG arm runs two published networks (Ribeiro 2020, Lima 2021) that are
+downloaded and converted once, about 800 MB including the authors' test set:
+
+```bash
+python scripts/fetch_ecg_models.py       # weights, the port check against the authors' decisions, demo CSVs
+```
+
+It writes fifteen demo tracings to `data/ecg/demo/`; those are what to upload.
+See [docs/ECG.md](docs/ECG.md).
 
 **Torch is pinned to CPU wheels** via a dedicated index in `pyproject.toml` — much smaller, and correct for the local-compute constraint. If you have an NVIDIA GPU, change that index URL to the matching `cuXXX` variant and re-sync.
 

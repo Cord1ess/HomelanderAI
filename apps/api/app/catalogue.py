@@ -52,6 +52,12 @@ CATALOGUE: list[CatalogueEntry] = [
         screens_for="Diabetic retinopathy",
     ),
     CatalogueEntry(
+        id="ecg",
+        label="12-lead ECG",
+        evidence="ECG export as a signal file (.csv), not a printout",
+        screens_for="Rhythm and conduction abnormalities, and ECG age",
+    ),
+    CatalogueEntry(
         id="biobert",
         label="Clinical notes",
         evidence="Physician note (.pdf, .txt)",

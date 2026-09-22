@@ -101,6 +101,7 @@ type AcceptMap = Record<string, string[]>
 const DICOM: AcceptMap = { 'application/dicom': ['.dcm'] }
 const PHOTO: AcceptMap = { 'image/png': ['.png'], 'image/jpeg': ['.jpg', '.jpeg'] }
 const DOCUMENT: AcceptMap = { 'application/pdf': ['.pdf'], 'text/plain': ['.txt'] }
+const ECG_EXPORT: AcceptMap = { 'text/csv': ['.csv'], 'text/plain': ['.txt', '.tsv'] }
 
 interface ModelDef {
   id: string
@@ -223,6 +224,22 @@ const MODELS: ModelDef[] = [
       },
       { kind: 'checkbox', key: 'hypertension', label: 'Hypertension' },
       { kind: 'checkbox', key: 'smoker', label: 'Current or former smoker' },
+    ],
+  },
+  {
+    id: 'ecg',
+    label: '12-lead ECG',
+    modality: 'Rhythm · conduction · ECG age',
+    upload: {
+      category: '12-lead ECG',
+      // The signal the machine exports, not a picture of it: a scanned strip
+      // holds 2.5 s of each lead at poor fidelity, and the models want ten.
+      accept: ECG_EXPORT,
+      instruction: 'ECG export with all 12 leads and a time column or sampling rate — .csv or .txt',
+    },
+    fields: [
+      { kind: 'checkbox', key: 'palpitations', label: 'Palpitations or irregular heartbeat' },
+      { kind: 'checkbox', key: 'known_arrhythmia', label: 'Known arrhythmia or pacemaker' },
     ],
   },
   {

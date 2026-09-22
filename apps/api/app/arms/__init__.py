@@ -82,7 +82,7 @@ class Arm:
 
 # Imported at the bottom on purpose: the arm modules do `from app.arms import
 # ArmResult`, and by this point ArmResult is defined, so there is no cycle.
-from app.arms import dr_fundus, mortality, tb_xray  # noqa: E402
+from app.arms import dr_fundus, ecg_12lead, mortality, tb_xray  # noqa: E402
 
 
 def arms_for(kind: EvidenceKind | str) -> list[Arm]:
@@ -137,6 +137,18 @@ ARMS: dict[str, Arm] = {
         validation=dr_fundus.VALIDATION,
         run=dr_fundus.run,
         available=dr_fundus.available,
+    ),
+    ecg_12lead.NAME: Arm(
+        name=ecg_12lead.NAME,
+        version=ecg_12lead.VERSION,
+        arm_type="vision",
+        intake_id="ecg",
+        accepts=frozenset({EvidenceKind.ECG}),
+        preprocessing_version=ecg_12lead.PREPROCESSING_VERSION,
+        weight_hash=ecg_12lead.WEIGHT_HASH,
+        validation=ecg_12lead.VALIDATION,
+        run=ecg_12lead.run,
+        available=ecg_12lead.available,
     ),
     mortality.NAME: Arm(
         name=mortality.NAME,

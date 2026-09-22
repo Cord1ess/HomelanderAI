@@ -22,6 +22,8 @@ from io import BytesIO
 import numpy as np
 from PIL import Image
 
+from app import ecg
+
 # 50 MB. Chest radiographs are a few MB; anything far larger is a mistake or an
 # attack, and we would rather say so than try to process it.
 MAX_UPLOAD_BYTES = 50 * 1024 * 1024
@@ -67,10 +69,12 @@ def is_dicom(raw: bytes) -> bool:
 
 
 def process_upload(raw: bytes, filename: str = "") -> ProcessedFile:
-    """Normalise one uploaded file into a stored-ready PNG.
+    """Normalise one uploaded file into its stored form.
 
-    Raises IntakeError for anything unreadable — the caller turns that into an
-    `insufficient_evidence` outcome rather than a 500.
+    Images and DICOMs become a PNG. A 12-lead ECG export (CSV) becomes the
+    canonical signal array — numbers only, so a name in the export's comment
+    line never reaches storage. Raises IntakeError for anything unreadable;
+    the caller turns that into an `insufficient_evidence` outcome, not a 500.
     """
     if not raw:
         raise IntakeError("File is empty")
@@ -78,6 +82,41 @@ def process_upload(raw: bytes, filename: str = "") -> ProcessedFile:
         raise IntakeError(
             f"File is {len(raw) / 1_048_576:.1f} MB; the limit is "
             f"{MAX_UPLOAD_BYTES // 1_048_576} MB"
+        )
+
+    if ecg.is_canonical(raw):
+        # Already the stored form: the pipeline re-reads evidence from disk
+        # under its original filename, and a second pass must change nothing.
+        try:
+            ecg.from_bytes(raw)
+        except Exception as exc:
+            raise IntakeError(f"not a readable stored ECG: {exc}") from exc
+        return ProcessedFile(
+            data=raw,
+            content_hash=sha256(raw),
+            mime_type="application/x-npy",
+            source_format="ecg",
+            deidentified=True,
+        )
+
+    if _looks_like_signal_export(raw, filename):
+        try:
+            signal = ecg.parse_csv(raw)
+        except ecg.NotAnEcg as exc:
+            raise IntakeError(f"not a readable 12-lead ECG export: {exc}") from exc
+        data = ecg.to_bytes(ecg.canonical(signal))
+        return ProcessedFile(
+            data=data,
+            content_hash=sha256(data),
+            mime_type="application/x-npy",
+            source_format="ecg",
+            # Numbers only. Whatever the export's header said is not kept.
+            deidentified=True,
+            clinical_tags={
+                "SampleRate": f"{signal.sample_rate:g}",
+                "Seconds": f"{signal.seconds:.1f}",
+            },
+            warnings=list(signal.notes),
         )
 
     if is_dicom(raw):
@@ -105,6 +144,17 @@ def process_upload(raw: bytes, filename: str = "") -> ProcessedFile:
 
 def sha256(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
+
+
+# Text exports of a signal. Anything else with these suffixes is a document
+# and fails ECG parsing with a reason, which the caller reports.
+_SIGNAL_SUFFIXES = (".csv", ".txt", ".tsv")
+# PDF, PNG and JPEG magic: a mis-named picture or document is not a signal.
+_NOT_TEXT_MAGIC = (b"%", b"\x89", b"\xff")
+
+
+def _looks_like_signal_export(raw: bytes, filename: str) -> bool:
+    return (filename or "").lower().endswith(_SIGNAL_SUFFIXES) and raw[:1] not in _NOT_TEXT_MAGIC
 
 
 # ── DICOM ────────────────────────────────────────────────────────────────────

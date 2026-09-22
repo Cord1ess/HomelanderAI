@@ -28,7 +28,7 @@ from fastapi import (
     UploadFile,
     status,
 )
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, Response
 from pydantic import ValidationError
 from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
@@ -36,6 +36,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app import audit as audit_chain
 from app import catalogue, mailer, persistence, plans, storage, triage, turnaround
+from app import ecg as ecg_signal
 from app import evidence as evidence_kinds
 from app.arms import arm_for_intake, arms_for, form_arms
 from app.core.security import generate_password, generate_portal_id, hash_password
@@ -219,6 +220,11 @@ def _thumbnail(png_bytes: bytes, size: int = 96) -> str | None:
     from PIL import Image
 
     try:
+        # A stored ECG is a signal; draw it first, then shrink the drawing.
+        if ecg_signal.is_canonical(png_bytes):
+            png_bytes = ecg_signal.render(
+                ecg_signal.from_bytes(png_bytes), width=480, row_height=24
+            )
         image = Image.open(BytesIO(png_bytes))
         image.load()
         image.thumbnail((size, size))
@@ -498,10 +504,12 @@ async def _store_evidence(
             rejected.append(f"{upload.filename}: {exc}")
             continue
 
+        # The signal keeps its own extension: what is on disk is what the arm read.
+        extension = "npy" if processed.source_format == "ecg" else "png"
         path = storage.write(
             principal.tenant_id,
             application.id,
-            f"{processed.content_hash}.png",
+            f"{processed.content_hash}.{extension}",
             processed.data,
         )
 
@@ -532,11 +540,10 @@ async def _store_evidence(
             EvidenceFile(
                 tenant_id=principal.tenant_id,
                 application_id=application.id,
-                file_type=(
-                    EvidenceFileType.DICOM
-                    if processed.source_format == "dicom"
-                    else EvidenceFileType.IMAGE
-                ),
+                file_type={
+                    "dicom": EvidenceFileType.DICOM,
+                    "ecg": EvidenceFileType.ECG,
+                }.get(processed.source_format, EvidenceFileType.IMAGE),
                 storage_path=path,
                 original_filename=upload.filename,
                 mime_type=processed.mime_type,
@@ -1504,5 +1511,17 @@ async def get_file(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="The record exists but its file is missing from storage.",
         )
+
+    # A stored ECG is a signal array. The review screen asks for a picture, so
+    # it is drawn on the way out; the signal itself is what the model read.
+    if absolute.suffix == ".npy":
+        try:
+            drawn = ecg_signal.render(ecg_signal.from_bytes(absolute.read_bytes()))
+        except Exception as exc:
+            log.error("Could not draw ECG %s: %s", path, exc)
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND, detail="The stored ECG could not be drawn."
+            ) from exc
+        return Response(content=drawn, media_type="image/png")
 
     return FileResponse(absolute, media_type="image/png")
