@@ -35,7 +35,7 @@ import json
 import math
 from pathlib import Path
 
-from app.arms import ArmResult
+from app.arms import ArmResult, panel_readings
 from app.audit import canonical
 from app.scoring import Thresholds
 
@@ -73,9 +73,28 @@ SENIOR_MIN_RATIO = 2.0
 # of zero is not a number, so the floor is the limit itself.
 _CRP_FLOOR_MG_L = 0.1
 
+# Optional values the same panel usually carries. They feed the standard
+# readings (eGFR, FIB-4, BMI) beside the phenotypic age, never the score, so a
+# missing one costs a line on the screen and nothing else.
+OPTIONAL_INPUTS: tuple[str, ...] = (
+    "ast_u_l",
+    "alt_u_l",
+    "platelets_10e3_ul",
+    "height_cm",
+    "weight_kg",
+)
+
 
 def available() -> bool:
     return True
+
+
+def sex_code(sex: str | None) -> str | None:
+    """The form's free-text sex ("Female", "male", "Prefer not to say") as
+    F / M / None. The formulas that need it are sex-specific and have no
+    third option, so anything else is honestly None."""
+    first = (sex or "").strip().lower()[:1]
+    return {"f": "F", "m": "M"}.get(first)
 
 
 # ── the published formula ────────────────────────────────────────────────────
@@ -191,6 +210,19 @@ def read_inputs(declared: dict) -> tuple[dict[str, float], list[str]]:
     return values, problems
 
 
+def read_optional(declared: dict) -> dict[str, float]:
+    """The optional values that were entered as positive numbers."""
+    out: dict[str, float] = {}
+    for name in OPTIONAL_INPUTS:
+        try:
+            value = float(declared.get(name))
+        except (TypeError, ValueError):
+            continue
+        if value > 0:
+            out[name] = value
+    return out
+
+
 def run_form(declared: dict, age: int | None, sex: str | None) -> ArmResult:
     """Score one applicant's blood panel. Never raises."""
     if age is None:
@@ -211,6 +243,7 @@ def run_form(declared: dict, age: int | None, sex: str | None) -> ArmResult:
 
     acceleration = pheno - age
     ratio = mortality_ratio(acceleration)
+    extra = read_optional(declared)
 
     return ArmResult(
         score=score_from_ratio(ratio),
@@ -226,6 +259,7 @@ def run_form(declared: dict, age: int | None, sex: str | None) -> ArmResult:
             "labels": LABELS,
             "reference": _SPEC["reference"],
             "contributions": contributions(age, values),
+            "readings": panel_readings.readings(age, sex_code(sex), {**values, **extra}),
             # The audit trail's input signature for an arm with no file.
             "input_hash": hashlib.sha256(canonical({"age": age, **values}).encode()).hexdigest(),
             "scorer": f"{_SPEC['model']} v{_SPEC['version']} ({_SPEC['trained_on']})",

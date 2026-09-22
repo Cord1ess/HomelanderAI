@@ -255,6 +255,11 @@ const MODELS: ModelDef[] = [
       { kind: 'number', key: 'rdw_pct', label: 'Red cell distribution width, RDW-CV (%)', description: 'From the CBC. Typical 11.5–14.5. Not RDW-SD.' },
       { kind: 'number', key: 'alp_u_l', label: 'Alkaline phosphatase (U/L)', description: 'Liver function test. Typical 40–130.' },
       { kind: 'number', key: 'wbc_10e3_ul', label: 'White blood cells (×10³/µL)', description: 'From the CBC. Typical 4–11.' },
+      // Optional. These feed the kidney, liver and weight readings shown beside
+      // the phenotypic age; they never move the score.
+      { kind: 'number', key: 'ast_u_l', label: 'AST (U/L) — optional', description: 'Liver function test. With ALT and platelets gives the FIB-4 fibrosis index.' },
+      { kind: 'number', key: 'alt_u_l', label: 'ALT (U/L) — optional' },
+      { kind: 'number', key: 'platelets_10e3_ul', label: 'Platelets (×10³/µL) — optional', description: 'From the CBC.' },
       { kind: 'number', key: 'height_cm', label: 'Height (cm)' },
       { kind: 'number', key: 'weight_kg', label: 'Weight (kg)' },
       { kind: 'select', key: 'alcohol', label: 'Alcohol use', data: ['None', 'Occasionally', 'Regularly'], placeholder: 'Select' },

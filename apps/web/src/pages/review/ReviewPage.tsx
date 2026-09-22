@@ -947,6 +947,15 @@ function MortalityPanel({ run }: { run: ArmRun }) {
     labels?: Record<string, string>
     reference?: Record<string, number>
     contributions?: Record<string, number>
+    readings?: {
+      key: string
+      label: string
+      value: number
+      unit: string
+      category: string
+      flag: boolean
+      note: string
+    }[]
     scorer?: string
     validation?: string
   }
@@ -1046,6 +1055,41 @@ function MortalityPanel({ run }: { run: ArmRun }) {
               </Box>
             </div>
           ))}
+        </Stack>
+      )}
+
+      {(d.readings ?? []).length > 0 && (
+        <Stack gap="xs" mt="md">
+          <Text size="xs" c="dimmed" tt="uppercase" fw={600} lts={0.4}>
+            Standard readings from the same panel
+          </Text>
+          <Table fz="xs" withRowBorders={false} verticalSpacing={4}>
+            <Table.Tbody>
+              {(d.readings ?? []).map((r) => (
+                <Table.Tr key={r.key}>
+                  <Table.Td>
+                    <Tooltip label={r.note} multiline w={320} withArrow>
+                      <Text size="xs" style={{ cursor: 'help' }}>
+                        {r.label}
+                      </Text>
+                    </Tooltip>
+                  </Table.Td>
+                  <Table.Td ff="monospace">
+                    {r.value} {r.unit}
+                  </Table.Td>
+                  <Table.Td>
+                    <Badge size="xs" variant="light" color={r.flag ? 'orange' : 'teal'}>
+                      {r.category}
+                    </Badge>
+                  </Table.Td>
+                </Table.Tr>
+              ))}
+            </Table.Tbody>
+          </Table>
+          <Text size="xs" c="dimmed">
+            Published formulas (CKD-EPI 2021, FIB-4, WHO Asian BMI cut-offs, ADA glucose
+            thresholds). They do not move the score.
+          </Text>
         </Stack>
       )}
 
