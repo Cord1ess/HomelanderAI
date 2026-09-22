@@ -162,7 +162,8 @@ def test_the_validation_travels_with_the_score():
     assert numbers["auc_phenotypic_age"] > numbers["auc_chronological_age"]
     assert numbers["auc_phenotypic_age"] > 0.85
     assert "NOT validated in South Asia" in m.VALIDATION
-    assert m.run_form(HEALTHY, 45, "M").details["validation"] == m.VALIDATION
+    details = m.run_form(HEALTHY, 45, "M").details
+    assert details["phenotypic"]["validation"] == m.VALIDATION
 
 
 # ── the arm ──────────────────────────────────────────────────────────────────
@@ -175,9 +176,10 @@ def test_run_form_scores_a_healthy_panel_as_standard():
     assert result.score <= Thresholds().low_max
     d = result.details
     assert d["chronological_age"] == 45
-    assert d["phenotypic_age"] < 45
+    assert d["phenotypic"]["phenotypic_age"] < 45
+    assert d["phenotypic"]["mortality_ratio"] < 1.0
     assert d["mortality_ratio"] < 1.0
-    assert set(d["contributions"]) == set(m.INPUTS)
+    assert set(d["phenotypic"]["contributions"]) == set(m.INPUTS)
     assert len(d["input_hash"]) == 64
 
 
@@ -187,6 +189,7 @@ def test_an_abnormal_panel_escalates():
     )
     assert result.score > Thresholds().moderate_max
     assert result.details["mortality_ratio"] > m.SENIOR_MIN_RATIO
+    assert result.details["governing"] == "phenotypic_age"
 
 
 def test_the_same_input_hashes_the_same_and_a_changed_one_does_not():
@@ -203,12 +206,20 @@ def test_a_wrong_unit_is_refused_not_scored():
     assert "albumin" in result.error and "unit" in result.error
 
 
-def test_missing_values_are_named():
+def test_a_missing_marker_is_named_and_the_formula_is_withheld():
     partial = {k: v for k, v in HEALTHY.items() if k != "rdw_pct"}
     result = m.run_form(partial, 45, "M")
-    assert not result.usable
-    assert "red cell distribution width" in result.error
-    assert not m.run_form({}, 45, "M").usable
+    if m._SURVIVAL is None:
+        assert not result.usable
+        assert "red cell distribution width" in result.error
+    else:
+        # The survival model scores what was entered; the formula says why not.
+        assert result.usable
+        assert result.details["phenotypic"] is None
+        assert any("red cell distribution width" in p for p in result.details["phenotypic_missing"])
+    nothing = m.run_form({}, 45, "M")
+    assert not nothing.usable
+    assert "was not entered" in nothing.error
 
 
 def test_age_is_required_and_bounded():
@@ -349,6 +360,6 @@ def test_an_application_with_only_a_blood_panel_is_scored(carrier):
     (run,) = detail["arms"]
     assert run["arm"] == "mortality" and run["armType"] == "tabular"
     assert run["details"]["chronological_age"] == 68  # born 1958-04-11
-    assert run["details"]["phenotypic_age"] < 68
+    assert run["details"]["phenotypic"]["phenotypic_age"] < 68
     assert detail["findings"] == [] and detail["modelInfo"] is None
     assert detail["score"]["visionScore"] is None

@@ -925,46 +925,77 @@ function Review({ data, state }: { data: ApplicationDetail; state: ReviewState }
 const bdt = (n: number) => `৳${Math.round(n).toLocaleString('en-IN')}`
 
 /**
- * Phenotypic age from a routine blood panel, beside the applicant's real age.
+ * Mortality relative to age, from the blood panel and the lifestyle answers.
  *
- * The number to read is the gap. Nine markers go through Levine's published
- * formula and come out as the age whose average mortality matches this panel;
- * the gap becomes a mortality ratio against a same-age peer, and that ratio is
- * what the score is. Each marker's share of the gap is shown in years relative
- * to a typical adult, so the underwriter can see which value is doing the work.
- * A single abnormal RDW moves it more than anything else — that is the formula,
- * not a bug, and it is why the value is shown next to the years.
+ * Two readings, each a hazard ratio against a typical peer of the same age
+ * and sex, and the higher governs. The first is Levine's published Phenotypic
+ * Age: nine markers become the age whose average mortality matches this panel,
+ * and each marker's share of the gap is shown in years. The second is our own
+ * survival model, trained on NHANES with real death records; it reads whatever
+ * was entered, including lifestyle, and each entered value is shown as the
+ * hazard factor it carries against the peer's value. A single abnormal RDW
+ * moves the formula more than anything else — that is the formula, not a bug,
+ * and it is why every value sits next to its effect.
  */
-function MortalityPanel({ run }: { run: ArmRun }) {
-  const d = run.details as {
-    phenotypic_age?: number
-    chronological_age?: number
-    acceleration_years?: number
-    mortality_ratio?: number
-    standard_max_ratio?: number
-    senior_min_ratio?: number
-    inputs?: Record<string, number>
-    labels?: Record<string, string>
-    reference?: Record<string, number>
-    contributions?: Record<string, number>
-    readings?: {
-      key: string
-      label: string
-      value: number
-      unit: string
-      category: string
-      flag: boolean
-      note: string
-    }[]
+interface MortalityDetails {
+  chronological_age?: number
+  mortality_ratio?: number
+  governing?: 'phenotypic_age' | 'survival_model'
+  ratios?: Record<string, number>
+  standard_max_ratio?: number
+  senior_min_ratio?: number
+  phenotypic?: {
+    phenotypic_age: number
+    acceleration_years: number
+    mortality_ratio: number
+    contributions: Record<string, number>
     scorer?: string
     validation?: string
-  }
+  } | null
+  phenotypic_missing?: string[] | null
+  survival?: {
+    hazard_ratio_vs_peer: number
+    peer: string
+    factors: Record<string, number>
+    inputs_used: string[]
+    scorer?: string
+    validation?: string
+  } | null
+  inputs?: Record<string, number | boolean | string>
+  labels?: Record<string, string>
+  reference?: Record<string, number>
+  readings?: {
+    key: string
+    label: string
+    value: number
+    unit: string
+    category: string
+    flag: boolean
+    note: string
+  }[]
+}
 
-  if (run.error || d.phenotypic_age == null) {
+// The lifestyle and vitals keys the survival model may read, worded for the screen.
+const FACTOR_LABELS: Record<string, string> = {
+  height_cm: 'height',
+  weight_kg: 'weight',
+  smoker: 'smoking',
+  alcohol: 'alcohol',
+  activity: 'physical activity',
+  sbp_mmhg: 'systolic blood pressure',
+  ast_u_l: 'AST',
+  alt_u_l: 'ALT',
+  platelets_10e3_ul: 'platelets',
+}
+
+function MortalityPanel({ run }: { run: ArmRun }) {
+  const d = run.details as MortalityDetails
+
+  if (run.error || d.mortality_ratio == null) {
     return (
       <Paper p="md" bd="1px solid var(--mantine-color-default-border)">
         <Text fw={600} size="sm">
-          Blood panel
+          Blood panel and lifestyle
         </Text>
         <Text size="sm" c="dimmed" mt={4}>
           Could not be assessed: {run.error ?? 'no result was stored'}.
@@ -973,90 +1004,186 @@ function MortalityPanel({ run }: { run: ArmRun }) {
     )
   }
 
-  const gap = d.acceleration_years ?? 0
-  const ratio = d.mortality_ratio ?? 1
-  const older = gap > 0
-  const contributions = Object.entries(d.contributions ?? {}).sort(
+  const ratio = d.mortality_ratio
+  const elevated = ratio > 1
+  const pheno = d.phenotypic
+  const survival = d.survival
+  const gap = pheno?.acceleration_years ?? 0
+  const contributions = Object.entries(pheno?.contributions ?? {}).sort(
     (a, b) => Math.abs(b[1]) - Math.abs(a[1]),
   )
   const scale = Math.max(...contributions.map(([, y]) => Math.abs(y)), 0.5)
+  // Factors within 5% of the peer say nothing worth a chip.
+  const factors = Object.entries(survival?.factors ?? {})
+    .filter(([, f]) => Math.abs(f - 1) >= 0.05)
+    .sort((a, b) => Math.abs(b[1] - 1) - Math.abs(a[1] - 1))
+  const label = (key: string) =>
+    FACTOR_LABELS[key] ?? d.labels?.[key]?.split(',')[0] ?? key
 
   return (
     <Paper p="md" bd="1px solid var(--mantine-color-default-border)">
       <Group justify="space-between" align="flex-start" mb="sm">
         <div>
           <Text fw={600} size="sm">
-            Blood panel: phenotypic age
+            Mortality relative to age
           </Text>
           <Text size="xs" c="dimmed">
-            The age whose average mortality matches this blood panel
+            From the blood panel and lifestyle answers, against a typical peer of the same age
+            and sex
           </Text>
         </div>
         {run.score != null && (
-          <Badge variant="light" color={older ? 'orange' : 'teal'} size="lg">
+          <Badge variant="light" color={elevated ? 'orange' : 'teal'} size="lg">
             arm score {run.score.toFixed(1)}
           </Badge>
         )}
       </Group>
 
-      <SimpleGrid cols={{ base: 1, sm: 3 }} spacing="md">
-        <Field label="Chronological age">{d.chronological_age}</Field>
-        <Field label="Phenotypic age">{d.phenotypic_age?.toFixed(1)}</Field>
-        <Field label="Difference">
-          <Text span c={older ? 'orange' : 'teal'} fw={700}>
-            {gap >= 0 ? '+' : ''}
-            {gap.toFixed(1)} years
-          </Text>
-        </Field>
-      </SimpleGrid>
-
-      <Text size="sm" mt="md">
-        Mortality about <Text span fw={700}>{ratio.toFixed(2)}×</Text> that of a person of the same
-        age. Standard rates run to {d.standard_max_ratio ?? 1.25}×; above {d.senior_min_ratio ?? 2}×
-        a senior underwriter reviews.
+      <Text size="sm">
+        Mortality about{' '}
+        <Text span fw={700} c={elevated ? 'orange' : 'teal'}>
+          {ratio.toFixed(2)}×
+        </Text>{' '}
+        that of a peer
+        {d.governing === 'phenotypic_age' && ', by the published formula'}
+        {d.governing === 'survival_model' && ', by the survival model'}. Standard rates run to{' '}
+        {d.standard_max_ratio ?? 1.25}×; above {d.senior_min_ratio ?? 2}× a senior underwriter
+        reviews.
       </Text>
 
-      {contributions.length > 0 && (
-        <Stack gap="sm" mt="md">
-          <Text size="xs" c="dimmed" tt="uppercase" fw={600} lts={0.4}>
-            Years each value adds, against a typical adult
-          </Text>
-          {contributions.map(([key, years]) => (
-            <div key={key}>
-              <Group justify="space-between" mb={4} wrap="nowrap">
-                <Text size="xs">
-                  {d.labels?.[key] ?? key}
-                  <Text span c="dimmed">
-                    {' '}
-                    · {d.inputs?.[key]}
-                    {d.reference?.[key] != null && ` (typical ${d.reference[key]})`}
+      <SimpleGrid cols={{ base: 1, md: 2 }} spacing="md" mt="md">
+        {/* ── Reading 1: the published formula ─────────────────── */}
+        <Paper p="sm" bd="1px solid var(--mantine-color-dark-4)">
+          <Group justify="space-between" mb="xs">
+            <Text size="xs" fw={600} tt="uppercase" lts={0.4} c="dimmed">
+              Phenotypic age
+            </Text>
+            {pheno && (
+              <Badge size="xs" variant="light" color={pheno.mortality_ratio > 1 ? 'orange' : 'teal'}>
+                {pheno.mortality_ratio.toFixed(2)}×
+              </Badge>
+            )}
+          </Group>
+          {pheno ? (
+            <>
+              <SimpleGrid cols={3} spacing="sm">
+                <Field label="Age">{d.chronological_age}</Field>
+                <Field label="Phenotypic">{pheno.phenotypic_age.toFixed(1)}</Field>
+                <Field label="Gap">
+                  <Text span c={gap > 0 ? 'orange' : 'teal'} fw={700}>
+                    {gap >= 0 ? '+' : ''}
+                    {gap.toFixed(1)} y
                   </Text>
+                </Field>
+              </SimpleGrid>
+              <Stack gap={6} mt="sm">
+                <Text size="xs" c="dimmed">
+                  Years each value adds, against a typical adult
                 </Text>
-                <Text size="xs" ff="monospace" c={years > 0 ? 'orange' : 'teal'}>
-                  {years >= 0 ? '+' : ''}
-                  {years.toFixed(1)} y
+                {contributions.map(([key, years]) => (
+                  <div key={key}>
+                    <Group justify="space-between" mb={2} wrap="nowrap">
+                      <Text size="xs" className="hl-ellipsis">
+                        {d.labels?.[key] ?? key}
+                        <Text span c="dimmed">
+                          {' '}
+                          · {String(d.inputs?.[key])}
+                          {d.reference?.[key] != null && ` (typical ${d.reference[key]})`}
+                        </Text>
+                      </Text>
+                      <Text size="xs" ff="monospace" c={years > 0 ? 'orange' : 'teal'}>
+                        {years >= 0 ? '+' : ''}
+                        {years.toFixed(1)}
+                      </Text>
+                    </Group>
+                    <Box
+                      h={4}
+                      w="100%"
+                      style={{ backgroundColor: 'var(--mantine-color-dark-5)', borderRadius: 2 }}
+                    >
+                      <Box
+                        h="100%"
+                        style={{
+                          width: `${Math.min((Math.abs(years) / scale) * 100, 100)}%`,
+                          backgroundColor: years > 0
+                            ? 'var(--mantine-color-orange-5)'
+                            : 'var(--mantine-color-teal-5)',
+                          borderRadius: 2,
+                        }}
+                      />
+                    </Box>
+                  </div>
+                ))}
+              </Stack>
+              {pheno.validation && (
+                <Text size="xs" c="yellow.7" mt="sm">
+                  {pheno.validation}
                 </Text>
-              </Group>
-              <Box
-                h={6}
-                w="100%"
-                style={{ backgroundColor: 'var(--mantine-color-dark-5)', borderRadius: 3 }}
+              )}
+            </>
+          ) : (
+            <Text size="xs" c="dimmed">
+              Needs all nine blood values.{' '}
+              {(d.phenotypic_missing ?? []).length > 0 && (
+                <>Missing: {(d.phenotypic_missing ?? []).map((p) => p.split(',')[0]).join(', ')}.</>
+              )}
+            </Text>
+          )}
+        </Paper>
+
+        {/* ── Reading 2: the survival model ────────────────────── */}
+        <Paper p="sm" bd="1px solid var(--mantine-color-dark-4)">
+          <Group justify="space-between" mb="xs">
+            <Text size="xs" fw={600} tt="uppercase" lts={0.4} c="dimmed">
+              Survival model
+            </Text>
+            {survival && (
+              <Badge
+                size="xs"
+                variant="light"
+                color={survival.hazard_ratio_vs_peer > 1 ? 'orange' : 'teal'}
               >
-                <Box
-                  h="100%"
-                  style={{
-                    width: `${Math.min((Math.abs(years) / scale) * 100, 100)}%`,
-                    backgroundColor: years > 0
-                      ? 'var(--mantine-color-orange-5)'
-                      : 'var(--mantine-color-teal-5)',
-                    borderRadius: 3,
-                  }}
-                />
-              </Box>
-            </div>
-          ))}
-        </Stack>
-      )}
+                {survival.hazard_ratio_vs_peer.toFixed(2)}×
+              </Badge>
+            )}
+          </Group>
+          {survival ? (
+            <>
+              <Text size="xs" c="dimmed">
+                Against {survival.peer}, measured on the same {survival.inputs_used.length} values.
+              </Text>
+              {factors.length > 0 ? (
+                <Group gap={6} mt="sm">
+                  {factors.map(([key, f]) => (
+                    <Tooltip
+                      key={key}
+                      label={`${label(key)}: ${String(d.inputs?.[key])} — hazard ×${f.toFixed(2)} against the peer's value`}
+                      withArrow
+                    >
+                      <Badge size="sm" variant="light" color={f > 1 ? 'orange' : 'teal'} ff="monospace">
+                        {label(key)} ×{f.toFixed(2)}
+                      </Badge>
+                    </Tooltip>
+                  ))}
+                </Group>
+              ) : (
+                <Text size="xs" c="dimmed" mt="sm">
+                  Nothing entered differs from the peer by more than 5%.
+                </Text>
+              )}
+              {survival.validation && (
+                <Text size="xs" c="yellow.7" mt="sm">
+                  {survival.validation}
+                </Text>
+              )}
+            </>
+          ) : (
+            <Text size="xs" c="dimmed">
+              Not given: the survival model needs the applicant's sex and at least one entered value.
+            </Text>
+          )}
+        </Paper>
+      </SimpleGrid>
 
       {(d.readings ?? []).length > 0 && (
         <Stack gap="xs" mt="md">
@@ -1088,31 +1215,19 @@ function MortalityPanel({ run }: { run: ArmRun }) {
           </Table>
           <Text size="xs" c="dimmed">
             Published formulas (CKD-EPI 2021, FIB-4, WHO Asian BMI cut-offs, ADA glucose
-            thresholds). They do not move the score.
+            thresholds). They carry no weight of their own.
           </Text>
         </Stack>
       )}
 
-      <Stack gap={2} mt="md">
-        {d.scorer && (
-          <Text size="xs" c="dimmed">
-            {d.scorer}
-          </Text>
-        )}
-        {d.validation && (
-          <Text size="xs" c="yellow.7">
-            {d.validation}
-          </Text>
-        )}
-        <Text size="xs" c="dimmed">
-          Relative to a same-age peer under the formula's US calibration. Not an absolute
-          probability, and not a diagnosis.
-        </Text>
-      </Stack>
+      <Text size="xs" c="dimmed" mt="md">
+        Relative to a same-age, same-sex peer under a US calibration. Not an absolute
+        probability, not validated in South Asia, and not a diagnosis. The smoking box reads
+        "current or former"; the model learned "current", so a former smoker is scored as one.
+      </Text>
     </Paper>
   )
 }
-
 
 /**
  * What the tier means for the policy, priced against the cover the applicant

@@ -89,15 +89,17 @@ def test_glucose_categories_are_ada():
 # ── through the arm ──────────────────────────────────────────────────────────
 
 
-def test_readings_ride_with_the_phenotypic_age_and_do_not_move_the_score():
+def test_readings_ride_with_the_phenotypic_age_and_carry_no_weight_of_their_own():
+    """The readings are derived from values the arm already has; they add no
+    term to anything. The values behind them may still be read by the
+    survival model — that is the model, not the reading."""
     with_extras = dict(
         HEALTHY, ast_u_l=40, alt_u_l=30, platelets_10e3_ul=150, height_cm=170, weight_kg=68
     )
     plain = m.run_form(HEALTHY, 50, "Male")
     full = m.run_form(with_extras, 50, "Male")
 
-    assert full.score == plain.score
-    assert full.details["phenotypic_age"] == plain.details["phenotypic_age"]
+    assert full.details["phenotypic"] == plain.details["phenotypic"]
 
     keys = [r["key"] for r in full.details["readings"]]
     assert keys == ["egfr", "fib4", "bmi", "glucose"]

@@ -67,6 +67,9 @@ nlp = [
     "torch>=2.5",
     "en-core-sci-sm",
 ]
+train = [
+    "xgboost>=2.1",
+]
 # Deliberately not declared:
 #
 #   medspacy — its published sdist is broken (setup.py reads a

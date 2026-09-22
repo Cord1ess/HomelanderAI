@@ -130,6 +130,7 @@ docs/
   DESIGN_POLICY.md      how we implement — read before writing code
   TB.md                 how TB screening works, start to finish
   RETINA.md             how retinopathy screening works, and which numbers to trust
+  MORTALITY.md          how the blood-panel arm turns nine values into a mortality ratio
   DATABASE.md           schema changes needed (handoff)
   DASHBOARD.md          screens, intake form, API contract (handoff)
   PHASE1_PLAN.md        TB screening + scoring, in three commits
@@ -150,6 +151,7 @@ The ML libraries are heavy, so they're optional extras. Skip them unless you're 
 cd apps/api
 uv sync --extra vision   # torch (CPU), TorchXRayVision, Grad-CAM, scikit-learn  (~2-3 GB)
 uv sync --extra nlp      # spaCy, scispaCy, negspaCy, transformers — the clinical-notes service
+uv sync --extra train    # xgboost — only to retrain the mortality arm's survival model
 ```
 
 The API runs fine without either — an arm whose libraries are missing reports
@@ -160,7 +162,7 @@ working on the dashboard or the database needs a multi-gigabyte download.
 extra you use in one command:**
 
 ```bash
-uv sync --extra vision --extra nlp
+uv sync --extra vision --extra nlp --extra train
 ```
 
 A plain `uv run` (or `uv sync` with no extras) only brings the *base*

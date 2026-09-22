@@ -246,7 +246,7 @@ const MODELS: ModelDef[] = [
     // `apps/api/app/arms/mortality.py`; a value typed in the wrong unit is
     // refused there rather than silently scored decades older.
     fields: [
-      { kind: 'number', key: 'albumin_g_dl', label: 'Serum albumin (g/dL)', description: 'Liver function test. Typical 3.5–5.0.' },
+      { kind: 'number', key: 'albumin_g_dl', label: 'Serum albumin (g/dL)', description: 'Liver function test. Typical 3.5–5.0. The nine blood values are optional together: with all nine the phenotypic age is computed as well.' },
       { kind: 'number', key: 'creatinine_mg_dl', label: 'Serum creatinine (mg/dL)', description: 'Typical 0.6–1.2.' },
       { kind: 'number', key: 'glucose_mg_dl', label: 'Glucose (mg/dL)', description: 'Fasting if available. Typical 70–100.' },
       { kind: 'number', key: 'crp_mg_l', label: 'C-reactive protein (mg/L)', description: 'Typical under 3. Enter 0 for "below detection".' },
@@ -260,6 +260,7 @@ const MODELS: ModelDef[] = [
       { kind: 'number', key: 'ast_u_l', label: 'AST (U/L) — optional', description: 'Liver function test. With ALT and platelets gives the FIB-4 fibrosis index.' },
       { kind: 'number', key: 'alt_u_l', label: 'ALT (U/L) — optional' },
       { kind: 'number', key: 'platelets_10e3_ul', label: 'Platelets (×10³/µL) — optional', description: 'From the CBC.' },
+      { kind: 'number', key: 'sbp_mmhg', label: 'Systolic blood pressure (mm Hg) — optional', description: 'Seated, at rest.' },
       { kind: 'number', key: 'height_cm', label: 'Height (cm)' },
       { kind: 'number', key: 'weight_kg', label: 'Weight (kg)' },
       { kind: 'select', key: 'alcohol', label: 'Alcohol use', data: ['None', 'Occasionally', 'Regularly'], placeholder: 'Select' },
