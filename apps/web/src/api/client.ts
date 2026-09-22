@@ -34,6 +34,7 @@ export type TenantSettings = Schemas['TenantSettingsSchema']
 export type SubmitResponse = Schemas['SubmitResponseSchema']
 export type PortalStatus = Schemas['PortalStatusSchema']
 export type PortalCredentials = Schemas['PortalCredentialsSchema']
+export type ArmRun = Schemas['ArmRunSchema']
 
 // Relative, so the Vite dev proxy handles it and the production build works
 // from whatever origin serves the bundle.

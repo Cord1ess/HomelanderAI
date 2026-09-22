@@ -642,6 +642,8 @@ export interface components {
             /** Findings */
             findings?: components["schemas"]["FindingSchema"][];
             modelInfo?: components["schemas"]["ModelInfoSchema"] | null;
+            /** Arms */
+            arms?: components["schemas"]["ArmRunSchema"][];
             /** Files */
             files?: components["schemas"]["FileSchema"][];
             decision?: components["schemas"]["DecisionSchema"] | null;
@@ -655,6 +657,30 @@ export interface components {
          * @enum {string}
          */
         ApplicationStatus: "submitted" | "processing" | "insufficient_evidence" | "awaiting_evidence" | "scored" | "decided";
+        /**
+         * ArmRunSchema
+         * @description One model's reading of this application, as it was stored.
+         *
+         *     `details` is the arm's own report, whose shape differs per arm — the chest
+         *     model reports 18 findings, the mortality arm a phenotypic age and a
+         *     contribution per blood marker. The review screen picks the panel by `arm`.
+         */
+        ArmRunSchema: {
+            /** Arm */
+            arm: string;
+            /** Armtype */
+            armType: string;
+            /** Version */
+            version: string;
+            /** Score */
+            score?: number | null;
+            /** Details */
+            details?: {
+                [key: string]: unknown;
+            };
+            /** Error */
+            error?: string | null;
+        };
         /** AuditEntrySchema */
         AuditEntrySchema: {
             /**

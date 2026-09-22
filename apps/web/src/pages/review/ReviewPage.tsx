@@ -39,6 +39,7 @@ import {
   requestEvidence,
   reviseTurnaround,
   type ApplicationDetail,
+  type ArmRun,
   type DecisionType,
   type Finding,
   type Plan,
@@ -338,8 +339,22 @@ interface ReviewState {
 }
 
 /** Derive a human-readable image label from whichever arm produced the evidence. */
+// Whole years between the date of birth and the submission, as the API counted them.
+function ageAt(dateOfBirth: string | null | undefined, when: string | null | undefined): number | null {
+  if (!dateOfBirth) return null
+  const born = new Date(dateOfBirth)
+  const at = when ? new Date(when) : new Date()
+  let years = at.getFullYear() - born.getFullYear()
+  const beforeBirthday =
+    at.getMonth() < born.getMonth() ||
+    (at.getMonth() === born.getMonth() && at.getDate() < born.getDate())
+  if (beforeBirthday) years -= 1
+  return years >= 0 ? years : null
+}
+
 function imageLabelFor(modelsRequested: string[]): string {
   if (modelsRequested.includes('eyepacs')) return 'Retinal photo'
+  if (modelsRequested.includes('ecg')) return '12-lead ECG'
   return 'Chest X-ray'
 }
 
@@ -354,6 +369,14 @@ function Review({ data, state }: { data: ApplicationDetail; state: ReviewState }
   const evidence = files.find((f) => f.kind === 'evidence')
   const heatmap = files.find((f) => f.kind === 'gradcam')
   const heatmapAvailable = Boolean(heatmap)
+
+  // Each arm's own report. The image and findings panels above belong to the
+  // vision arm; an application scored from the blood panel alone has neither,
+  // and showing "no image was stored" for it would read as a fault.
+  const arms = data.arms ?? []
+  const mortality = arms.find((a) => a.arm === 'mortality')
+  const ecg = arms.find((a) => a.arm === 'ecg_12lead')
+  const hasVision = arms.some((a) => a.armType === 'vision') || Boolean(evidence)
 
   // Ranked by absolute contribution: the findings that moved the score most, in
   // either direction. Not by probability — the two disagree, and contribution
@@ -515,6 +538,7 @@ function Review({ data, state }: { data: ApplicationDetail; state: ReviewState }
         </Alert>
       )}
 
+      {hasVision && (
       <SimpleGrid cols={{ base: 1, lg: 2 }} spacing="md">
         {/* ── Left · the image ──────────────────────────────── */}
         <Paper p="sm" bd="1px solid var(--mantine-color-default-border)">
@@ -556,7 +580,9 @@ function Review({ data, state }: { data: ApplicationDetail; state: ReviewState }
           </Box>
           <Text size="xs" c="dimmed" mt="sm">
             {heatmapAvailable
-              ? 'The overlay marks the region that moved the score most — not a diagnosis.'
+              ? ecg
+                ? 'The shading marks where in the tracing the network looked for the reported abnormality — not a diagnosis.'
+                : 'The overlay marks the region that moved the score most — not a diagnosis.'
               : 'No heatmap was produced for this image.'}
           </Text>
         </Paper>
@@ -656,6 +682,13 @@ function Review({ data, state }: { data: ApplicationDetail; state: ReviewState }
           )}
         </Stack>
       </SimpleGrid>
+      )}
+
+      {/* ── The tracing: what was reported, and the ECG age ──── */}
+      {ecg && <EcgPanel run={ecg} age={ageAt(data.applicant.dateOfBirth, data.submittedAt)} />}
+
+      {/* ── The blood panel, against age ─────────────────────── */}
+      {mortality && <MortalityPanel run={mortality} />}
 
       {/* ── What this means for the policy ──────────────────── */}
       {data.plan && <PlanPanel plan={data.plan} coverage={data.coverage} />}
@@ -925,6 +958,497 @@ function Review({ data, state }: { data: ApplicationDetail; state: ReviewState }
 }
 
 const bdt = (n: number) => `৳${Math.round(n).toLocaleString('en-IN')}`
+
+/**
+ * Mortality relative to age, from the blood panel and the lifestyle answers.
+ *
+ * Two readings, each a hazard ratio against a typical peer of the same age
+ * and sex, and the higher governs. The first is Levine's published Phenotypic
+ * Age: nine markers become the age whose average mortality matches this panel,
+ * and each marker's share of the gap is shown in years. The second is our own
+ * survival model, trained on NHANES with real death records; it reads whatever
+ * was entered, including lifestyle, and each entered value is shown as the
+ * hazard factor it carries against the peer's value. A single abnormal RDW
+ * moves the formula more than anything else — that is the formula, not a bug,
+ * and it is why every value sits next to its effect.
+ */
+interface MortalityDetails {
+  chronological_age?: number
+  mortality_ratio?: number
+  governing?: 'phenotypic_age' | 'survival_model'
+  ratios?: Record<string, number>
+  standard_max_ratio?: number
+  senior_min_ratio?: number
+  phenotypic?: {
+    phenotypic_age: number
+    acceleration_years: number
+    mortality_ratio: number
+    contributions: Record<string, number>
+    scorer?: string
+    validation?: string
+  } | null
+  phenotypic_missing?: string[] | null
+  survival?: {
+    hazard_ratio_vs_peer: number
+    peer: string
+    factors: Record<string, number>
+    inputs_used: string[]
+    scorer?: string
+    validation?: string
+  } | null
+  inputs?: Record<string, number | boolean | string>
+  labels?: Record<string, string>
+  reference?: Record<string, number>
+  readings?: {
+    key: string
+    label: string
+    value: number
+    unit: string
+    category: string
+    flag: boolean
+    note: string
+  }[]
+}
+
+// The lifestyle and vitals keys the survival model may read, worded for the screen.
+const FACTOR_LABELS: Record<string, string> = {
+  height_cm: 'height',
+  weight_kg: 'weight',
+  smoker: 'smoking',
+  alcohol: 'alcohol',
+  activity: 'physical activity',
+  sbp_mmhg: 'systolic blood pressure',
+  ast_u_l: 'AST',
+  alt_u_l: 'ALT',
+  platelets_10e3_ul: 'platelets',
+}
+
+function MortalityPanel({ run }: { run: ArmRun }) {
+  const d = run.details as MortalityDetails
+
+  if (run.error || d.mortality_ratio == null) {
+    return (
+      <Paper p="md" bd="1px solid var(--mantine-color-default-border)">
+        <Text fw={600} size="sm">
+          Blood panel and lifestyle
+        </Text>
+        <Text size="sm" c="dimmed" mt={4}>
+          Could not be assessed: {run.error ?? 'no result was stored'}.
+        </Text>
+      </Paper>
+    )
+  }
+
+  const ratio = d.mortality_ratio
+  const elevated = ratio > 1
+  const pheno = d.phenotypic
+  const survival = d.survival
+  const gap = pheno?.acceleration_years ?? 0
+  const contributions = Object.entries(pheno?.contributions ?? {}).sort(
+    (a, b) => Math.abs(b[1]) - Math.abs(a[1]),
+  )
+  const scale = Math.max(...contributions.map(([, y]) => Math.abs(y)), 0.5)
+  // Factors within 5% of the peer say nothing worth a chip.
+  const factors = Object.entries(survival?.factors ?? {})
+    .filter(([, f]) => Math.abs(f - 1) >= 0.05)
+    .sort((a, b) => Math.abs(b[1] - 1) - Math.abs(a[1] - 1))
+  const label = (key: string) =>
+    FACTOR_LABELS[key] ?? d.labels?.[key]?.split(',')[0] ?? key
+
+  return (
+    <Paper p="md" bd="1px solid var(--mantine-color-default-border)">
+      <Group justify="space-between" align="flex-start" mb="sm">
+        <div>
+          <Text fw={600} size="sm">
+            Mortality relative to age
+          </Text>
+          <Text size="xs" c="dimmed">
+            From the blood panel and lifestyle answers, against a typical peer of the same age
+            and sex
+          </Text>
+        </div>
+        {run.score != null && (
+          <Badge variant="light" color={elevated ? 'orange' : 'teal'} size="lg">
+            arm score {run.score.toFixed(1)}
+          </Badge>
+        )}
+      </Group>
+
+      <Text size="sm">
+        Mortality about{' '}
+        <Text span fw={700} c={elevated ? 'orange' : 'teal'}>
+          {ratio.toFixed(2)}×
+        </Text>{' '}
+        that of a peer
+        {d.governing === 'phenotypic_age' && ', by the published formula'}
+        {d.governing === 'survival_model' && ', by the survival model'}. Standard rates run to{' '}
+        {d.standard_max_ratio ?? 1.25}×; above {d.senior_min_ratio ?? 2}× a senior underwriter
+        reviews.
+      </Text>
+
+      <SimpleGrid cols={{ base: 1, md: 2 }} spacing="md" mt="md">
+        {/* ── Reading 1: the published formula ─────────────────── */}
+        <Paper p="sm" bd="1px solid var(--mantine-color-dark-4)">
+          <Group justify="space-between" mb="xs">
+            <Text size="xs" fw={600} tt="uppercase" lts={0.4} c="dimmed">
+              Phenotypic age
+            </Text>
+            {pheno && (
+              <Badge size="xs" variant="light" color={pheno.mortality_ratio > 1 ? 'orange' : 'teal'}>
+                {pheno.mortality_ratio.toFixed(2)}×
+              </Badge>
+            )}
+          </Group>
+          {pheno ? (
+            <>
+              <SimpleGrid cols={3} spacing="sm">
+                <Field label="Age">{d.chronological_age}</Field>
+                <Field label="Phenotypic">{pheno.phenotypic_age.toFixed(1)}</Field>
+                <Field label="Gap">
+                  <Text span c={gap > 0 ? 'orange' : 'teal'} fw={700}>
+                    {gap >= 0 ? '+' : ''}
+                    {gap.toFixed(1)} y
+                  </Text>
+                </Field>
+              </SimpleGrid>
+              <Stack gap={6} mt="sm">
+                <Text size="xs" c="dimmed">
+                  Years each value adds, against a typical adult
+                </Text>
+                {contributions.map(([key, years]) => (
+                  <div key={key}>
+                    <Group justify="space-between" mb={2} wrap="nowrap">
+                      <Text size="xs" className="hl-ellipsis">
+                        {d.labels?.[key] ?? key}
+                        <Text span c="dimmed">
+                          {' '}
+                          · {String(d.inputs?.[key])}
+                          {d.reference?.[key] != null && ` (typical ${d.reference[key]})`}
+                        </Text>
+                      </Text>
+                      <Text size="xs" ff="monospace" c={years > 0 ? 'orange' : 'teal'}>
+                        {years >= 0 ? '+' : ''}
+                        {years.toFixed(1)}
+                      </Text>
+                    </Group>
+                    <Box
+                      h={4}
+                      w="100%"
+                      style={{ backgroundColor: 'var(--mantine-color-dark-5)', borderRadius: 2 }}
+                    >
+                      <Box
+                        h="100%"
+                        style={{
+                          width: `${Math.min((Math.abs(years) / scale) * 100, 100)}%`,
+                          backgroundColor: years > 0
+                            ? 'var(--mantine-color-orange-5)'
+                            : 'var(--mantine-color-teal-5)',
+                          borderRadius: 2,
+                        }}
+                      />
+                    </Box>
+                  </div>
+                ))}
+              </Stack>
+              {pheno.validation && (
+                <Text size="xs" c="yellow.7" mt="sm">
+                  {pheno.validation}
+                </Text>
+              )}
+            </>
+          ) : (
+            <Text size="xs" c="dimmed">
+              Needs all nine blood values.{' '}
+              {(d.phenotypic_missing ?? []).length > 0 && (
+                <>Missing: {(d.phenotypic_missing ?? []).map((p) => p.split(',')[0]).join(', ')}.</>
+              )}
+            </Text>
+          )}
+        </Paper>
+
+        {/* ── Reading 2: the survival model ────────────────────── */}
+        <Paper p="sm" bd="1px solid var(--mantine-color-dark-4)">
+          <Group justify="space-between" mb="xs">
+            <Text size="xs" fw={600} tt="uppercase" lts={0.4} c="dimmed">
+              Survival model
+            </Text>
+            {survival && (
+              <Badge
+                size="xs"
+                variant="light"
+                color={survival.hazard_ratio_vs_peer > 1 ? 'orange' : 'teal'}
+              >
+                {survival.hazard_ratio_vs_peer.toFixed(2)}×
+              </Badge>
+            )}
+          </Group>
+          {survival ? (
+            <>
+              <Text size="xs" c="dimmed">
+                Against {survival.peer}, measured on the same {survival.inputs_used.length} values.
+              </Text>
+              {factors.length > 0 ? (
+                <Group gap={6} mt="sm">
+                  {factors.map(([key, f]) => (
+                    <Tooltip
+                      key={key}
+                      label={`${label(key)}: ${String(d.inputs?.[key])} — hazard ×${f.toFixed(2)} against the peer's value`}
+                      withArrow
+                    >
+                      <Badge size="sm" variant="light" color={f > 1 ? 'orange' : 'teal'} ff="monospace">
+                        {label(key)} ×{f.toFixed(2)}
+                      </Badge>
+                    </Tooltip>
+                  ))}
+                </Group>
+              ) : (
+                <Text size="xs" c="dimmed" mt="sm">
+                  Nothing entered differs from the peer by more than 5%.
+                </Text>
+              )}
+              {survival.validation && (
+                <Text size="xs" c="yellow.7" mt="sm">
+                  {survival.validation}
+                </Text>
+              )}
+            </>
+          ) : (
+            <Text size="xs" c="dimmed">
+              Not given: the survival model needs the applicant's sex and at least one entered value.
+            </Text>
+          )}
+        </Paper>
+      </SimpleGrid>
+
+      {(d.readings ?? []).length > 0 && (
+        <Stack gap="xs" mt="md">
+          <Text size="xs" c="dimmed" tt="uppercase" fw={600} lts={0.4}>
+            Standard readings from the same panel
+          </Text>
+          <Table fz="xs" withRowBorders={false} verticalSpacing={4}>
+            <Table.Tbody>
+              {(d.readings ?? []).map((r) => (
+                <Table.Tr key={r.key}>
+                  <Table.Td>
+                    <Tooltip label={r.note} multiline w={320} withArrow>
+                      <Text size="xs" style={{ cursor: 'help' }}>
+                        {r.label}
+                      </Text>
+                    </Tooltip>
+                  </Table.Td>
+                  <Table.Td ff="monospace">
+                    {r.value} {r.unit}
+                  </Table.Td>
+                  <Table.Td>
+                    <Badge size="xs" variant="light" color={r.flag ? 'orange' : 'teal'}>
+                      {r.category}
+                    </Badge>
+                  </Table.Td>
+                </Table.Tr>
+              ))}
+            </Table.Tbody>
+          </Table>
+          <Text size="xs" c="dimmed">
+            Published formulas (CKD-EPI 2021, FIB-4, WHO Asian BMI cut-offs, ADA glucose
+            thresholds). They carry no weight of their own.
+          </Text>
+        </Stack>
+      )}
+
+      <Text size="xs" c="dimmed" mt="md">
+        Relative to a same-age, same-sex peer under a US calibration. Not an absolute
+        probability, not validated in South Asia, and not a diagnosis. The smoking box reads
+        "current or former"; the model learned "current", so a former smoker is scored as one.
+      </Text>
+    </Paper>
+  )
+}
+
+// What the ECG arm stores per run (`apps/api/app/arms/ecg_12lead.py`).
+interface EcgDetails {
+  probabilities?: Record<string, number>
+  thresholds?: Record<string, number>
+  weights?: Record<string, number>
+  labels?: Record<string, string>
+  reported?: string[]
+  reported_labels?: string[]
+  focus?: string
+  ecg_age?: number
+  age_calibration?: { slope: number; intercept: number; mae_years: number; notable_gap_years: number }
+  age_validation?: string
+  scorer?: string
+  validation?: string
+}
+
+function EcgPanel({ run, age }: { run: ArmRun; age: number | null }) {
+  const d = run.details as EcgDetails
+
+  if (run.error || !d.probabilities) {
+    return (
+      <Paper p="md" bd="1px solid var(--mantine-color-default-border)">
+        <Text fw={600} size="sm">
+          12-lead ECG
+        </Text>
+        <Text size="sm" c="dimmed" mt={4}>
+          Could not be read: {run.error ?? 'no result was stored'}.
+        </Text>
+      </Paper>
+    )
+  }
+
+  const reported = d.reported ?? []
+  const classes = Object.keys(d.probabilities)
+  // Reported first, then by how close the rest came to their threshold.
+  const ordered = [...classes].sort((a, b) => {
+    const ra = reported.includes(a) ? 1 : 0
+    const rb = reported.includes(b) ? 1 : 0
+    if (ra !== rb) return rb - ra
+    const ca = (d.probabilities?.[a] ?? 0) / (d.thresholds?.[a] ?? 1)
+    const cb = (d.probabilities?.[b] ?? 0) / (d.thresholds?.[b] ?? 1)
+    return cb - ca
+  })
+
+  // The age model is imprecise (MAE about 12 years on the public test set), so
+  // the gap is measured against what it reads for a typical person of this age,
+  // and only a gap past the paper's eight years is worth a word.
+  const fit = d.age_calibration
+  const expected = age != null && fit ? fit.slope * age + fit.intercept : null
+  const gap = d.ecg_age != null && expected != null ? d.ecg_age - expected : null
+  const notable = gap != null && fit ? Math.abs(gap) >= fit.notable_gap_years : false
+
+  return (
+    <Paper p="md" bd="1px solid var(--mantine-color-default-border)">
+      <Group justify="space-between" align="flex-start" mb="sm">
+        <div>
+          <Text fw={600} size="sm">
+            12-lead ECG
+          </Text>
+          <Text size="xs" c="dimmed">
+            Six rhythm and conduction abnormalities at the authors' operating thresholds, and an
+            ECG age
+          </Text>
+        </div>
+        {run.score != null && (
+          <Badge variant="light" color={reported.length ? 'orange' : 'teal'} size="lg">
+            arm score {run.score.toFixed(1)}
+          </Badge>
+        )}
+      </Group>
+
+      <Text size="sm">
+        {reported.length === 0 ? (
+          <>None of the six abnormalities reported.</>
+        ) : (
+          <>
+            Reported:{' '}
+            <Text span fw={700} c="orange">
+              {(d.reported_labels ?? reported).join(', ')}
+            </Text>
+            .
+          </>
+        )}
+      </Text>
+
+      <SimpleGrid cols={{ base: 1, md: 2 }} spacing="md" mt="md">
+        <Paper p="sm" bd="1px solid var(--mantine-color-dark-4)">
+          <Text size="xs" fw={600} tt="uppercase" lts={0.4} c="dimmed" mb="xs">
+            Probability against threshold
+          </Text>
+          <Stack gap={6}>
+            {ordered.map((c) => {
+              const p = d.probabilities?.[c] ?? 0
+              const thr = d.thresholds?.[c] ?? 0.5
+              const hit = reported.includes(c)
+              // The bar runs to the threshold at 50% width, so "over the line"
+              // is visible without reading the numbers.
+              const width = Math.min(100, (p / thr) * 50)
+              return (
+                <div key={c}>
+                  <Group justify="space-between" mb={2} wrap="nowrap">
+                    <Text size="xs" className="hl-ellipsis" fw={hit ? 600 : 400}>
+                      {d.labels?.[c] ?? c}
+                      {c === d.focus && (
+                        <Text span c="dimmed">
+                          {' '}
+                          · shaded on the tracing
+                        </Text>
+                      )}
+                    </Text>
+                    <Text size="xs" ff="monospace" c={hit ? 'orange' : 'dimmed'}>
+                      {p.toFixed(3)} / {thr.toFixed(3)}
+                    </Text>
+                  </Group>
+                  <Box h={6} w="100%" style={{ position: 'relative', backgroundColor: 'var(--mantine-color-dark-5)', borderRadius: 3 }}>
+                    <Box
+                      h="100%"
+                      style={{
+                        width: `${width}%`,
+                        backgroundColor: hit ? 'var(--mantine-color-orange-5)' : 'var(--mantine-color-dark-3)',
+                        borderRadius: 3,
+                      }}
+                    />
+                    <Box
+                      style={{
+                        position: 'absolute',
+                        left: '50%',
+                        top: -2,
+                        width: 1,
+                        height: 10,
+                        backgroundColor: 'var(--mantine-color-gray-5)',
+                      }}
+                    />
+                  </Box>
+                </div>
+              )
+            })}
+          </Stack>
+          <Text size="xs" c="dimmed" mt="sm">
+            The tick is each abnormality's own threshold, recovered from the authors' published
+            decisions; a reading past it is reported. Weights out of 100:{' '}
+            {Object.entries(d.weights ?? {})
+              .map(([c, w]) => `${d.labels?.[c] ?? c} ${Math.round(w * 100)}`)
+              .join(', ')}
+            .
+          </Text>
+        </Paper>
+
+        <Paper p="sm" bd="1px solid var(--mantine-color-dark-4)">
+          <Group justify="space-between" mb="xs">
+            <Text size="xs" fw={600} tt="uppercase" lts={0.4} c="dimmed">
+              ECG age
+            </Text>
+            {gap != null && (
+              <Badge size="xs" variant="light" color={notable && gap > 0 ? 'orange' : 'teal'}>
+                {gap >= 0 ? '+' : ''}
+                {gap.toFixed(0)} y vs typical
+              </Badge>
+            )}
+          </Group>
+          <SimpleGrid cols={3} spacing="sm">
+            <Field label="Age">{age ?? '—'}</Field>
+            <Field label="ECG reads">{d.ecg_age != null ? d.ecg_age.toFixed(0) : '—'}</Field>
+            <Field label="Typical read">{expected != null ? expected.toFixed(0) : '—'}</Field>
+          </SimpleGrid>
+          <Text size="xs" c="dimmed" mt="sm">
+            {notable && gap != null && gap > 0
+              ? `The tracing reads ${gap.toFixed(0)} years older than the model reads for a typical person of this age. In the paper, an ECG age more than eight years above the true age carried 1.79× the mortality. A prompt to look, not part of the score.`
+              : 'Within the range the model reads for a typical person of this age. Not part of the score.'}
+          </Text>
+          {d.age_validation && (
+            <Text size="xs" c="yellow.7" mt="xs">
+              {d.age_validation}
+            </Text>
+          )}
+        </Paper>
+      </SimpleGrid>
+
+      <Text size="xs" c="dimmed" mt="md">
+        {d.scorer}. {d.validation}. Trained on Brazilian tracings; not a diagnosis, and a
+        reported abnormality is a reason to obtain the cardiologist's report.
+      </Text>
+    </Paper>
+  )
+}
 
 /**
  * What the tier means for the policy, priced against the cover the applicant

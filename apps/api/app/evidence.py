@@ -27,6 +27,8 @@ class EvidenceKind(StrEnum):
     MAMMOGRAM = "mammogram"
     SKIN_LESION = "skin_lesion"
     BRAIN_MRI = "brain_mri"
+    # A 12-lead tracing exported as a signal file, not a picture of one.
+    ECG = "ecg"
     # Lab results, discharge summaries, physician notes, prescriptions. Stored
     # and shown to the underwriter, but no arm reads them yet.
     DOCUMENT = "document"
@@ -41,6 +43,7 @@ LABELS: dict[EvidenceKind, str] = {
     EvidenceKind.MAMMOGRAM: "Mammogram",
     EvidenceKind.SKIN_LESION: "Skin lesion photo",
     EvidenceKind.BRAIN_MRI: "Brain MRI",
+    EvidenceKind.ECG: "12-lead ECG",
     EvidenceKind.DOCUMENT: "Document",
     EvidenceKind.UNKNOWN: "Not recognised",
 }

@@ -103,6 +103,7 @@ type AcceptMap = Record<string, string[]>
 const DICOM: AcceptMap = { 'application/dicom': ['.dcm'] }
 const PHOTO: AcceptMap = { 'image/png': ['.png'], 'image/jpeg': ['.jpg', '.jpeg'] }
 const DOCUMENT: AcceptMap = { 'application/pdf': ['.pdf'], 'text/plain': ['.txt'] }
+const ECG_EXPORT: AcceptMap = { 'text/csv': ['.csv'], 'text/plain': ['.txt', '.tsv'] }
 
 interface ModelDef {
   id: string
@@ -228,6 +229,22 @@ const MODELS: ModelDef[] = [
     ],
   },
   {
+    id: 'ecg',
+    label: '12-lead ECG',
+    modality: 'Rhythm · conduction · ECG age',
+    upload: {
+      category: '12-lead ECG',
+      // The signal the machine exports, not a picture of it: a scanned strip
+      // holds 2.5 s of each lead at poor fidelity, and the models want ten.
+      accept: ECG_EXPORT,
+      instruction: 'ECG export with all 12 leads and a time column or sampling rate — .csv or .txt',
+    },
+    fields: [
+      { kind: 'checkbox', key: 'palpitations', label: 'Palpitations or irregular heartbeat' },
+      { kind: 'checkbox', key: 'known_arrhythmia', label: 'Known arrhythmia or pacemaker' },
+    ],
+  },
+  {
     id: 'biobert',
     label: 'BioBERT',
     modality: 'Clinical NLP · EHR',
@@ -240,11 +257,30 @@ const MODELS: ModelDef[] = [
   },
   {
     id: 'xgboost',
-    label: 'XGBoost',
-    modality: 'Actuarial · tabular',
+    label: 'Blood panel and lifestyle',
+    modality: 'Mortality · phenotypic age',
     upload: null,
+    // The nine blood values are Levine's Phenotypic Age inputs, in the units a
+    // Bangladeshi laboratory prints. The keys and units are read by
+    // `apps/api/app/arms/mortality.py`; a value typed in the wrong unit is
+    // refused there rather than silently scored decades older.
     fields: [
-      { kind: 'number', key: 'height_cm', label: 'Height (cm)', description: 'Feeds the tabular BMI feature.' },
+      { kind: 'number', key: 'albumin_g_dl', label: 'Serum albumin (g/dL)', description: 'Liver function test. Typical 3.5–5.0. The nine blood values are optional together: with all nine the phenotypic age is computed as well.' },
+      { kind: 'number', key: 'creatinine_mg_dl', label: 'Serum creatinine (mg/dL)', description: 'Typical 0.6–1.2.' },
+      { kind: 'number', key: 'glucose_mg_dl', label: 'Glucose (mg/dL)', description: 'Fasting if available. Typical 70–100.' },
+      { kind: 'number', key: 'crp_mg_l', label: 'C-reactive protein (mg/L)', description: 'Typical under 3. Enter 0 for "below detection".' },
+      { kind: 'number', key: 'lymphocyte_pct', label: 'Lymphocytes (%)', description: 'From the CBC differential. Typical 20–40.' },
+      { kind: 'number', key: 'mcv_fl', label: 'Mean cell volume (fL)', description: 'From the CBC. Typical 80–100.' },
+      { kind: 'number', key: 'rdw_pct', label: 'Red cell distribution width, RDW-CV (%)', description: 'From the CBC. Typical 11.5–14.5. Not RDW-SD.' },
+      { kind: 'number', key: 'alp_u_l', label: 'Alkaline phosphatase (U/L)', description: 'Liver function test. Typical 40–130.' },
+      { kind: 'number', key: 'wbc_10e3_ul', label: 'White blood cells (×10³/µL)', description: 'From the CBC. Typical 4–11.' },
+      // Optional. These feed the kidney, liver and weight readings shown beside
+      // the phenotypic age; they never move the score.
+      { kind: 'number', key: 'ast_u_l', label: 'AST (U/L) — optional', description: 'Liver function test. With ALT and platelets gives the FIB-4 fibrosis index.' },
+      { kind: 'number', key: 'alt_u_l', label: 'ALT (U/L) — optional' },
+      { kind: 'number', key: 'platelets_10e3_ul', label: 'Platelets (×10³/µL) — optional', description: 'From the CBC.' },
+      { kind: 'number', key: 'sbp_mmhg', label: 'Systolic blood pressure (mm Hg) — optional', description: 'Seated, at rest.' },
+      { kind: 'number', key: 'height_cm', label: 'Height (cm)' },
       { kind: 'number', key: 'weight_kg', label: 'Weight (kg)' },
       { kind: 'select', key: 'alcohol', label: 'Alcohol use', data: ['None', 'Occasionally', 'Regularly'], placeholder: 'Select' },
       { kind: 'select', key: 'activity', label: 'Physical activity', data: ['Sedentary', 'Light', 'Moderate', 'Active'], placeholder: 'Select' },

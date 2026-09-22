@@ -31,8 +31,10 @@ CREATE TYPE application_status AS ENUM (
 -- 'image' covers a radiograph uploaded as PNG or JPEG rather than DICOM, which
 -- is most of them. Without it such a file had to be filed as 'questionnaire',
 -- which is simply untrue on a record that has to stand up to being audited.
+-- 'ecg' is a 12-lead tracing stored as a signal array (400 Hz, 12 x 4096),
+-- which is neither a picture nor a document.
 CREATE TYPE evidence_file_type AS ENUM (
-    'dicom', 'image', 'lab_report', 'clinical_note', 'questionnaire'
+    'dicom', 'image', 'lab_report', 'clinical_note', 'questionnaire', 'ecg'
 );
 
 CREATE TYPE model_arm_type AS ENUM ('vision', 'nlp', 'tabular');

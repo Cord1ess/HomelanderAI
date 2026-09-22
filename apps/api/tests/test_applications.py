@@ -495,9 +495,19 @@ def test_the_form_is_told_which_models_actually_run(carrier):
     assert by_id["eyepacs"]["armName"] == "dr_fundus"
     assert "NOT clinically validated" in by_id["eyepacs"]["validation"]
 
+    # The blood panel is read by the mortality arm, which needs no upload.
+    assert by_id["xgboost"]["available"] is True
+    assert by_id["xgboost"]["armName"] == "mortality"
+    assert "NOT validated in South Asia" in by_id["xgboost"]["validation"]
+
+    # The ECG panel is read by the two published networks behind `ecg_12lead`.
+    assert by_id["ecg"]["available"] is True
+    assert by_id["ecg"]["armName"] == "ecg_12lead"
+    assert "NOT validated in South Asia" in by_id["ecg"]["validation"]
+
     # Everything else is on the roadmap and says so.
     planned = [m["id"] for m in models if not m["available"]]
-    assert set(planned) == {"mirai", "ham10000", "biobert", "xgboost", "neuro"}
+    assert set(planned) == {"mirai", "ham10000", "biobert", "neuro"}
     assert all(by_id[p]["validation"] is None for p in planned)
 
 
