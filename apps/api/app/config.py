@@ -59,7 +59,11 @@ class Settings(BaseSettings):
     # OncoServe container). Empty disables the arm. Four 25 MB DICOMs and a
     # CPU inference take minutes, hence the timeout.
     mirai_url: str = "http://34.173.36.245:5000/serve"
-    mirai_timeout_seconds: int = 900
+    # One minute. The server is on someone else's machine and has been seen to
+    # drop the connection part-way through the upload; waiting longer does not
+    # make it answer, and the other readers' results should not be held up for
+    # it. A timeout is reported on the screen as a timeout.
+    mirai_timeout_seconds: int = 60
 
     # ── Outgoing mail ─────────────────────────────────────────
     # Used to send applicants their portal sign-in and a note when a decision

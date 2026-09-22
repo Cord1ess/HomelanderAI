@@ -147,12 +147,27 @@ def run_set(files: list[bytes]) -> ArmResult:
     except ValueError as exc:
         return ArmResult(score=None, error=f"a four-view mammogram is needed: {exc}")
 
+    timed_out = (
+        f"the mammogram service did not answer within {settings.mirai_timeout_seconds} seconds, "
+        "so this reading is missing; the rest of the application was scored without it"
+    )
     try:
         answer = call(views)
+    except TimeoutError:
+        return ArmResult(score=None, error=timed_out)
     except urllib.error.URLError as exc:
-        return ArmResult(score=None, error=f"the Mirai server could not be reached: {exc.reason}")
+        # A socket timeout arrives wrapped in URLError, so check inside it too.
+        if isinstance(exc.reason, TimeoutError):
+            return ArmResult(score=None, error=timed_out)
+        return ArmResult(
+            score=None,
+            error=f"the mammogram service could not be reached: {exc.reason}",
+        )
     except Exception as exc:
-        return ArmResult(score=None, error=f"the Mirai server failed: {type(exc).__name__}: {exc}")
+        return ArmResult(
+            score=None,
+            error=f"the mammogram service failed: {type(exc).__name__}: {exc}",
+        )
 
     prediction = answer.get("prediction")
     if not isinstance(prediction, list) or len(prediction) != 5:
