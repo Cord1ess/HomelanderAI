@@ -83,7 +83,7 @@ export function ClientLoginForm() {
           {...form.getInputProps('portalId')}
         />
         {form.errors.portalId && (
-          <p style={{ margin: '0.25rem 0 0', fontSize: '0.72rem', color: '#c0392b' }}>
+          <p style={{ margin: '0.25rem 0 0', fontSize: '0.72rem', color: 'var(--neo-danger)' }}>
             {form.errors.portalId}
           </p>
         )}
@@ -100,7 +100,7 @@ export function ClientLoginForm() {
           {...form.getInputProps('password')}
         />
         {form.errors.password && (
-          <p style={{ margin: '0.25rem 0 0', fontSize: '0.72rem', color: '#c0392b' }}>
+          <p style={{ margin: '0.25rem 0 0', fontSize: '0.72rem', color: 'var(--neo-danger)' }}>
             {form.errors.password}
           </p>
         )}
@@ -110,7 +110,7 @@ export function ClientLoginForm() {
         {submitting ? 'Signing in…' : 'Open my application →'}
       </button>
 
-      <p style={{ marginTop: '1.25rem', fontSize: '0.78rem', textAlign: 'center', color: 'rgba(15,26,20,0.45)' }}>
+      <p style={{ marginTop: '1.25rem', fontSize: '0.78rem', textAlign: 'center', color: 'var(--neo-muted)' }}>
         Your portal ID and password were given to you when you applied, by email
         or by the person who took your application.
       </p>

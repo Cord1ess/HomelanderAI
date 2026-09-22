@@ -127,8 +127,8 @@ export function NotificationsPage() {
                     borderBottom: '1px solid var(--mantine-color-default-border)',
                     backgroundColor: unread
                       ? isEscalation
-                        ? 'rgba(240, 140, 0, 0.08)'
-                        : 'var(--mantine-color-dark-6)'
+                        ? 'var(--neo-warn-soft)'
+                        : 'var(--neo-accent-soft)'
                       : undefined,
                   }}
                 >

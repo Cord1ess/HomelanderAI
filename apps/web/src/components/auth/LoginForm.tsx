@@ -69,7 +69,7 @@ export function LoginForm() {
           {...form.getInputProps('email')}
         />
         {form.errors.email && (
-          <p style={{ margin: '0.25rem 0 0', fontSize: '0.72rem', color: '#c0392b' }}>
+          <p style={{ margin: '0.25rem 0 0', fontSize: '0.72rem', color: 'var(--neo-danger)' }}>
             {form.errors.email}
           </p>
         )}
@@ -87,7 +87,7 @@ export function LoginForm() {
           {...form.getInputProps('password')}
         />
         {form.errors.password && (
-          <p style={{ margin: '0.25rem 0 0', fontSize: '0.72rem', color: '#c0392b' }}>
+          <p style={{ margin: '0.25rem 0 0', fontSize: '0.72rem', color: 'var(--neo-danger)' }}>
             {form.errors.password}
           </p>
         )}
@@ -100,7 +100,7 @@ export function LoginForm() {
 
       {/* No way to create an account here on purpose: staff accounts are made
           inside the console by an administrator. */}
-      <p style={{ marginTop: '1.25rem', fontSize: '0.78rem', textAlign: 'center', color: 'rgba(15,26,20,0.45)' }}>
+      <p style={{ marginTop: '1.25rem', fontSize: '0.78rem', textAlign: 'center', color: 'var(--neo-muted)' }}>
         Need access? Ask an administrator at your company.
       </p>
     </form>

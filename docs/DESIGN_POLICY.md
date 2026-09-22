@@ -494,33 +494,45 @@ three reference colours sit (`#3D4127` 69.2°, `#636B2F` 68.0°, `#D4DE95` 68.2�
 Hue and saturation carry the identity. Lightness is the free variable, because
 lightness is what contrast is made of.
 
-Every value in `apps/web/src/theme.ts` and the `--neo-*` block of `index.css`
-was therefore **solved, not picked**: given a surface and a contrast target,
+**One file decides every colour: `apps/web/src/tokens.ts`.** It holds two sets
+of the same semantic roles (`bg`, `card`, `raised`, `hover`, `ink`, `ink2`,
+`muted`, `border`, `accent`, `forest`, the status colours), one solved for the
+light scheme and one for the dark. `theme.ts` turns them into CSS variables for
+each scheme through Mantine's `cssVariablesResolver`: `--neo-*` for the public
+pages, sign-in and portal, and Mantine's own `--mantine-color-*` for the
+console. Nothing else names a colour. The single exception is the logo disc,
+which is drawn for white and stays white.
+
+Every value was **solved, not picked**: given a surface and a contrast target,
 find the lightness in our hue that just clears it. The numbers look arbitrary
 because each one is the point where a requirement is met. Nudging one by eye
-silently breaks the guarantee it was chosen for — re-solve instead.
+silently breaks the guarantee it was chosen for, which is why the guarantee is
+enforced: `scripts/contrast.mjs` runs as part of `npm run lint` and fails the
+build if any text-on-surface pairing in either scheme falls below WCAG AA
+(4.5:1). 78 pairings are checked. Re-solve, then run it.
 
-**The ramp is split by scheme.** `clinical[0..5]` are solved against the dark
-card `#1E1F16`; `clinical[6..9]` against the light page `#F8F9F3`. A single
-shade cannot serve both: the lightness that reads on near-black is the one that
-vanishes on near-white. Hence `primaryShade: { light: 6, dark: 3 }`. Using a
-light-half step on a dark surface is the easiest mistake to make here — it was
-made once already, putting a 3.46:1 label on the active nav item.
+**Both schemes are first-class.** The console opens in whatever the operating
+system uses (`defaultColorScheme="auto"`); the toggle in every header overrides
+that and is remembered. `index.html` reads the remembered choice before first
+paint so the page never flips scheme after loading.
 
-Key steps, with what they are for:
+**Some roles flip meaning between schemes, on purpose.** `forest` is the
+structural dark olive on light and the light olive `#CED98C` on dark, because a
+dark olive heading on a near-black page would vanish. Anything placed on a
+forest or accent fill uses `forestInk` / `accentInk`, which are white on light
+and near-black on dark. Never put `#fff` on a fill: it reads on one scheme and
+disappears on the other.
 
-| Step | Hex | On | Use |
-|---|---|---|---|
-| `clinical[2]` | `#CED98C` | 11.03:1 dark | Active nav, key figures |
-| `clinical[3]` | `#A0B13E` | 7.01:1 dark | **Primary on dark** |
-| `clinical[4]` | `#7F8C34` | 4.52:1 dark | Text floor on dark |
-| `clinical[5]` | `#646E2B` | 3.01:1 dark | Boundaries, large text only |
-| `clinical[6]` | `#6D7826` | 4.54:1 light | **Primary on light** |
-| `clinical[8]` | `#3D4127` | 10.00:1 light | Structural dark olive |
+**The Mantine ramp is split by scheme.** `clinical[0..5]` are solved against
+the dark card, `clinical[6..9]` against the light page, and
+`primaryShade: { light: 6, dark: 3 }` picks the right half. Using a light-half
+step on a dark surface is the easiest mistake to make here; it was made once,
+putting a 3.46:1 label on the active nav item.
 
-**Filled buttons on dark take dark ink.** The dark primary is a *light* olive,
-so Mantine's default white label would be 2.37:1. The theme overrides
-`[data-variant="filled"]` to `dark-7`, which is 8.17:1.
+**Motion has three speeds.** `--motion-fast` (120 ms), `--motion-base`
+(200 ms), `--motion-slow` (420 ms) and two curves, from `tokens.ts`. Every
+transition uses one of them, and `prefers-reduced-motion` collapses all three
+to nothing.
 
 **Risk tiers are not brand colours.** `TierBadge` stays teal / yellow / red /
 gray. It is a traffic light an underwriter reads at a glance, and the brand is

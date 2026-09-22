@@ -83,7 +83,7 @@ there is nothing to store. Add a table only if we later need forced logout.
 
 **This is the most important change in this document.**
 
-Right now only `tenants`, `users`, `api_keys`, `applicants`, `applications` and
+Right now only `tenants`, `users`, `applicants`, `applications` and
 `notifications` carry `tenant_id`. Everything else reaches its tenant through a
 join. That breaks row-level security, because an RLS policy is written per table
 and cannot cheaply join upward.
@@ -450,7 +450,6 @@ Please ship a `db/seed.sql`:
   (`medical_professional` was `senior_underwriter` until 2026-09-22), with known dev
   passwords
 - 1 `model_arms` row for the Phase 1 TB vision arm
-- Default `notification_preferences` rows for each user
 
 Two tenants matters more than it sounds: the isolation test is *"log in as tenant
 A, try to fetch tenant B's application, expect nothing"*, and that test cannot

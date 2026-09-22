@@ -103,7 +103,7 @@ export function EvidenceReview({
               style={{
                 border: needsChoice
                   ? '1px solid var(--mantine-color-yellow-7)'
-                  : '1px solid var(--mantine-color-dark-4)',
+                  : '1px solid var(--neo-border-mid)',
                 borderRadius: 'var(--mantine-radius-sm)',
               }}
             >
@@ -115,7 +115,7 @@ export function EvidenceReview({
                     flex: 'none',
                     borderRadius: 4,
                     overflow: 'hidden',
-                    background: 'var(--mantine-color-dark-7)',
+                    background: 'var(--neo-bg)',
                     display: 'grid',
                     placeItems: 'center',
                   }}

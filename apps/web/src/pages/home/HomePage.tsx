@@ -16,6 +16,7 @@ import { Link } from 'react-router-dom'
 
 import { BrandIcon } from '../../components/BrandIcon'
 import { useAuth } from '../../context/AuthContext'
+import { ThemeToggle } from '../../components/ThemeToggle'
 import { PipelineAnimation } from './PipelineAnimation'
 
 /**
@@ -157,6 +158,7 @@ export function HomePage() {
                 applicant checks their own application. Each goes to its own
                 sign-in, so neither has to find the right tab. */}
             <Group gap="sm">
+              <ThemeToggle />
               <Box className="neo-press">
                 <Button
                   component={Link}
@@ -180,7 +182,7 @@ export function HomePage() {
                     border: 'none',
                     fontWeight: 600,
                     fontFamily: GROTESK,
-                    color: '#FFFFFF',
+                    color: 'var(--neo-forest-ink)',
                   }}
                 >
                   {isAuthenticated ? 'Open console' : 'Sign in'}
@@ -238,7 +240,7 @@ export function HomePage() {
                       border: 'none',
                       fontWeight: 600,
                       fontFamily: GROTESK,
-                      color: '#FFFFFF',
+                      color: 'var(--neo-forest-ink)',
                     }}
                   >
                     {isAuthenticated ? 'Open console' : 'Sign in'}
@@ -477,7 +479,7 @@ export function HomePage() {
             <Text className="neo-display" style={{ fontSize: 'clamp(1.8rem, 4vw, 2.9rem)' }}>
               See what your evidence <span className="neo-underline">already says.</span>
             </Text>
-            <Text style={{ opacity: 0.6, maxWidth: 440, fontSize: '0.9rem', lineHeight: 1.7, fontFamily: GROTESK, color: '#fff' }}>
+            <Text style={{ opacity: 0.75, maxWidth: 440, fontSize: '0.9rem', lineHeight: 1.7, fontFamily: GROTESK, color: 'var(--neo-forest-ink)' }}>
               Sign in and put a scan through the console.
             </Text>
             <Box className="neo-press">
@@ -488,12 +490,12 @@ export function HomePage() {
                 radius={4}
                 rightSection={<IconArrowRight size={17} />}
                 style={{
-                  background: 'rgba(255,255,255,0.12)',
-                  border: '1px solid rgba(255,255,255,0.24)',
+                  background: 'color-mix(in srgb, var(--neo-forest-ink) 12%, transparent)',
+                  border: '1px solid color-mix(in srgb, var(--neo-forest-ink) 24%, transparent)',
                   fontWeight: 600,
                   fontFamily: GROTESK,
                   paddingInline: '2rem',
-                  color: '#fff',
+                  color: 'var(--neo-forest-ink)',
                 }}
               >
                 Open the console

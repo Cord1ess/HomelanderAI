@@ -30,6 +30,9 @@ depends_on = None
 SCHEMA_FILE = Path(__file__).resolve().parents[4] / "db" / "schema.sql"
 
 # Dropping the types requires the tables to be gone first, so this order matters.
+# `notification_preferences` and `api_keys` stay in this list although
+# schema.sql no longer creates them: a downgrade through 009 recreates them,
+# and this is the step that has to drop them again.
 TABLES = [
     "notification_preferences",
     "notifications",

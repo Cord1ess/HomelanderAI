@@ -3,15 +3,51 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="color-scheme" content="dark light" />
+    <meta name="color-scheme" content="light dark" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <title>HomelanderAI — Underwriting Console</title>
+    <!--
+      Decide the colour scheme before the first paint. This is the same logic
+      Mantine's ColorSchemeScript runs, inlined because there is no server to
+      render it: the remembered choice from its localStorage key, else the
+      operating system's preference. Without it the page would paint in one
+      scheme and flip to the other once React loaded.
+    -->
+    <script>
+      try {
+        var stored = window.localStorage.getItem('mantine-color-scheme-value')
+        var scheme = stored === 'light' || stored === 'dark' ? stored : 'auto'
+        var computed =
+          scheme !== 'auto'
+            ? scheme
+            : window.matchMedia('(prefers-color-scheme: dark)').matches
+              ? 'dark'
+              : 'light'
+        document.documentElement.setAttribute('data-mantine-color-scheme', computed)
+      } catch (e) {}
+    </script>
     <style>
+      /* The two page backgrounds, duplicated from src/tokens.ts (bg) because
+         this runs before any stylesheet. Keep them in step. */
+      html {
+        --boot-bg: #f8f9f3;
+        --boot-label: #666a50;
+        --boot-ring: rgba(105, 116, 32, 0.25);
+        --boot-arc: #697420;
+        --boot-edge: rgba(44, 46, 28, 0.18);
+      }
+      html[data-mantine-color-scheme='dark'] {
+        --boot-bg: #0d0e09;
+        --boot-label: #8e9370;
+        --boot-ring: rgba(160, 177, 62, 0.25);
+        --boot-arc: #a0b13e;
+        --boot-edge: rgba(206, 217, 140, 0.18);
+      }
       html,
       body {
         margin: 0;
         height: 100%;
-        background: #0D0E09;
+        background: var(--boot-bg);
       }
       #boot-loader {
         position: fixed;
@@ -21,7 +57,7 @@
         align-items: center;
         justify-content: center;
         gap: 28px;
-        background: #0D0E09;
+        background: var(--boot-bg);
       }
       .boot-logo {
         width: 220px;
@@ -31,9 +67,9 @@
         border-radius: 50%;
         object-fit: contain;
         background: #fff;
-        border: 1px solid rgba(206, 217, 140, 0.18);
+        border: 1px solid var(--boot-edge);
         box-shadow:
-          0 2px 14px rgba(0, 0, 0, 0.4),
+          0 2px 14px rgba(0, 0, 0, 0.18),
           inset 0 0 0 1px rgba(0, 0, 0, 0.04);
       }
       .boot-label {
@@ -41,19 +77,24 @@
         font-weight: 600;
         letter-spacing: 0.12em;
         text-transform: uppercase;
-        color: #878C66;
+        color: var(--boot-label);
       }
       .boot-spinner {
         width: 34px;
         height: 34px;
-        border: 3px solid rgba(160, 177, 62, 0.25);
-        border-top-color: #A0B13E;
+        border: 3px solid var(--boot-ring);
+        border-top-color: var(--boot-arc);
         border-radius: 50%;
         animation: boot-spin 0.8s linear infinite;
       }
       @keyframes boot-spin {
         to {
           transform: rotate(360deg);
+        }
+      }
+      @media (prefers-reduced-motion: reduce) {
+        .boot-spinner {
+          animation: none;
         }
       }
     </style>

@@ -1,12 +1,28 @@
 /* ── Fonts ──────────────────────────────────────────────────────────── */
-/* Space Grotesk Variable � primary font for all surfaces */
+/* Space Grotesk Variable — primary font for all surfaces */
 @import '@fontsource-variable/space-grotesk';
-/* (replaced by Space Grotesk) */
-/* (replaced by Space Grotesk) */
 
-/* Prevents a white flash before Mantine applies the dark scheme. */
+/* The scheme is decided before first paint (index.html), and every colour
+   below is a token injected per scheme by theme.ts. Nothing here names a hex. */
 html {
-  background-color: #0D0E09;
+  background-color: var(--neo-bg);
+}
+
+/* Motion tokens come from theme.ts. When the operating system asks for less
+   motion, every transition and animation in the product collapses to nothing. */
+@media (prefers-reduced-motion: reduce) {
+  html:root {
+    --motion-fast: 0ms;
+    --motion-base: 0ms;
+    --motion-slow: 0ms;
+  }
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
 }
 
 /* The ERP shell's header is 44px; make the main surface fill the viewport so
@@ -19,33 +35,9 @@ main {
 body {
   margin: 0;
   -webkit-font-smoothing: antialiased;
+  /* Switching scheme fades rather than snaps; reduced-motion zeroes it. */
+  transition: background-color var(--motion-base) var(--ease-out), color var(--motion-base) var(--ease-out);
   -moz-osx-font-smoothing: grayscale;
-}
-
-/* Live status indicator. */
-@keyframes hl-pulse {
-  0% {
-    box-shadow: 0 0 0 0 var(--hl-pulse-color);
-  }
-  70% {
-    box-shadow: 0 0 0 6px transparent;
-  }
-  100% {
-    box-shadow: 0 0 0 0 transparent;
-  }
-}
-
-.hl-dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  flex: none;
-  background-color: var(--hl-dot-color);
-  --hl-pulse-color: var(--hl-dot-color);
-}
-
-.hl-dot[data-live='true'] {
-  animation: hl-pulse 2s infinite;
 }
 
 /* Small-caps section label. */
@@ -59,15 +51,15 @@ body {
 /* Thin scrollbars for dense panels. */
 * {
   scrollbar-width: thin;
-  scrollbar-color: rgba(176, 179, 154, 0.45) transparent;
+  scrollbar-color: var(--neo-border-strong) transparent;
 }
 
 /* App shell — dense fixed sidebar. */
 .hl-shell-nav {
   display: flex;
   flex-direction: column;
-  background-color: #090906 !important;
-  border-right: 1px solid rgba(206, 217, 140, 0.16) !important;
+  background-color: var(--neo-raised) !important;
+  border-right: 1px solid var(--neo-border-mid) !important;
 }
 
 .hl-nav-link {
@@ -79,45 +71,32 @@ body {
   border-radius: 0.45rem;
   font-size: 0.82rem;
   font-weight: 500;
-  color: #B0B39A;
+  color: var(--neo-ink-2);
   text-decoration: none;
   border: 1px solid transparent;
-  transition: all 0.15s ease;
+  transition: background-color var(--motion-fast) var(--ease-out), color var(--motion-fast) var(--ease-out), border-color var(--motion-fast) var(--ease-out);
   position: relative;
 }
 
 .hl-nav-link:hover {
-  background-color: rgba(206, 217, 140, 0.10);
-  color: #FFFFFF;
-  border-color: rgba(206, 217, 140, 0.14);
+  background-color: var(--neo-hover);
+  color: var(--neo-ink);
+  border-color: var(--neo-border-mid);
 }
 
-/* Clicked / Active segment of the navbar — Crisp light background for instant identification */
+/* The current screen: a solid forest fill, which is the light olive on dark
+   and the dark olive on light, with the ink that reads on it. */
 .hl-nav-link[data-active='true'] {
-  background-color: #CED98C !important;
-  color: #0D0E09 !important;
+  background-color: var(--neo-forest) !important;
+  color: var(--neo-forest-ink) !important;
   font-weight: 700 !important;
-  border: 1px solid rgba(206, 217, 140, 0.55) !important;
-  backdrop-filter: blur(8px);
-  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.35) !important;
+  border: 1px solid var(--neo-forest) !important;
+  box-shadow: 0 2px 10px var(--neo-shadow) !important;
 }
 
 .hl-nav-link[data-active='true'] span {
-  color: #0D0E09 !important;
+  color: var(--neo-forest-ink) !important;
   font-weight: 700 !important;
-}
-
-.hl-shell-header {
-  position: sticky;
-  top: 0;
-  z-index: 20;
-  display: flex;
-  align-items: center;
-  gap: 0.75rem;
-  height: 46px;
-  padding: 0 1rem;
-  background-color: #090906 !important;
-  border-bottom: 1px solid rgba(206, 217, 140, 0.16) !important;
 }
 
 /* Key/value stat block. */
@@ -132,24 +111,13 @@ body {
   text-transform: uppercase;
   letter-spacing: 0.08em;
   font-weight: 600;
-  color: #878C66;
+  color: var(--neo-muted);
 }
 
 .hl-kv-value {
   font-size: 0.875rem;
   font-weight: 700;
-  color: #ffffff;
-}
-
-/* Utility grid/flex helpers. */
-.hl-stack {
-  display: flex;
-  flex-direction: column;
-  gap: 0.75rem;
-}
-
-.hl-card-pad {
-  padding: 0.85rem 1rem;
+  color: var(--neo-ink);
 }
 
 /* Monospace numeric cells. */
@@ -168,20 +136,6 @@ body {
 /* ── Home / landing ─────────────────────────────────────────── */
 
 /* Gentle float for the hero brand mark. */
-@keyframes hl-float {
-  0%,
-  100% {
-    transform: translateY(0);
-  }
-  50% {
-    transform: translateY(-8px);
-  }
-}
-
-.home-float {
-  animation: hl-float 6s ease-in-out infinite;
-}
-
 /* Entrance reveal — fade + rise. */
 @keyframes hl-rise {
   from {
@@ -202,42 +156,13 @@ body {
 .home-rise-1 { animation-delay: 0.05s; }
 .home-rise-2 { animation-delay: 0.15s; }
 .home-rise-3 { animation-delay: 0.25s; }
-.home-rise-4 { animation-delay: 0.35s; }
-.home-rise-5 { animation-delay: 0.45s; }
 
-/* ── Public landing CSS variables ──────────────────────────────────── */
+/* ── Colour variables ───────────────────────────────────────────────── */
 
-:root {
-  /* Landing page. Same hue as the console (68.5, yellow-green), different
-     lightnesses — these are solved against --neo-bg, not against a dark card,
-     so the same role needs a different value here. Ratios are measured.
-     Mirrors the clinical[6..9] half of the ramp in theme.ts. */
-
-  /* Structural dark olive — headings, hard borders, the neo-brutalist frame */
-  --neo-forest:      #3D4127;   /* 10.00:1 on --neo-bg */
-  --neo-forest-mid:  #515A1E;   /*  7.01:1 — secondary structure */
-  --neo-forest-soft: rgba(61, 65, 39, 0.06);
-
-  /* Accent that carries text. #636B2F reads here (5.2:1) but leaves no margin
-     at small sizes, so the accent is solved to a clean 4.54:1 minimum and the
-     darker step is used wherever the text is small or thin. */
-  --neo-accent:      #6D7826;   /*  4.54:1 on --neo-bg */
-  --neo-accent-deep: #515A1E;   /*  7.01:1 — small or thin text */
-  --neo-accent-soft: rgba(109, 120, 38, 0.10);
-  --neo-accent-ink:  #FFFFFF;   /*  4.81:1 on --neo-accent as a button fill */
-
-  /* Surface — warm bone, tinted into the brand hue */
-  --neo-bg:          #F8F9F3;
-  --neo-card:        #FDFDFB;
-  --neo-ink:         #2C2E1C;   /* 13.10:1 on --neo-bg */
-
-  /* Borders — subtle, never hard black */
-  --neo-border:      rgba(44, 46, 28, 0.10);
-  --neo-border-mid:  rgba(44, 46, 28, 0.18);
-
-  /* Shadow — olive tinted, soft */
-  --neo-shadow:      rgba(61, 65, 39, 0.16);
-}
+/* `--neo-*` used to be declared here for the landing page only, light
+   only. They now come from src/tokens.ts through the Mantine theme, in
+   both schemes, and the console reads the same values through Mantine's
+   own variables. See tokens.ts for every value and its contrast ratio. */
 
 /* ── Shell ─────────────────────────────────────────────────────────── */
 
@@ -250,7 +175,7 @@ body {
 
 /* ── Typography ────────────────────────────────────────────────────── */
 
-/* Display headline � Space Grotesk Variable */
+/* Display headline — Space Grotesk Variable */
 .neo-display {
   font-family: 'Space Grotesk Variable', 'Space Grotesk', sans-serif;
   font-weight: 400;
@@ -287,7 +212,7 @@ body {
 
 /* Hover lift — gentle, no translate */
 .neo-lift {
-  transition: box-shadow 0.2s ease, border-color 0.2s ease;
+  transition: box-shadow var(--motion-base) var(--ease-out), border-color var(--motion-base) var(--ease-out);
 }
 
 .neo-lift:hover {
@@ -298,34 +223,16 @@ body {
 /* Brand chip (logo circle) */
 .neo-brand-chip {
   border-radius: 999px;
-  background: #fff;
+  background: #fff; /* the mark is drawn for a white disc, in either scheme */
   border: 1px solid var(--neo-border-mid);
   box-shadow: 0 2px 8px var(--neo-shadow);
   overflow: hidden;
 }
 
-/* ── Inline tag / chip ─────────────────────────────────────────────── */
-
-.neo-tag {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.35rem;
-  padding: 0.25rem 0.65rem;
-  border: 1px solid var(--neo-border);
-  background: var(--neo-card);
-  border-radius: 999px;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  font-size: 0.68rem;
-  color: var(--neo-ink);
-  opacity: 0.65;
-}
-
 /* ── Interactive press — subtle, no hard offset ─────────────────────── */
 
 .neo-press {
-  transition: transform 0.1s ease, box-shadow 0.1s ease;
+  transition: transform var(--motion-fast) var(--ease-out), box-shadow var(--motion-fast) var(--ease-out);
 }
 
 .neo-press:hover {
@@ -352,81 +259,6 @@ body {
   color: var(--neo-ink);
   opacity: 0.65;
 }
-
-/* ── Hero stat pills ────────────────────────────────────────────────── */
-
-.neo-stat-pill {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  padding: 0.65rem 1.1rem;
-  border: 1px solid var(--neo-border);
-  background: var(--neo-card);
-  border-radius: 4px;
-  box-shadow: 0 1px 4px var(--neo-shadow);
-  min-width: 90px;
-}
-
-.neo-stat-value {
-  font-size: 1.55rem;
-  font-weight: 700;
-  letter-spacing: -0.03em;
-  line-height: 1;
-  color: var(--neo-ink);
-  font-family: 'Space Grotesk Variable', 'Space Grotesk', sans-serif;
-}
-
-.neo-stat-label {
-  font-size: 0.63rem;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.09em;
-  color: var(--neo-ink);
-  opacity: 0.45;
-  margin-top: 0.25rem;
-}
-
-/* ── Mock case card ─────────────────────────────────────────────────── */
-
-.neo-case-card {
-  width: 100%;
-  max-width: 340px;
-  background: var(--neo-card);
-  border: 1px solid var(--neo-border-mid);
-  box-shadow: 0 8px 32px var(--neo-shadow);
-  border-radius: 8px;
-  overflow: hidden;
-}
-
-.neo-case-card__header {
-  padding: 1rem 1.25rem;
-  border-bottom: 1px solid var(--neo-border);
-}
-
-.neo-case-card__dot {
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  background: var(--neo-accent);
-  flex-shrink: 0;
-}
-
-.neo-case-card__score-wrap {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  padding: 1.5rem 1.25rem 0.75rem;
-  border-bottom: 1px solid var(--neo-border);
-}
-
-.neo-case-card__rows { padding: 0; }
-
-.neo-case-card__row {
-  padding: 0.6rem 1.25rem;
-  border-bottom: 1px solid var(--neo-border);
-}
-
-.neo-case-card__row:last-child { border-bottom: none; }
 
 /* ── Steps band ─────────────────────────────────────────────────────── */
 
@@ -459,26 +291,17 @@ body {
 
 .neo-cta-band {
   background: var(--neo-forest);
-  color: #fff;
+  color: var(--neo-forest-ink);
 }
 
 .neo-cta-band .neo-display {
-  color: #fff;
+  color: var(--neo-forest-ink);
   font-family: 'Space Grotesk Variable', 'Space Grotesk', sans-serif;
   font-weight: 400;
 }
 
 .neo-cta-band .neo-underline {
   text-decoration-color: var(--neo-accent);
-}
-
-/* ── Ticker (legacy — kept for backward compat) ─────────────────────── */
-
-.neo-ticker {
-  border-top: 1px solid var(--neo-border);
-  border-bottom: 1px solid var(--neo-border);
-  background: var(--neo-accent);
-  color: var(--neo-accent-ink);
 }
 
 /* ── Auth split-panel ───────────────────────────────────────────────── */
@@ -519,7 +342,7 @@ body {
   width: 420px;
   height: 420px;
   border-radius: 50%;
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  border: 1px solid color-mix(in srgb, var(--neo-forest-ink) 8%, transparent);
   pointer-events: none;
 }
 
@@ -533,8 +356,8 @@ body {
   width: 30px;
   height: 30px;
   border-radius: 6px;
-  background: rgba(255, 255, 255, 0.15);
-  border: 1px solid rgba(255, 255, 255, 0.2);
+  background: color-mix(in srgb, var(--neo-forest-ink) 15%, transparent);
+  border: 1px solid color-mix(in srgb, var(--neo-forest-ink) 20%, transparent);
   display: grid;
   place-items: center;
   flex-shrink: 0;
@@ -543,7 +366,8 @@ body {
 .auth-panel-left__logo-text {
   font-size: 0.95rem;
   font-weight: 600;
-  color: rgba(255, 255, 255, 0.9);
+  color: var(--neo-forest-ink);
+  opacity: 0.9;
   letter-spacing: -0.01em;
 }
 
@@ -552,21 +376,22 @@ body {
   font-weight: 400;
   font-size: clamp(2rem, 3.5vw, 2.8rem);
   line-height: 1.12;
-  color: #fff;
+  color: var(--neo-forest-ink);
   letter-spacing: -0.01em;
 }
 
 .auth-panel-left__sub {
   font-size: 0.85rem;
   line-height: 1.65;
-  color: rgba(255, 255, 255, 0.6);
+  color: var(--neo-forest-ink);
+  opacity: 0.7;
   max-width: 340px;
   margin-top: 0.85rem;
 }
 
 .auth-panel-left__sub em {
   font-style: normal;
-  color: rgba(255, 255, 255, 0.85);
+  color: var(--neo-forest-ink);
   text-decoration: underline;
   text-decoration-color: var(--neo-accent);
   text-underline-offset: 3px;
@@ -574,13 +399,14 @@ body {
 
 .auth-panel-left__quote {
   font-size: 0.75rem;
-  color: rgba(255, 255, 255, 0.4);
+  color: var(--neo-forest-ink);
+  opacity: 0.55;
   font-style: italic;
 }
 
 /* Right — white form panel */
 .auth-panel-right {
-  background: #fff;
+  background: var(--neo-card);
   display: flex;
   flex-direction: column;
   justify-content: center;
@@ -631,7 +457,7 @@ body {
 
 .auth-subheading {
   font-size: 0.82rem;
-  color: rgba(26, 28, 18, 0.5);
+  color: var(--neo-muted);
   margin-bottom: 1.75rem;
 }
 
@@ -661,15 +487,15 @@ body {
   font-size: 0.875rem;
   font-family: inherit;
   color: var(--neo-ink);
-  background: #fff;
+  background: var(--neo-card);
   outline: none;
-  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+  transition: border-color var(--motion-fast) var(--ease-out), box-shadow var(--motion-fast) var(--ease-out);
   box-sizing: border-box;
 }
 
 .auth-input:focus {
   border-color: var(--neo-forest);
-  box-shadow: 0 0 0 3px rgba(99, 107, 47, 0.14);
+  box-shadow: 0 0 0 3px var(--neo-accent-soft);
 }
 
 /* Auth submit button */
@@ -677,14 +503,14 @@ body {
   width: 100%;
   padding: 0.72rem 1rem;
   background: var(--neo-forest);
-  color: #fff;
+  color: var(--neo-forest-ink);
   border: none;
   border-radius: 4px;
   font-size: 0.875rem;
   font-weight: 600;
   font-family: inherit;
   cursor: pointer;
-  transition: background 0.15s ease, box-shadow 0.15s ease;
+  transition: background var(--motion-fast) var(--ease-out), box-shadow var(--motion-fast) var(--ease-out);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -693,7 +519,7 @@ body {
 
 .auth-btn-primary:hover {
   background: var(--neo-forest-mid);
-  box-shadow: 0 2px 12px rgba(61, 65, 39, 0.28);
+  box-shadow: 0 2px 12px var(--neo-shadow);
 }
 
 .auth-btn-primary:active {
@@ -718,9 +544,9 @@ body {
   font-size: 0.82rem;
   font-weight: 600;
   font-family: inherit;
-  color: rgba(26, 28, 18, 0.4);
+  color: var(--neo-muted);
   cursor: pointer;
-  transition: color 0.15s ease, border-color 0.15s ease;
+  transition: color var(--motion-fast) var(--ease-out), border-color var(--motion-fast) var(--ease-out);
 }
 
 .auth-tab[data-active='true'] {
@@ -732,30 +558,27 @@ body {
   color: var(--neo-ink);
 }
 
-
-
-
-/* High contrast table styling */
+/* Table headers read as a band, in either scheme. */
 .mantine-Table-thead {
-  background-color: #09160f !important;
+  background-color: var(--neo-raised) !important;
 }
 
 .mantine-Table-th {
-  color: #ffffff !important;
+  color: var(--neo-ink) !important;
   font-weight: 700 !important;
   font-size: 0.75rem !important;
   text-transform: uppercase !important;
   letter-spacing: 0.06em !important;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.14) !important;
+  border-bottom: 1px solid var(--neo-border-mid) !important;
 }
 
 .mantine-Table-td {
-  border-bottom: 1px solid rgba(255, 255, 255, 0.07) !important;
-  color: #f1f5f9;
+  border-bottom: 1px solid var(--neo-border) !important;
+  color: var(--neo-ink);
 }
 
 .mantine-Table-tbody tr:hover {
-  background-color: rgba(255, 255, 255, 0.05) !important;
+  background-color: var(--neo-hover) !important;
 }
 
 /* ── Hero pipeline animation ─────────────────────────────────────────
@@ -818,13 +641,13 @@ body {
 }
 
 .pipe__ribs { width: 120px; height: 120px; }
-.pipe__cavity { fill: rgba(206, 217, 140, 0.07); stroke: rgba(206, 217, 140, 0.22); stroke-width: 1; }
-.pipe__spine { stroke: rgba(206, 217, 140, 0.3); stroke-width: 2; fill: none; }
-.pipe__rib { stroke: rgba(206, 217, 140, 0.24); stroke-width: 1.4; fill: none; }
+.pipe__cavity { fill: color-mix(in srgb, var(--neo-accent) 10%, transparent); stroke: color-mix(in srgb, var(--neo-accent) 30%, transparent); stroke-width: 1; }
+.pipe__spine { stroke: color-mix(in srgb, var(--neo-accent) 40%, transparent); stroke-width: 2; fill: none; }
+.pipe__rib { stroke: color-mix(in srgb, var(--neo-accent) 32%, transparent); stroke-width: 1.4; fill: none; }
 
 /* The flagged region pulses only while the model is reading. */
 .pipe__lesion {
-  fill: rgba(206, 217, 140, 0.5);
+  fill: color-mix(in srgb, var(--neo-accent) 55%, transparent);
   opacity: 0;
   animation: pipe-lesion 12s ease-in-out infinite;
 }
@@ -841,7 +664,7 @@ body {
   left: 0;
   right: 0;
   height: 2px;
-  background: linear-gradient(90deg, transparent, #CED98C, transparent);
+  background: linear-gradient(90deg, transparent, var(--neo-accent-deep), transparent);
   opacity: 0;
   animation: pipe-scan 12s cubic-bezier(0.4, 0, 0.2, 1) infinite;
 }
@@ -868,7 +691,7 @@ body {
 .pipe__bar-track {
   height: 5px;
   border-radius: 3px;
-  background: rgba(44, 46, 28, 0.09);
+  background: color-mix(in srgb, var(--neo-ink) 9%, transparent);
   overflow: hidden;
 }
 
@@ -891,7 +714,7 @@ body {
 .pipe__dial { position: relative; display: grid; place-items: center; }
 .pipe__dial svg { width: 132px; height: 78px; }
 
-.pipe__arc-bg { fill: none; stroke: rgba(44, 46, 28, 0.12); stroke-width: 7; stroke-linecap: round; }
+.pipe__arc-bg { fill: none; stroke: color-mix(in srgb, var(--neo-ink) 12%, transparent); stroke-width: 7; stroke-linecap: round; }
 
 /* Sweeps to 75 of 100 on the semicircle: 170 length, so 0.75 of it. */
 .pipe__arc-fg {

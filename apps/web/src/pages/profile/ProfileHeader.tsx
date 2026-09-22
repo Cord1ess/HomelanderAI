@@ -30,8 +30,7 @@ export function ProfileHeader({
       p="lg"
       bd="1px solid var(--mantine-color-default-border)"
       style={{
-        background:
-          'linear-gradient(135deg, rgba(31, 113, 109, 0.12) 0%, rgba(17, 24, 39, 0.4) 100%)',
+        background: 'linear-gradient(135deg, var(--neo-accent-soft) 0%, var(--neo-card) 100%)',
         borderRadius: 'var(--mantine-radius-md)',
       }}
     >
@@ -44,7 +43,7 @@ export function ProfileHeader({
             style={{
               fontSize: '1.25rem',
               fontWeight: 700,
-              border: '2px solid rgba(255, 255, 255, 0.15)',
+              border: '2px solid var(--neo-border-mid)',
             }}
           >
             {initials}

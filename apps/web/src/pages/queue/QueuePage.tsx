@@ -198,7 +198,7 @@ export function QueuePage() {
       {/* ── Role-Specific KPI Metrics Strip ──────────────────── */}
       {isMedical ? (
         <SimpleGrid cols={{ base: 1, sm: 2, md: 4 }} spacing="xs">
-          <Card p="xs" bd="1px solid rgba(240, 62, 62, 0.25)">
+          <Card p="xs" bd="1px solid var(--neo-danger)">
             <Text size="xs" c="dimmed" fw={600}>
               ⚡ Mandatory Escalations
             </Text>
@@ -441,7 +441,7 @@ function Row({ row, userRole }: { row: QueueItem; userRole?: UserRole }) {
     <Table.Tr
       style={
         isElevated && isMedical
-          ? { backgroundColor: 'rgba(174, 62, 201, 0.06)' }
+          ? { backgroundColor: 'color-mix(in srgb, var(--mantine-color-grape-6) 8%, transparent)' }
           : undefined
       }
     >

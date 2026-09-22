@@ -13,7 +13,7 @@ import './index.css'
 
 import { App } from './App'
 import { AuthProvider } from './context/AuthContext'
-import { theme } from './theme'
+import { cssVariablesResolver, theme } from './theme'
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -30,7 +30,10 @@ if (!root) throw new Error('#root element is missing from index.html')
 
 createRoot(root).render(
   <StrictMode>
-    <MantineProvider theme={theme} defaultColorScheme="dark">
+    {/* "auto" follows the operating system until the person picks a scheme
+        with the toggle; the choice is remembered in localStorage under
+        Mantine's default key, which index.html reads before first paint. */}
+    <MantineProvider theme={theme} cssVariablesResolver={cssVariablesResolver} defaultColorScheme="auto">
       <QueryClientProvider client={queryClient}>
         <Notifications position="top-right" />
         <AuthProvider>

@@ -10,7 +10,6 @@ import {
   ThemeIcon,
   Tooltip,
   UnstyledButton,
-  useMantineColorScheme,
 } from '@mantine/core'
 import { useDisclosure } from '@mantine/hooks'
 import { useQuery } from '@tanstack/react-query'
@@ -22,11 +21,9 @@ import {
   IconFlame,
   IconLayoutDashboard,
   IconLogout,
-  IconMoon,
   IconReceipt,
   IconShieldCheck,
   IconStethoscope,
-  IconSun,
   IconUser,
   IconUserCircle,
   IconUsers,
@@ -36,6 +33,7 @@ import { NavLink as RouterLink, Outlet, useLocation, useNavigate } from 'react-r
 
 import { getNotifications } from '../../api/client'
 import { BrandIcon } from '../../components/BrandIcon'
+import { ThemeToggle } from '../../components/ThemeToggle'
 import { useAuth } from '../../context/AuthContext'
 import { ROLE_LABEL } from '../../types/auth'
 import type { UserRole } from '../../types/auth'
@@ -124,6 +122,7 @@ export function AppLayout() {
                 </Badge>
               )}
             </ActionIcon>
+            <ThemeToggle />
             <UserMenu />
           </Group>
         </Group>
@@ -140,9 +139,9 @@ export function AppLayout() {
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
-              backgroundColor: '#fff',
-              border: '1px solid rgba(255,255,255,0.16)',
-              boxShadow: '0 2px 10px rgba(0,0,0,0.35), inset 0 0 0 1px rgba(0,0,0,0.04)',
+              backgroundColor: '#fff', // the mark is drawn for a white disc
+              border: '1px solid var(--neo-border-mid)',
+              boxShadow: '0 2px 10px var(--neo-shadow)',
             }}
           >
             <BrandIcon
@@ -262,11 +261,11 @@ function NavItem({
         style={
           active
             ? {
-                backgroundColor: 'var(--mantine-color-clinical-2)',
-                color: 'var(--mantine-color-dark-7)',
+                backgroundColor: 'var(--neo-forest)',
+                color: 'var(--neo-forest-ink)',
               }
             : {
-                color: 'var(--mantine-color-dark-3)',
+                color: 'var(--neo-muted)',
               }
         }
       >
@@ -295,7 +294,6 @@ function NavItem({
 }
 
 function UserMenu() {
-  const { colorScheme, toggleColorScheme } = useMantineColorScheme()
   const { user, logout } = useAuth()
   const navigate = useNavigate()
 
@@ -318,19 +316,6 @@ function UserMenu() {
           leftSection={<IconUserCircle size={14} />}
         >
           Profile & workspace
-        </Menu.Item>
-        <Menu.Divider />
-        <Menu.Item
-          leftSection={
-            colorScheme === 'dark' ? (
-              <IconSun size={14} />
-            ) : (
-              <IconMoon size={14} />
-            )
-          }
-          onClick={toggleColorScheme}
-        >
-          Toggle theme
         </Menu.Item>
         <Menu.Divider />
         <Menu.Item

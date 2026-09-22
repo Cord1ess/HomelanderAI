@@ -69,7 +69,7 @@ export function RegisterTenantForm({ onSwitchToLogin }: RegisterTenantFormProps)
         {...inputProps}
       />
       {error && (
-        <p style={{ margin: '0.2rem 0 0', fontSize: '0.7rem', color: '#c0392b' }}>{error}</p>
+        <p style={{ margin: '0.2rem 0 0', fontSize: '0.7rem', color: 'var(--neo-danger)' }}>{error}</p>
       )}
     </div>
   )
@@ -95,7 +95,7 @@ export function RegisterTenantForm({ onSwitchToLogin }: RegisterTenantFormProps)
       )}
 
       {/* Section 1 — Carrier */}
-      <p style={{ fontSize: '0.68rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', color: 'rgba(15,26,20,0.4)', marginBottom: '0.65rem' }}>
+      <p style={{ fontSize: '0.68rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--neo-muted)', marginBottom: '0.65rem' }}>
         1. Carrier
       </p>
 
@@ -112,7 +112,7 @@ export function RegisterTenantForm({ onSwitchToLogin }: RegisterTenantFormProps)
             {...form.getInputProps('tenantName')}
           />
           {form.errors.tenantName && (
-            <p style={{ margin: '0.2rem 0 0', fontSize: '0.7rem', color: '#c0392b' }}>{form.errors.tenantName}</p>
+            <p style={{ margin: '0.2rem 0 0', fontSize: '0.7rem', color: 'var(--neo-danger)' }}>{form.errors.tenantName}</p>
           )}
         </div>
         <div>
@@ -132,7 +132,7 @@ export function RegisterTenantForm({ onSwitchToLogin }: RegisterTenantFormProps)
       </div>
 
       {/* Section 2 — Admin account */}
-      <p style={{ fontSize: '0.68rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', color: 'rgba(15,26,20,0.4)', marginBottom: '0.65rem', marginTop: '0.25rem' }}>
+      <p style={{ fontSize: '0.68rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--neo-muted)', marginBottom: '0.65rem', marginTop: '0.25rem' }}>
         2. Admin account
       </p>
 
@@ -164,7 +164,7 @@ export function RegisterTenantForm({ onSwitchToLogin }: RegisterTenantFormProps)
       </button>
 
       {onSwitchToLogin && (
-        <p style={{ marginTop: '1.25rem', fontSize: '0.78rem', textAlign: 'center', color: 'rgba(15,26,20,0.45)' }}>
+        <p style={{ marginTop: '1.25rem', fontSize: '0.78rem', textAlign: 'center', color: 'var(--neo-muted)' }}>
           Already have an account?{' '}
           <button
             type="button"

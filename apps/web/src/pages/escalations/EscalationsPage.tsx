@@ -104,7 +104,7 @@ export function EscalationsPage() {
 
       {/* ── KPI Clinical Metrics Strip ───────────────────────── */}
       <SimpleGrid cols={{ base: 1, sm: 2, md: 4 }} spacing="sm">
-        <Card p="sm" bd="1px solid rgba(240, 62, 62, 0.25)">
+        <Card p="sm" bd="1px solid var(--neo-danger)">
           <Group justify="space-between">
             <Text size="xs" c="dimmed" fw={600}>
               Pending Medical Review
@@ -264,7 +264,7 @@ function EscalationRow({ row }: { row: QueueItem }) {
   const isDecided = row.status === 'decided'
 
   return (
-    <Table.Tr style={{ backgroundColor: isDecided ? undefined : 'rgba(240, 62, 62, 0.04)' }}>
+    <Table.Tr style={{ backgroundColor: isDecided ? undefined : 'var(--neo-danger-soft)' }}>
       <Table.Td>
         <Text fz="sm" ff="monospace" fw={600}>
           {row.reference}

@@ -4,6 +4,7 @@ import { Link, Navigate, useNavigate } from 'react-router-dom'
 import { ApiError, getPortalStatus, portalLogout } from '../../api/client'
 import type { PortalStatus } from '../../api/client'
 import { BrandIcon } from '../../components/BrandIcon'
+import { ThemeToggle } from '../../components/ThemeToggle'
 
 /**
  * The client portal: one applicant reading their own application.
@@ -96,11 +97,14 @@ export function PortalPage() {
             <BrandIcon width={18} height={18} style={{ display: 'block' }} />
             homelander
           </Link>
-          {data && (
-            <button type="button" className="portal-bar__signout" onClick={signOut}>
-              Sign out
-            </button>
-          )}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+            <ThemeToggle />
+            {data && (
+              <button type="button" className="portal-bar__signout" onClick={signOut}>
+                Sign out
+              </button>
+            )}
+          </div>
         </div>
       </header>
 

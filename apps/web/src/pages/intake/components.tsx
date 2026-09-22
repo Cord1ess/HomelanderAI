@@ -19,11 +19,11 @@ export function Section({
   return (
     <Box
       style={{
-        backgroundColor: 'var(--mantine-color-dark-6)',
-        border: '1px solid rgba(212, 222, 149, 0.14)',
+        backgroundColor: 'var(--neo-card)',
+        border: '1px solid var(--neo-border-mid)',
         borderRadius: '8px',
         padding: '1.25rem',
-        boxShadow: '0 4px 20px rgba(0, 0, 0, 0.28)',
+        boxShadow: '0 4px 20px var(--neo-shadow)',
       }}
     >
       <Stack gap="md" {...rest}>
@@ -31,13 +31,13 @@ export function Section({
           gap="xs"
           justify="space-between"
           pb="xs"
-          style={{ borderBottom: '1px solid rgba(255, 255, 255, 0.09)' }}
+          style={{ borderBottom: '1px solid var(--neo-border)' }}
         >
           <Group gap="xs">
             <Badge color="clinical" variant="filled" radius="sm" size="sm">
               Section {n}
             </Badge>
-            <Text fw={700} size="sm" c="var(--mantine-color-dark-0)">
+            <Text fw={700} size="sm" c="var(--neo-ink)">
               {title}
             </Text>
           </Group>

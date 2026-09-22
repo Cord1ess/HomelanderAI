@@ -99,21 +99,6 @@ CREATE TABLE users (
 CREATE INDEX idx_users_tenant_id ON users(tenant_id);
 
 -- ============================================================================
--- API_KEYS
--- ============================================================================
-
-CREATE TABLE api_keys (
-    id           UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    tenant_id    UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
-    key_hash     VARCHAR(255) NOT NULL,
-    created_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
-    revoked_at   TIMESTAMPTZ,
-    CONSTRAINT uq_api_keys_key_hash UNIQUE (key_hash)
-);
-
-CREATE INDEX idx_api_keys_tenant_id ON api_keys(tenant_id);
-
--- ============================================================================
 -- APPLICANTS  [unchanged — no name column is intentional, keep it that way]
 -- ============================================================================
 
@@ -414,21 +399,6 @@ CREATE INDEX idx_notifications_application_id ON notifications(application_id);
 CREATE INDEX idx_notifications_status ON notifications(status);
 
 -- ============================================================================
--- NOTIFICATION_PREFERENCES
--- ============================================================================
-
-CREATE TABLE notification_preferences (
-    id                  UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    user_id             UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    notification_type   notification_type NOT NULL,
-    email_enabled       BOOLEAN NOT NULL DEFAULT TRUE,
-    in_app_enabled      BOOLEAN NOT NULL DEFAULT TRUE,
-    CONSTRAINT uq_notification_preferences_user_type UNIQUE (user_id, notification_type)
-);
-
-CREATE INDEX idx_notification_preferences_user_id ON notification_preferences(user_id);
-
--- ============================================================================
 -- ROW LEVEL SECURITY
 -- Applied to every table carrying tenant_id. The application must connect
 -- as a plain (non-superuser) role for this to have any effect.
@@ -457,7 +427,7 @@ DECLARE
     t TEXT;
 BEGIN
     FOREACH t IN ARRAY ARRAY[
-        'users', 'api_keys', 'applicants', 'applications', 'evidence_files',
+        'users', 'applicants', 'applications', 'evidence_files',
         'model_runs', 'sub_scores', 'explanation_artifacts', 'composite_scores',
         'underwriter_decisions', 'requested_documents', 'audit_log',
         'notifications'

@@ -16,7 +16,7 @@ PostgreSQL 16 schema for the HomelanderAI decision-support platform. This is the
 
 ## Design principles
 
-- **Multi-tenant isolation.** Every carrier-owned row (`users`, `applicants`, `applications`, `api_keys`, `notifications`) carries a `tenant_id`. Application-level queries must always filter by tenant.
+- **Multi-tenant isolation.** Every carrier-owned row (`users`, `applicants`, `applications`, `notifications`) carries a `tenant_id`. Application-level queries must always filter by tenant.
 - **Human-in-the-loop is structurally enforced.** `underwriter_decisions.underwriter_id` is `NOT NULL` and the table has a `UNIQUE` constraint on `application_id` — the schema makes it impossible to record a decision without a licensed underwriter attached, and impossible to have two conflicting final decisions on one application. The platform never writes an automated approval or denial into this table.
 - **Model arms are pluggable.** `model_arms` is data, not code — new vision/NLP/tabular arms are added by inserting a row, matching the README's requirement that arms "can be added or removed without touching the pipeline."
 - **Scoring is versioned, not overwritten.** `composite_scores` allows multiple rows per `application_id` (one per `version`), so a re-score after additional evidence is submitted doesn't destroy the original score — both remain in the audit trail.
@@ -28,7 +28,6 @@ PostgreSQL 16 schema for the HomelanderAI decision-support platform. This is the
 |---|---|
 | `tenants` | Subscribing insurance carrier |
 | `users` | Underwriters, senior underwriters, admins |
-| `api_keys` | Per-tenant REST API credentials |
 | `applicants` | The individual being underwritten (synthetic/de-identified) |
 | `applications` | One evidence-package submission for one applicant |
 | `evidence_files` | Uploaded DICOM scans, lab reports, clinical notes, questionnaires |
@@ -40,7 +39,6 @@ PostgreSQL 16 schema for the HomelanderAI decision-support platform. This is the
 | `underwriter_decisions` | Final human decision — always required |
 | `audit_log` | Append-only, hash-chained event record |
 | `notifications` | In-app / email / SMS notifications sent to users |
-| `notification_preferences` | Per-user, per-type channel opt-in/out |
 
 ## Known intentional denormalization
 

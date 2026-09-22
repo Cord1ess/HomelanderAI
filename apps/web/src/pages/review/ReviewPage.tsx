@@ -117,7 +117,7 @@ function FindingBar({ finding, scale }: { finding: Finding; scale: number }) {
       <Box
         h={6}
         w="100%"
-        style={{ backgroundColor: 'var(--mantine-color-dark-5)', borderRadius: 3 }}
+        style={{ backgroundColor: 'var(--neo-hover)', borderRadius: 3 }}
       >
         <Box
           h="100%"
@@ -125,7 +125,7 @@ function FindingBar({ finding, scale }: { finding: Finding; scale: number }) {
             width: `${Math.min(width, 100)}%`,
             backgroundColor: toward
               ? 'var(--mantine-color-clinical-3)'
-              : 'var(--mantine-color-dark-3)',
+              : 'var(--neo-muted)',
             borderRadius: 3,
           }}
         />
@@ -523,7 +523,7 @@ function Review({ data, state }: { data: ApplicationDetail; state: ReviewState }
             style={{
               display: 'grid',
               placeItems: 'center',
-              backgroundColor: 'var(--mantine-color-dark-6)',
+              backgroundColor: 'var(--neo-bg)',
               borderRadius: 'var(--mantine-radius-sm)',
               overflow: 'hidden',
             }}

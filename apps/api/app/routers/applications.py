@@ -684,9 +684,9 @@ async def _notify_tenant(
 ) -> None:
     """One in-app notification per active user in the tenant.
 
-    Phase 1 has no per-user routing: everyone underwriting for this carrier
-    should see that an application moved. `notification_preferences` is seeded
-    but not read yet — when it is, this is the one place to filter.
+    There is no per-user routing: everyone underwriting for this carrier should
+    see that an application moved. If per-user preferences are ever wanted, this
+    is the one place to filter.
     """
     users = await db.execute(
         select(User).where(User.tenant_id == application.tenant_id, User.is_active.is_(True))

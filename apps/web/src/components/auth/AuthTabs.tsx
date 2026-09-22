@@ -2,6 +2,7 @@ import { Link, useSearchParams } from 'react-router-dom'
 import { ClientLoginForm } from './ClientLoginForm'
 import { LoginForm } from './LoginForm'
 import { BrandIcon } from '../BrandIcon'
+import { ThemeToggle } from '../ThemeToggle'
 
 /**
  * Tab switcher for the auth right panel.
@@ -26,12 +27,15 @@ export function AuthTabs() {
   return (
     <div>
       {/* Logo — click to go back to landing */}
-      <Link to="/" className="auth-panel-right__logo" style={{ textDecoration: 'none' }}>
-        <div className="auth-panel-right__logo-mark">
-          <BrandIcon width={16} height={16} style={{ display: 'block', opacity: 0.9 }} />
-        </div>
-        <span className="auth-panel-right__logo-text">homelander</span>
-      </Link>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+        <Link to="/" className="auth-panel-right__logo" style={{ textDecoration: 'none' }}>
+          <div className="auth-panel-right__logo-mark">
+            <BrandIcon width={16} height={16} style={{ display: 'block', opacity: 0.9 }} />
+          </div>
+          <span className="auth-panel-right__logo-text">homelander</span>
+        </Link>
+        <ThemeToggle />
+      </div>
 
       {/* Tab row */}
       <div className="auth-tab-row">
