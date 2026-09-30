@@ -194,7 +194,19 @@ Finish on **Analytics** for a closing shot.
 
 ## 5. If something goes wrong
 
-**`npm run dev` fails, or the dashboard has no data.**
+**`npm run dev` fails with "socket ... forbidden by its access permissions"
+(WinError 10013), or "address already in use".**
+Something is already on port 8000 — almost always an API server from an earlier
+run that did not shut down. Close the other terminal, or:
+
+```powershell
+netstat -ano | findstr :8000          # last column is the process id
+taskkill /PID <that number> /F
+```
+
+Then `npm run dev` again. Same for port 5173 and the dashboard.
+
+**`npm run dev` fails some other way, or the dashboard has no data.**
 Check the database is running: open http://127.0.0.1:8000/api/health/database —
 it should say `"connected": true`. If not, start PostgreSQL and try again.
 
