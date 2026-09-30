@@ -53,20 +53,16 @@ uv run --directory apps/api python -m alembic upgrade head
 
 ## 2. Start the app
 
-**The mammogram model runs on a server that is currently down.** Start with the
-stand-in switched on, or the mammogram panel shows an error on camera:
-
 ```bash
-MIRAI_SIMULATE=true npm run dev
-```
-
-On Windows PowerShell:
-
-```powershell
-$env:MIRAI_SIMULATE = "true"; npm run dev
+npm run dev
 ```
 
 Wait for both lines to appear, then open **http://localhost:5173**.
+
+> The mammogram model runs on a server that is currently down, so the app uses
+> a stand-in for it. That is already switched on â€” you do not need to do
+> anything. The mammogram panel will carry an orange banner saying the reading
+> is simulated. **That banner is meant to be there.** See Part 6.
 
 > The first start downloads the model backbones (about 600 MB) and takes a few
 > minutes. Later starts are quick. Do not record the first one.
@@ -211,8 +207,8 @@ Check the database is running: open http://127.0.0.1:8000/api/health/database â€
 it should say `"connected": true`. If not, start PostgreSQL and try again.
 
 **The mammogram panel shows an error instead of a reading.**
-You started without the stand-in. Stop the app and start it again with
-`MIRAI_SIMULATE=true`.
+Someone has turned the stand-in off. Check for `MIRAI_SIMULATE=false` in the
+`.env` file at the repository root and remove that line, then restart.
 
 **A file is not recognised on the drop zone.**
 Make sure you dragged the whole folder's contents, including `client.json` and

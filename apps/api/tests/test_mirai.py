@@ -139,7 +139,19 @@ def test_the_anchors_hold():
     assert mirai.score_from(0.01) < 30.0 < mirai.score_from(0.02)
 
 
+def use_the_real_server(monkeypatch) -> None:
+    """Turn the demonstration stand-in off for this test.
+
+    The stand-in answers before the network call is reached, so any test about
+    what the server's reply becomes has to say it wants the real path.
+    """
+    from app.config import settings
+
+    monkeypatch.setattr(settings, "mirai_simulate", False)
+
+
 def test_the_server_answer_becomes_a_reading(monkeypatch):
+    use_the_real_server(monkeypatch)
     monkeypatch.setattr(
         mirai,
         "call",
@@ -160,6 +172,7 @@ def test_the_server_answer_becomes_a_reading(monkeypatch):
 
 
 def test_a_server_error_is_a_reason_not_a_score(monkeypatch):
+    use_the_real_server(monkeypatch)
     monkeypatch.setattr(mirai, "call", lambda views: {"prediction": None, "msg": "Error. x"})
     result = mirai.run_set(FOUR)
     assert result.score is None and "without a prediction" in result.error
@@ -169,6 +182,7 @@ def test_a_server_error_is_a_reason_not_a_score(monkeypatch):
 
 
 def test_the_pipeline_runs_mirai_once_over_all_four_views(monkeypatch):
+    use_the_real_server(monkeypatch)
     calls: list[int] = []
 
     def fake_call(views):
@@ -202,11 +216,35 @@ def test_the_arm_is_registered_for_mammograms():
 # ── the stand-in, for recording a demonstration while the server is down ─────
 
 
-def test_the_stand_in_is_off_unless_it_is_switched_on():
-    """Nothing simulated unless someone asked for it, in the environment."""
+def test_the_stand_in_is_on_while_the_server_is_down():
+    """The stand-in is the default, and can be turned off.
+
+    A deliberate, temporary default: the Mirai server has been unreachable
+    since before the showcase, and without the stand-in a demonstration shows a
+    timeout in place of one panel. It is only safe as a default because a
+    simulated reading always says so — which is what the next test pins, and
+    that guarantee is the one that must not move.
+
+    Set MIRAI_SIMULATE=false when the server is back.
+    """
     from app.config import settings
 
-    assert settings.mirai_simulate is False
+    assert settings.mirai_simulate is True
+
+
+def test_the_stand_in_can_be_turned_off(monkeypatch):
+    """With it off and no server reachable, the arm reports the failure rather
+    than quietly inventing a number."""
+    from app.config import settings
+
+    monkeypatch.setattr(settings, "mirai_simulate", False)
+    monkeypatch.setattr(settings, "mirai_url", "")
+    result = mirai.run_set(
+        [film("R", "MLO"), film("L", "MLO"), film("L", "CC"), film("R", "CC")]
+    )
+
+    assert result.score is None
+    assert result.error
 
 
 def test_the_stand_in_marks_everything_it_produces(monkeypatch):

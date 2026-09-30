@@ -393,11 +393,9 @@ still scored — the reader reports a timeout after a minute and the other five
 carry on — but the mammogram panel shows an error, which is not what you want
 on camera.
 
-For a recording, switch on the stand-in:
-
-```bash
-MIRAI_SIMULATE=true npm run dev
-```
+The stand-in for it is **on by default** while the server is down, so
+`npm run dev` already gives a working demonstration. Set `MIRAI_SIMULATE=false`
+to go back to the real server once it is reachable.
 
 It does not read the mammogram. It produces a plausible five-year risk derived
 from the applicant, so each one gets their own stable number and the tiers can
@@ -426,7 +424,7 @@ demonstration.
 | Dashboard | `http://localhost:5173` |
 | Images to demo with | `data/demo/` — **not** `Reference/Nirnoy/assets/samples/` |
 | Folders to demo with | `demo/test/` — drop a whole folder, nothing to type |
-| Mammogram server down | `MIRAI_SIMULATE=true npm run dev` (marked as simulated on screen) |
+| Mammogram reader | Stand-in is on by default; readings are marked simulated on screen |
 | Pricing per tier | Pricing tab in the dashboard |
 
 Both machines must be on the same network. A phone hotspot works if the office

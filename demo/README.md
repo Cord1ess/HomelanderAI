@@ -2,8 +2,9 @@
 
 `test/` and `clients/` hold five applicants each, low risk to elevated — drop a
 whole folder into the intake form and nothing needs typing. See
-`docs/DEMO_SETUP.md` for what each one reads as, and for the `MIRAI_SIMULATE`
-switch to use when the mammogram server is down.
+`docs/DEMO_SETUP.md` for what each one reads as. The mammogram server is down,
+so that reader uses a stand-in — on by default, and every reading it produces is
+marked as simulated.
 
 The rest of this file is about the twenty chest X-rays below.
 

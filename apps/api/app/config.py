@@ -64,14 +64,25 @@ class Settings(BaseSettings):
     # make it answer, and the other readers' results should not be held up for
     # it. A timeout is reported on the screen as a timeout.
     mirai_timeout_seconds: int = 60
-    # A stand-in for the Mirai server, for recording a demonstration while the
-    # real one is down. Off by default and never on by accident: it has to be
-    # set deliberately, in the environment, and everything it produces is
-    # marked as a stand-in — on the screen, in the stored reading and in the
-    # audit log — so a simulated number can never be mistaken for a measured
-    # one. The four views are still required and still checked, so the flow on
+    # A stand-in for the Mirai server, used while the real one is down.
+    #
+    # ON by default, which is a deliberate and temporary choice. The server has
+    # been unreachable since before the showcase, and starting without the
+    # stand-in gives a demonstration where one panel shows a timeout error —
+    # worse than an obvious failure, because it is easy to miss until the
+    # footage is being cut. Defaulting it on means nobody has to remember a
+    # flag to get a working demo.
+    #
+    # It is safe to default because it cannot lie about what it is: every
+    # reading it produces carries `simulated: true`, names itself a stand-in
+    # instead of the model, and replaces Mirai's published validation figures
+    # with a warning — on the screen, in the stored reading and in the audit
+    # log. The four views are still required and still checked, so the flow on
     # screen is the real flow; only the network call is replaced.
-    mirai_simulate: bool = False
+    #
+    # **Set MIRAI_SIMULATE=false once the server is back**, and this reverts to
+    # reading real mammograms.
+    mirai_simulate: bool = True
 
     # ── Outgoing mail ─────────────────────────────────────────
     # Used to send applicants their portal sign-in and a note when a decision
