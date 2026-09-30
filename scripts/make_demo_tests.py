@@ -58,7 +58,7 @@ CLIENTS = [
         "folder": "test-02-fatema",
         "story": "52-year-old with diabetes. Moderate retinopathy, raised glucose. Expect moderate.",
         "chest": CHEST_NORMAL / "normal-02-shenzhen-0039_0.png",
-        "retina": RETINA / "15_right.jpeg",
+        "retina": RETINA / "10_left.jpeg",
         "ecg": ECG / "normal_codetest_002.csv",
         "client": {"name": "Fatema Begum", "phone": "01711 000102", "email": "fatema.begum@example.com",
                    "dateOfBirth": "1974-07-02", "sex": "Female",
@@ -88,7 +88,7 @@ CLIENTS = [
         "folder": "test-04-nusrat",
         "story": "45-year-old with palpitations and hypertension. The ECG shows atrial fibrillation. Expect moderate to elevated.",
         "chest": CHEST_NORMAL / "normal-03-shenzhen-0225_0.png",
-        "retina": RETINA / "10_left.jpeg",
+        "retina": RETINA / "13_right.jpeg",
         "ecg": ECG / "AF_codetest_120.csv",
         "client": {"name": "Nusrat Jahan", "phone": "01711 000104", "email": "nusrat.jahan@example.com",
                    "dateOfBirth": "1981-05-09", "sex": "Female",
@@ -117,6 +117,13 @@ CLIENTS = [
 ]
 
 
+def wants_mammogram(client: dict) -> bool:
+    """Whether this applicant would be sent for screening mammography."""
+    details = client["client"]
+    born = int(details["dateOfBirth"][:4])
+    return details["sex"] == "Female" and (2026 - born) >= 40
+
+
 def main() -> int:
     sources = [c["chest"] for c in CLIENTS] + [c["retina"] for c in CLIENTS] + [c["ecg"] for c in CLIENTS]
     sources += [MAMMO / v for v in MAMMO_VIEWS] + [NOTE]
@@ -130,12 +137,22 @@ def main() -> int:
     OUT.mkdir(parents=True, exist_ok=True)
     for client in CLIENTS:
         folder = OUT / client["folder"]
-        folder.mkdir(exist_ok=True)
+        # Emptied first. Which files a folder gets now depends on the applicant,
+        # so a rerun that only copies would leave behind what a previous run put
+        # there — and a reader scores whatever it finds.
+        if folder.is_dir():
+            shutil.rmtree(folder)
+        folder.mkdir(parents=True)
         shutil.copyfile(client["chest"], folder / "chest-xray.png")
         shutil.copyfile(client["retina"], folder / "retina.jpeg")
         shutil.copyfile(client["ecg"], folder / "ecg-12-lead.csv")
-        for src, name in MAMMO_VIEWS.items():
-            shutil.copyfile(MAMMO / src, folder / name)
+        # Screening mammography is for women from about forty, so only the
+        # applicants it is actually offered to carry one. Handing a 34-year-old
+        # man a mammogram is not a harmless extra file: the reader scores it,
+        # and the score lands on his application.
+        if wants_mammogram(client):
+            for src, name in MAMMO_VIEWS.items():
+                shutil.copyfile(MAMMO / src, folder / name)
         shutil.copyfile(NOTE, folder / "discharge-note.txt")
         (folder / "client.json").write_text(json.dumps(client["client"], indent=2), encoding="utf-8")
         (folder / "blood-panel.json").write_text(json.dumps(client["blood"], indent=2), encoding="utf-8")

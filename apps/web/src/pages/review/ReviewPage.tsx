@@ -1386,6 +1386,8 @@ function MortalityPanel({ run }: { run: ArmRun }) {
 
 // What the Mirai arm stores per run (`apps/api/app/arms/mirai.py`).
 interface MiraiDetails {
+  /** Set when the reading came from the stand-in rather than the model. */
+  simulated?: boolean
   risk_by_year?: number[]
   five_year_risk?: number
   views?: string[]
@@ -1508,6 +1510,26 @@ function MiraiPanel({ run }: { run: ArmRun }) {
           </Badge>
         )}
       </Group>
+
+      {/* A stand-in reading says so, every time it is shown. A simulated number
+          that looks like a measured one is the one thing this screen must
+          never do. */}
+      {d.simulated && (
+        <Text
+          size="xs"
+          fw={600}
+          mb="sm"
+          p="xs"
+          c="orange.8"
+          style={{
+            backgroundColor: 'var(--mantine-color-orange-light)',
+            borderRadius: 'var(--mantine-radius-sm)',
+          }}
+        >
+          Demonstration only — the mammogram service was unavailable and this reading was
+          simulated. It is not a measurement of this applicant.
+        </Text>
+      )}
 
       {run.error || five == null ? (
         <Text size="sm" c="dimmed">

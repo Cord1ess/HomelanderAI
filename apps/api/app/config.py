@@ -64,6 +64,14 @@ class Settings(BaseSettings):
     # make it answer, and the other readers' results should not be held up for
     # it. A timeout is reported on the screen as a timeout.
     mirai_timeout_seconds: int = 60
+    # A stand-in for the Mirai server, for recording a demonstration while the
+    # real one is down. Off by default and never on by accident: it has to be
+    # set deliberately, in the environment, and everything it produces is
+    # marked as a stand-in — on the screen, in the stored reading and in the
+    # audit log — so a simulated number can never be mistaken for a measured
+    # one. The four views are still required and still checked, so the flow on
+    # screen is the real flow; only the network call is replaced.
+    mirai_simulate: bool = False
 
     # ── Outgoing mail ─────────────────────────────────────────
     # Used to send applicants their portal sign-in and a note when a decision

@@ -39,6 +39,29 @@ logs/
 *.ckpt
 *.safetensors
 
+# `demo/` is the one exception, and a deliberate one.
+#
+# It holds the five applicants the showcase is recorded with — images, ECG
+# exports, notes and the JSON that fills the form. It is committed because the
+# person recording the video is not the person who has the datasets, and a demo
+# that needs a 400 MB side-channel before it runs is a demo that fails on the
+# day.
+#
+# It is a fixed set of public research images (Shenzhen chest films, EyePACS
+# retinas, CODE-test ECGs, CBIS-DDSM mammograms), not a working directory, and
+# intake de-identifies every file before anything is stored. Regenerate it with
+# `scripts/make_demo_tests.py` and `scripts/make_demo_clients.py`.
+#
+# Everything else stays ignored: `/data/` is still where the full datasets and
+# the downloaded backbones live, and none of that belongs in git.
+!demo/
+!demo/**
+
+# Raw source datasets that scripts fetch and nothing reads at runtime. Kept out
+# for the same reason as /data/: they are large, they are re-downloadable, and
+# having them in the tree is not the same as needing them in the history.
+mtsamples.csv
+
 # ─── ML tracking ──────────────────────────────────────────
 mlruns/
 mlartifacts/

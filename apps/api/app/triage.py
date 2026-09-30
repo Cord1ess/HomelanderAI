@@ -43,10 +43,13 @@ _MODALITY_KINDS: dict[str, EvidenceKind] = {
 # the JPEG noise that can lift a true greyscale image off zero.
 _GREY_MAX_SPREAD = 6.0
 
-# A fundus photo is a circle on black, filling roughly half the frame. A chest
-# film fills over 90%. Anything between is not confidently either.
+# A fundus photo is a circle on black; a chest film fills the frame. Measured
+# over the sample set: chest films light 84.1%-99.7% of the frame, fundus
+# photos 48.1%-73.6%. The boundary sits in the empty gap between the two, not
+# inside either range — at 0.85 the darkest genuine chest film in the set fell
+# through and was sent to a human as unrecognised.
 _FUNDUS_MAX_LIT = 0.80
-_CHEST_MIN_LIT = 0.85
+_CHEST_MIN_LIT = 0.80
 
 
 @dataclass(frozen=True)
@@ -161,12 +164,23 @@ def _from_pixels(raw: bytes) -> Verdict:
             return Verdict(EvidenceKind.CHEST_XRAY, "Greyscale scan filling the frame")
         return Verdict(
             EvidenceKind.UNKNOWN,
-            "Greyscale, but not shaped like a chest film",
+            f"Greyscale, but it fills {lit_fraction:.0%} of the frame rather than most of it, "
+            "so it is not shaped like a chest film",
         )
 
     # Colour. A fundus photo is a red-orange circle on black.
     if red_dominant >= 0.20 and lit_fraction <= _FUNDUS_MAX_LIT:
         return Verdict(EvidenceKind.FUNDUS, "Round red-toned image on a dark background")
+
+    # Red-toned but filling the frame: a fundus photo cropped to its disc, or a
+    # close-up of something else entirely. The shape is what the retina arm was
+    # validated on, so this abstains rather than stretching to reach it.
+    if red_dominant >= 0.20:
+        return Verdict(
+            EvidenceKind.UNKNOWN,
+            f"Red-toned but fills {lit_fraction:.0%} of the frame; a retinal photo is a disc "
+            "on a dark background",
+        )
 
     return Verdict(
         EvidenceKind.UNKNOWN,

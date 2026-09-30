@@ -197,3 +197,89 @@ def test_the_arm_is_registered_for_mammograms():
     assert arm.accepts == frozenset({EvidenceKind.MAMMOGRAM})
     assert arm.run_set is not None and arm.run is None
     assert "NOT validated in South Asia" in arm.validation
+
+
+# ── the stand-in, for recording a demonstration while the server is down ─────
+
+
+def test_the_stand_in_is_off_unless_it_is_switched_on():
+    """Nothing simulated unless someone asked for it, in the environment."""
+    from app.config import settings
+
+    assert settings.mirai_simulate is False
+
+
+def test_the_stand_in_marks_everything_it_produces(monkeypatch):
+    """A simulated reading says so in the stored record, in the scorer name and
+    in the validation line — the three places anything downstream looks.
+
+    A number that is not a measurement must not be able to pass for one.
+    """
+    from app.config import settings
+
+    monkeypatch.setattr(settings, "mirai_simulate", True)
+    result = mirai.run_set([film("R", "MLO"), film("L", "MLO"), film("L", "CC"), film("R", "CC")])
+
+    assert result.error is None
+    assert result.score is not None
+    assert result.details["simulated"] is True
+    assert "stand-in" in result.details["scorer"]
+    assert result.details["validation"].startswith("SIMULATED")
+    # Mirai's published figures must not be attached to a number it did not
+    # produce.
+    assert "AUC" not in result.details["validation"]
+
+
+def test_the_stand_in_is_stable_and_varies_by_applicant(monkeypatch):
+    """The same applicant gives the same risk every time, so a demonstration
+    can be re-recorded and a screenshot still matches. Different applicants
+    give different risks, so the tiers can be shown.
+    """
+    from app.config import settings
+
+    monkeypatch.setattr(settings, "mirai_simulate", True)
+    views = [film("R", "MLO"), film("L", "MLO"), film("L", "CC"), film("R", "CC")]
+
+    mirai.seed_simulation("applicant-one")
+    first = mirai.run_set(views)
+    mirai.seed_simulation("applicant-one")
+    again = mirai.run_set(list(reversed(views)))
+    assert first.score == again.score, "same applicant must give the same reading"
+
+    mirai.seed_simulation("applicant-two")
+    other = mirai.run_set(views)
+    assert other.score != first.score, "different applicants must differ"
+
+    mirai.seed_simulation("")
+
+
+def test_the_stand_in_still_requires_the_four_views(monkeypatch):
+    """A mammogram missing a view is a real error the operator must see. A
+    demonstration that skipped the check would be showing a flow that does not
+    exist.
+    """
+    from app.config import settings
+
+    monkeypatch.setattr(settings, "mirai_simulate", True)
+    result = mirai.run_set([film("R", "MLO"), film("L", "MLO")])
+
+    assert result.score is None
+    assert "four-view" in result.error
+
+
+def test_the_stand_in_stays_inside_the_published_risk_range(monkeypatch):
+    """Whatever it draws must be a risk a real screening population produces,
+    so the screen never shows an impossible number.
+    """
+    from app.config import settings
+
+    monkeypatch.setattr(settings, "mirai_simulate", True)
+    views = [film("R", "MLO"), film("L", "MLO"), film("L", "CC"), film("R", "CC")]
+    low, high = mirai._SIMULATED_RISK_RANGE
+
+    for i in range(25):
+        mirai.seed_simulation(f"applicant-{i}")
+        risk = mirai.run_set(views).details["five_year_risk"]
+        assert low <= risk <= high, f"{risk} outside {low}-{high}"
+
+    mirai.seed_simulation("")

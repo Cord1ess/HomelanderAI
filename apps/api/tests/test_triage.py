@@ -152,3 +152,28 @@ def test_never_confidently_wrong_on_the_demo_set():
     if not checked:
         pytest.skip("no sample images present")
     assert wrong == 0, f"{wrong} of {checked} files were confidently misclassified"
+
+
+def test_the_demo_chest_films_are_actually_recognised():
+    """Abstaining is safe, but abstaining on a film the platform screens is a
+    bug the test above cannot see: it allows UNKNOWN everywhere.
+
+    The boundary between a chest film and a retinal photo is a measured gap —
+    films light 84.1%-99.7% of the frame, fundus photos 48.1%-73.6%. It once
+    sat at 0.85, inside the films' own range, and the darkest film in the set
+    fell through it.
+    """
+    import glob
+    from pathlib import Path as _Path
+
+    root = _Path(__file__).resolve().parents[3]
+    films = sorted(glob.glob(str(root / "data" / "demo" / "0*" / "*.png")))
+    if not films:
+        pytest.skip("no sample chest films present")
+
+    abstained = [
+        _Path(f).name
+        for f in films
+        if classify(_Path(f).read_bytes(), _Path(f).name).kind is not EvidenceKind.CHEST_XRAY
+    ]
+    assert not abstained, f"chest films not recognised: {abstained}"

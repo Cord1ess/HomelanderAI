@@ -66,7 +66,13 @@ _SENIOR = (0.045, 65.0)
 
 
 def available() -> bool:
-    return bool(settings.mirai_url)
+    """Whether the arm can produce a reading at all.
+
+    True while simulating even with no server configured: the catalogue asks
+    this to decide whether to offer the reader, and a demonstration needs it
+    offered.
+    """
+    return bool(settings.mirai_url) or settings.mirai_simulate
 
 
 def score_from(five_year_risk: float) -> float:
@@ -138,14 +144,89 @@ def call(files: dict[tuple[str, str], bytes]) -> dict:
         return json.loads(response.read().decode("utf-8"))
 
 
+# The published five-year risks for screening-age women run from well under a
+# percent to the high-risk decile above 4.5%. The stand-in draws from that
+# range so a demonstration shows the arm's tiers working rather than one
+# number, and never from beyond it.
+_SIMULATED_RISK_RANGE = (0.006, 0.052)
+
+
+# What the stand-in varies its answer by, set once per application before the
+# arm runs. The demonstration mammograms are all the same four CBIS-DDSM views
+# — one study is all we have — so hashing the pixels gives every applicant the
+# same risk. Seeding from the applicant instead gives each their own, which is
+# what a demonstration needs to show. Only ever read by `simulate`.
+_seed = ""
+
+
+def seed_simulation(value: str) -> None:
+    """Vary the stand-in per applicant. No effect unless simulating."""
+    global _seed
+    _seed = value
+
+
+def simulate(views: dict[tuple[str, str], bytes]) -> ArmResult:
+    """A stand-in reading, for demonstrating the flow while the server is down.
+
+    Derived from the pixels, not from chance: the same mammogram gives the same
+    risk every time, so a demonstration can be re-recorded and a screenshot
+    still matches what the screen shows later. Different applicants land on
+    different numbers because their images differ.
+
+    Everything it returns is marked as simulated — `simulated: True` in the
+    reading, the scorer named as a stand-in, and the validation line replaced
+    with a warning instead of Mirai's published figures — because a number that
+    is not a measurement must never be able to pass for one.
+    """
+    digest = hashlib.sha256(
+        _seed.encode() + b"".join(hashlib.sha256(v).digest() for v in sorted(views.values()))
+    ).digest()
+    # The first eight bytes as a fraction of their range: a stable 0-1 draw.
+    fraction = int.from_bytes(digest[:8], "big") / float(1 << 64)
+    low, high = _SIMULATED_RISK_RANGE
+    # Spaced by log, matching how the risks themselves are distributed and how
+    # `score_from` reads them, so the draws are not bunched at the top.
+    five_year = round(math.exp(math.log(low) + fraction * (math.log(high) - math.log(low))), 5)
+    # A plausible one-to-five year curve: risk accumulates year on year.
+    risks = [round(five_year * f, 5) for f in (0.18, 0.37, 0.58, 0.79, 1.0)]
+    log.warning("Mirai stand-in used: no mammogram was read, risk %.4f is simulated", five_year)
+    return ArmResult(
+        score=score_from(five_year),
+        raw_score=five_year,
+        details={
+            "simulated": True,
+            "risk_by_year": risks,
+            "one_year_risk": risks[0],
+            "five_year_risk": five_year,
+            "views": [VIEW_LABELS[v] for v in views],
+            "anchors": {"low_tier_top": _LOW_TOP, "senior_review": _SENIOR},
+            "scorer": f"{NAME} stand-in (no model was run)",
+            "validation": (
+                "SIMULATED — the mammogram service was unavailable and this reading was "
+                "generated to demonstrate the flow. It is not a measurement of this "
+                "applicant and must not be used for any underwriting decision"
+            ),
+            "input_hash": hashlib.sha256(
+                b"".join(hashlib.sha256(v).digest() for v in views.values())
+            ).hexdigest(),
+        },
+    )
+
+
 def run_set(files: list[bytes]) -> ArmResult:
     """Score one applicant's four-view mammogram. Never raises."""
-    if not available():
+    if not available() and not settings.mirai_simulate:
         return ArmResult(score=None, error="MIRAI_URL is not set")
+    # The views are arranged and checked before the stand-in too: a mammogram
+    # missing a view is a real error the operator must see, and a demonstration
+    # that skipped that check would be showing a flow that does not exist.
     try:
         views = arrange(files)
     except ValueError as exc:
         return ArmResult(score=None, error=f"a four-view mammogram is needed: {exc}")
+
+    if settings.mirai_simulate:
+        return simulate(views)
 
     timed_out = (
         f"the mammogram service did not answer within {settings.mirai_timeout_seconds} seconds, "

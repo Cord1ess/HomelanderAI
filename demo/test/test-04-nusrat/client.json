@@ -1,0 +1,25 @@
+{
+  "name": "Nusrat Jahan",
+  "phone": "01711 000104",
+  "email": "nusrat.jahan@example.com",
+  "dateOfBirth": "1981-05-09",
+  "sex": "Female",
+  "coverage": {
+    "type": "Critical illness",
+    "amount": 1500000,
+    "term": "20"
+  },
+  "questions": {
+    "cxr_lung": {
+      "symptoms": [],
+      "history": [],
+      "cardio": [
+        "hypertension"
+      ],
+      "prior_tb": false
+    },
+    "ecg": {
+      "palpitations": true
+    }
+  }
+}

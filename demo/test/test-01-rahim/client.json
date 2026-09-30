@@ -1,0 +1,19 @@
+{
+  "name": "Rahim Uddin",
+  "phone": "01711 000101",
+  "email": "rahim.uddin@example.com",
+  "dateOfBirth": "1992-03-14",
+  "sex": "Male",
+  "coverage": {
+    "type": "Life",
+    "amount": 1000000,
+    "term": "20"
+  },
+  "questions": {
+    "cxr_lung": {
+      "symptoms": [],
+      "history": [],
+      "prior_tb": false
+    }
+  }
+}

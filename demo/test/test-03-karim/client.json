@@ -1,0 +1,25 @@
+{
+  "name": "Karim Hossain",
+  "phone": "01711 000103",
+  "email": "karim.hossain@example.com",
+  "dateOfBirth": "1965-11-23",
+  "sex": "Male",
+  "coverage": {
+    "type": "Life",
+    "amount": 2500000,
+    "term": "15"
+  },
+  "questions": {
+    "cxr_lung": {
+      "symptoms": [
+        "cough_over_2_weeks",
+        "night_sweats",
+        "weight_loss"
+      ],
+      "history": [
+        "smoker"
+      ],
+      "prior_tb": false
+    }
+  }
+}

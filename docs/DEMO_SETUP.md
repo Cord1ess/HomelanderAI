@@ -363,6 +363,55 @@ it.
 
 ---
 
+## Recording the demonstration video
+
+### The demo folders
+
+`demo/test/` holds five applicants, low risk to elevated. Drop a whole folder
+into the intake form: `client.json` fills the client and the cover,
+`blood-panel.json` fills the lab reader, and every other file is identified and
+routed to the reader that takes it. Nothing is typed.
+
+`demo/clients/` is the same five people with images only — no mammogram, no
+discharge note — for a shorter run.
+
+| Folder | Reads as | Why |
+|---|---|---|
+| `test-01-rahim` | low | Clean everything, 34 |
+| `test-02-fatema` | moderate | Diabetic retinopathy, raised glucose |
+| `test-03-karim` | elevated | Tuberculosis on the film |
+| `test-04-nusrat` | elevated | Atrial fibrillation on the ECG |
+| `test-05-malek` | elevated | Conduction block, kidney values, severe retinopathy |
+
+Only the two women over forty carry a mammogram, because that is who screening
+mammography is offered to. The men's folders exercise five readers, not six.
+
+### When the mammogram server is down
+
+Mirai runs on a teammate's machine. If it is unreachable, the application is
+still scored — the reader reports a timeout after a minute and the other five
+carry on — but the mammogram panel shows an error, which is not what you want
+on camera.
+
+For a recording, switch on the stand-in:
+
+```bash
+MIRAI_SIMULATE=true npm run dev
+```
+
+It does not read the mammogram. It produces a plausible five-year risk derived
+from the applicant, so each one gets their own stable number and the tiers can
+be shown; re-record as often as you like and the numbers do not move. The four
+views are still required and still checked, so the flow on screen is the real
+flow.
+
+**Everything it produces is marked as simulated** — a banner on the review
+screen, `simulated: true` in the stored reading, and a validation line saying
+so in place of Mirai's published figures. Leave it off for anything but a
+demonstration.
+
+---
+
 ## Quick reference
 
 | | Command |
@@ -376,6 +425,8 @@ it.
 | Is the API alive? | `http://127.0.0.1:8000/api/health` |
 | Dashboard | `http://localhost:5173` |
 | Images to demo with | `data/demo/` — **not** `Reference/Nirnoy/assets/samples/` |
+| Folders to demo with | `demo/test/` — drop a whole folder, nothing to type |
+| Mammogram server down | `MIRAI_SIMULATE=true npm run dev` (marked as simulated on screen) |
 | Pricing per tier | Pricing tab in the dashboard |
 
 Both machines must be on the same network. A phone hotspot works if the office

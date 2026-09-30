@@ -1,0 +1,162 @@
+[
+  {
+    "file": "01-normal/normal-01-shenzhen-0197_0.png",
+    "truth": "normal",
+    "score": 1.23,
+    "tier": "low",
+    "expected_tier": "low",
+    "matches": true
+  },
+  {
+    "file": "01-normal/normal-02-shenzhen-0039_0.png",
+    "truth": "normal",
+    "score": 6.47,
+    "tier": "low",
+    "expected_tier": "low",
+    "matches": true
+  },
+  {
+    "file": "01-normal/normal-03-shenzhen-0225_0.png",
+    "truth": "normal",
+    "score": 8.89,
+    "tier": "low",
+    "expected_tier": "low",
+    "matches": true
+  },
+  {
+    "file": "01-normal/normal-04-shenzhen-0208_0.png",
+    "truth": "normal",
+    "score": 10.34,
+    "tier": "low",
+    "expected_tier": "low",
+    "matches": true
+  },
+  {
+    "file": "01-normal/normal-05-shenzhen-0213_0.png",
+    "truth": "normal",
+    "score": 11.66,
+    "tier": "low",
+    "expected_tier": "low",
+    "matches": true
+  },
+  {
+    "file": "01-normal/normal-06-shenzhen-0143_0.png",
+    "truth": "normal",
+    "score": 13.06,
+    "tier": "low",
+    "expected_tier": "low",
+    "matches": true
+  },
+  {
+    "file": "01-normal/normal-07-shenzhen-0156_0.png",
+    "truth": "normal",
+    "score": 14.33,
+    "tier": "low",
+    "expected_tier": "low",
+    "matches": true
+  },
+  {
+    "file": "01-normal/normal-08-shenzhen-0221_0.png",
+    "truth": "normal",
+    "score": 16.37,
+    "tier": "low",
+    "expected_tier": "low",
+    "matches": true
+  },
+  {
+    "file": "01-normal/normal-09-shenzhen-0092_0.png",
+    "truth": "normal",
+    "score": 19.12,
+    "tier": "low",
+    "expected_tier": "low",
+    "matches": true
+  },
+  {
+    "file": "01-normal/normal-10-shenzhen-0118_0.png",
+    "truth": "normal",
+    "score": 25.47,
+    "tier": "low",
+    "expected_tier": "low",
+    "matches": true
+  },
+  {
+    "file": "02-tuberculosis/tb-01-shenzhen-0648_1.png",
+    "truth": "tb",
+    "score": 100.0,
+    "tier": "elevated",
+    "expected_tier": "elevated",
+    "matches": true
+  },
+  {
+    "file": "02-tuberculosis/tb-02-shenzhen-0403_1.png",
+    "truth": "tb",
+    "score": 99.55,
+    "tier": "elevated",
+    "expected_tier": "elevated",
+    "matches": true
+  },
+  {
+    "file": "02-tuberculosis/tb-03-shenzhen-0336_1.png",
+    "truth": "tb",
+    "score": 98.7,
+    "tier": "elevated",
+    "expected_tier": "elevated",
+    "matches": true
+  },
+  {
+    "file": "02-tuberculosis/tb-04-shenzhen-0479_1.png",
+    "truth": "tb",
+    "score": 97.06,
+    "tier": "elevated",
+    "expected_tier": "elevated",
+    "matches": true
+  },
+  {
+    "file": "02-tuberculosis/tb-05-shenzhen-0634_1.png",
+    "truth": "tb",
+    "score": 94.89,
+    "tier": "elevated",
+    "expected_tier": "elevated",
+    "matches": true
+  },
+  {
+    "file": "02-tuberculosis/tb-06-shenzhen-0568_1.png",
+    "truth": "tb",
+    "score": 92.63,
+    "tier": "elevated",
+    "expected_tier": "elevated",
+    "matches": true
+  },
+  {
+    "file": "02-tuberculosis/tb-07-shenzhen-0467_1.png",
+    "truth": "tb",
+    "score": 90.58,
+    "tier": "elevated",
+    "expected_tier": "elevated",
+    "matches": true
+  },
+  {
+    "file": "02-tuberculosis/tb-08-shenzhen-0337_1.png",
+    "truth": "tb",
+    "score": 86.17,
+    "tier": "elevated",
+    "expected_tier": "elevated",
+    "matches": true
+  },
+  {
+    "file": "02-tuberculosis/tb-09-shenzhen-0531_1.png",
+    "truth": "tb",
+    "score": 81.22,
+    "tier": "elevated",
+    "expected_tier": "elevated",
+    "matches": true
+  },
+  {
+    "file": "02-tuberculosis/tb-10-shenzhen-0619_1.png",
+    "truth": "tb",
+    "score": 75.11,
+    "tier": "elevated",
+    "expected_tier": "elevated",
+    "matches": true
+  }
+]

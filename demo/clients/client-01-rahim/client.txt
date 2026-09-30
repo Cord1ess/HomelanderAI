@@ -1,0 +1,32 @@
+Rahim Uddin
+
+Healthy 34-year-old. Everything should read clean: low tier, standard rate.
+
+CLIENT (type into step 1)
+  Name: Rahim Uddin
+  Phone: 01711 000101
+  Email: rahim.uddin@example.com
+  Date of birth: 1992-03-14
+  Sex: Male
+
+COVER (step 2)
+  Life, 1,000,000, 20 years
+
+FILES (drop all of them into the zone at the top of step 3)
+  chest-xray.png
+  retina-left.jpeg
+  ecg-12-lead.csv
+
+BLOOD PANEL (select the lab reader in step 3 and type these)
+  Serum albumin (g/dL): 4.5
+  Serum creatinine (mg/dL): 0.9
+  Glucose (mg/dL): 88
+  C-reactive protein (mg/L): 0.6
+  Lymphocytes (%): 32
+  Mean cell volume (fL): 88
+  RDW-CV (%): 12.4
+  Alkaline phosphatase (U/L): 62
+  White blood cells (x10^3/uL): 5.8
+
+HEALTH QUESTIONS
+  Tick nothing. No symptoms, no history.

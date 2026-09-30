@@ -1,0 +1,24 @@
+{
+  "name": "Fatema Begum",
+  "phone": "01711 000102",
+  "email": "fatema.begum@example.com",
+  "dateOfBirth": "1974-07-02",
+  "sex": "Female",
+  "coverage": {
+    "type": "Health",
+    "amount": 500000,
+    "term": "10"
+  },
+  "questions": {
+    "cxr_lung": {
+      "symptoms": [],
+      "history": [
+        "diabetes"
+      ],
+      "prior_tb": false
+    },
+    "eyepacs": {
+      "diabetes_duration": "8"
+    }
+  }
+}

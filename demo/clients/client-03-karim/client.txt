@@ -1,0 +1,32 @@
+Karim Hossain
+
+61-year-old smoker with a six-week cough. The chest film shows tuberculosis. Expect elevated: the underwriter escalates, a medical professional decides.
+
+CLIENT (type into step 1)
+  Name: Karim Hossain
+  Phone: 01711 000103
+  Email: karim.hossain@example.com
+  Date of birth: 1965-11-23
+  Sex: Male
+
+COVER (step 2)
+  Life, 2,500,000, 15 years
+
+FILES (drop all of them into the zone at the top of step 3)
+  chest-xray.png
+  retina-left.jpeg
+  ecg-12-lead.csv
+
+BLOOD PANEL (select the lab reader in step 3 and type these)
+  Serum albumin (g/dL): 3.7
+  Serum creatinine (mg/dL): 1.1
+  Glucose (mg/dL): 102
+  C-reactive protein (mg/L): 14.0
+  Lymphocytes (%): 18
+  Mean cell volume (fL): 93
+  RDW-CV (%): 14.8
+  Alkaline phosphatase (U/L): 96
+  White blood cells (x10^3/uL): 9.4
+
+HEALTH QUESTIONS
+  Tick: Cough lasting more than 2 weeks, Night sweats, Unexplained weight loss; Current or former smoker.

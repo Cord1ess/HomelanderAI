@@ -1,0 +1,32 @@
+Nusrat Jahan
+
+45-year-old with palpitations and hypertension. The ECG shows atrial fibrillation. Expect moderate to elevated depending on the boundaries.
+
+CLIENT (type into step 1)
+  Name: Nusrat Jahan
+  Phone: 01711 000104
+  Email: nusrat.jahan@example.com
+  Date of birth: 1981-05-09
+  Sex: Female
+
+COVER (step 2)
+  Critical illness, 1,500,000, 20 years
+
+FILES (drop all of them into the zone at the top of step 3)
+  chest-xray.png
+  retina-right.jpeg
+  ecg-12-lead.csv
+
+BLOOD PANEL (select the lab reader in step 3 and type these)
+  Serum albumin (g/dL): 4.2
+  Serum creatinine (mg/dL): 0.8
+  Glucose (mg/dL): 94
+  C-reactive protein (mg/L): 2.1
+  Lymphocytes (%): 30
+  Mean cell volume (fL): 87
+  RDW-CV (%): 12.9
+  Alkaline phosphatase (U/L): 70
+  White blood cells (x10^3/uL): 6.3
+
+HEALTH QUESTIONS
+  Tick: Hypertension; ECG reader: Palpitations or irregular heartbeat.

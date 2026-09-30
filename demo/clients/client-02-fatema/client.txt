@@ -1,0 +1,32 @@
+Fatema Begum
+
+52-year-old with diabetes. The retina shows moderate retinopathy; blood sugar is high. Expect moderate: approved with an adjusted premium.
+
+CLIENT (type into step 1)
+  Name: Fatema Begum
+  Phone: 01711 000102
+  Email: fatema.begum@example.com
+  Date of birth: 1974-07-02
+  Sex: Female
+
+COVER (step 2)
+  Health, 500,000, 10 years
+
+FILES (drop all of them into the zone at the top of step 3)
+  chest-xray.png
+  retina-left.jpeg
+  ecg-12-lead.csv
+
+BLOOD PANEL (select the lab reader in step 3 and type these)
+  Serum albumin (g/dL): 4.1
+  Serum creatinine (mg/dL): 1.0
+  Glucose (mg/dL): 168
+  C-reactive protein (mg/L): 3.2
+  Lymphocytes (%): 27
+  Mean cell volume (fL): 90
+  RDW-CV (%): 13.6
+  Alkaline phosphatase (U/L): 84
+  White blood cells (x10^3/uL): 7.1
+
+HEALTH QUESTIONS
+  Tick: Diabetes (history). Retinal reader: diabetes duration 8 years.

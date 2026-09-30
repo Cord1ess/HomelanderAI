@@ -1,0 +1,32 @@
+Abdul Malek
+
+70-year-old with a conduction block on the ECG and kidney values off. Expect elevated: escalation, then a medical decision.
+
+CLIENT (type into step 1)
+  Name: Abdul Malek
+  Phone: 01711 000105
+  Email: abdul.malek@example.com
+  Date of birth: 1956-01-30
+  Sex: Male
+
+COVER (step 2)
+  Life, 3,000,000, 10 years
+
+FILES (drop all of them into the zone at the top of step 3)
+  chest-xray.png
+  retina-left.jpeg
+  ecg-12-lead.csv
+
+BLOOD PANEL (select the lab reader in step 3 and type these)
+  Serum albumin (g/dL): 3.4
+  Serum creatinine (mg/dL): 1.9
+  Glucose (mg/dL): 131
+  C-reactive protein (mg/L): 8.5
+  Lymphocytes (%): 16
+  Mean cell volume (fL): 97
+  RDW-CV (%): 15.9
+  Alkaline phosphatase (U/L): 118
+  White blood cells (x10^3/uL): 8.8
+
+HEALTH QUESTIONS
+  Tick: Diabetes, Hypertension, Current or former smoker; ECG reader: Known arrhythmia or pacemaker.

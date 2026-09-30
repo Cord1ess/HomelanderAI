@@ -298,7 +298,11 @@ def test_diabetes_history_adjusts_a_retina_score():
         base, declared_history={"diabetes_duration": "Over 10 years", "hypertension": True}
     )
 
-    assert adjusted.crs == 50.0  # +15 for the duration, +10 for the hypertension
+    # +15 for the duration and +10 for the hypertension, applied to the room
+    # left above the reading rather than added flat: 25 + 25 x (1 - 0.25).
+    # A history cannot push a mild reading past a severe one, and the points
+    # mean the same thing wherever they land.
+    assert adjusted.crs == 43.75
     assert adjusted.tier == "moderate"
     assert {a.key for a in adjusted.adjustments} >= {
         "diabetes_duration_over_10_years",

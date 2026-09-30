@@ -575,16 +575,34 @@ export function IntakePage() {
   >([])
 
   /**
-   * A dropped folder can carry two JSON files the readers never see:
-   * `client.json` fills in the client and the cover, `blood-panel.json` fills
-   * in the lab reader's values. Everything else goes to the API to be
-   * identified.
+   * A dropped folder can carry files the readers never see: `client.json`
+   * fills in the client and the cover, `blood-panel.json` fills in the lab
+   * reader's values, and a `README.md` describing the folder is not evidence
+   * at all. Everything else goes to the API to be identified.
+   *
+   * The readme is set aside here rather than sent: nothing reads it, so it
+   * would come back "Not recognised" and sit on screen looking like a failure
+   * beside the files that worked. It is still listed, because a file that
+   * disappears without a word is its own kind of wrong.
    */
   const takeJson = async (files: File[]): Promise<File[]> => {
     const rest: File[] = []
     const alreadyOn = new Set(form.values.selectedModels)
     for (const file of files) {
-      if (!file.name.toLowerCase().endsWith('.json')) {
+      const name = file.name.toLowerCase()
+      if (name.endsWith('.md')) {
+        setIdentified((prev) => [
+          ...prev,
+          {
+            name: file.name,
+            kind: 'Notes',
+            reader: null,
+            reason: 'Describes the folder — not evidence, so nothing reads it',
+          },
+        ])
+        continue
+      }
+      if (!name.endsWith('.json')) {
         rest.push(file)
         continue
       }
