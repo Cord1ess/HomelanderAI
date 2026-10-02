@@ -513,7 +513,7 @@ def test_the_form_is_told_which_models_actually_run(carrier):
     assert by_id["biobert"]["armName"] == "medication_check"
     assert "not a diagnosis" in by_id["biobert"]["validation"]
 
-    # Mammograms go to Mirai on a teammate's server; the caveat travels too.
+    # Mammograms go to Mirai, running locally in Docker; the caveat travels too.
     assert by_id["mirai"]["available"] is True
     assert by_id["mirai"]["armName"] == "mirai"
     assert "NOT validated in South Asia" in by_id["mirai"]["validation"]

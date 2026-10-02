@@ -2,28 +2,34 @@
 
 Mirai (Yala et al., Science Translational Medicine 2021, MIT CSAIL) reads the
 four standard views — right and left MLO, right and left CC — and returns the
-probability of a breast-cancer diagnosis within one to five years. It was
-validated on 128,793 screening exams across MGH, Karolinska and Chang Gung,
-with a five-year AUC of 0.76–0.81 and equal accuracy across races.
+probability of a breast-cancer diagnosis within one to five years. Reported
+C-index 0.76 at MGH, 0.81 at Karolinska and 0.79 at Chang Gung.
 
-The model runs on a teammate's server (the published OncoServe container,
-`2D_Mammo_Cancer_Mirai`); this arm sends the four DICOMs to it and reads the
-answer. Nothing about the model lives here — what does is:
+It runs on this machine, on the CPU, as the authors' own serving container
+(`mitjclinic/mirai`, started by `docker compose`). It cannot live in the API
+process: it pins Python 3.8 and torch 1.9, which cannot share our venv. What
+lives here is everything around it:
 
 - **The four views are checked before anything is sent.** Mirai arranges the
   views by their `ImageLaterality` and `ViewPosition` tags. Missing one view,
-  two of the same, or unlabelled files is an error here, not a wrong answer
-  from the server.
+  two of the same, or unlabelled files is an error here, with the view named —
+  not a vague refusal from the server.
 - **The DICOMs are de-identified first** (`app.intake` strips the patient,
-  physician and institution tags and keeps the pixels and the view tags), so
-  the name on the exam never leaves this machine.
+  physician and institution tags and keeps the pixels and the view tags). This
+  was verified not to change the answer: the authors' demo exam gives the same
+  risks to four decimal places before and after.
 - **The score is the five-year risk on the arm scale.** An average-risk
   screening-age woman carries about 1.7% five-year risk; that sits at the top
   of the low tier. Around 4.5% — roughly Mirai's own high-risk cut, the top
   decile — reaches senior review. Log-linear between, as the mortality arm.
 
-The call takes minutes (four 25 MB files, then a GPU-less inference), which is
-fine in the background task and why the timeout is generous.
+**Image only.** The served model ignores clinical risk factors even when sent
+(reginabarzilaygroup/Mirai#14: `run_model` passes `risk_factor_vector = None`),
+so this arm sends none and claims none. The declared history reaches the score
+through the scoring rules, not through Mirai.
+
+An exam takes about 43 seconds on an Intel Core Ultra 5 at 8 threads, which is
+why it runs in the background scoring task.
 """
 
 import hashlib
@@ -41,13 +47,18 @@ from app.config import settings
 log = logging.getLogger(__name__)
 
 NAME = "mirai"
-VERSION = "1.0.0-oncoserve-0.2.0"
+VERSION = "2.0.0-ark-0.8.0-mirai-0.14.1"
 PREPROCESSING_VERSION = "dicom-deidentified-4-views"
-WEIGHT_HASH = "remote:2D_Mammo_Cancer_Mirai"
+# The serving image, by digest: the weights are inside it, so this is what
+# identifies the model that produced a reading.
+WEIGHT_HASH = (
+    "mitjclinic/mirai@sha256:"
+    "c3a57f16657ba98ee2098bc200ea52012f9b0168a66544b680b1db7d4e56acc8"
+)
 VALIDATION = (
-    "Mirai (Yala 2021): 5-year AUC 0.76 MGH, 0.81 Karolinska, 0.79 Chang Gung on 128,793 exams; "
-    "run remotely on the published OncoServe model. Screening populations in the US, Sweden and "
-    "Taiwan; NOT validated in South Asia, and not validated for diagnostic (symptomatic) exams"
+    "Mirai (Yala 2021): 5-year C-index 0.76 MGH, 0.81 Karolinska, 0.79 Chang Gung. Trained on "
+    "Hologic screening exams in the US; NOT validated in South Asia, on digitised film, or on "
+    "diagnostic (symptomatic) exams. Reads the images only — no clinical risk factors"
 )
 
 VIEWS: tuple[tuple[str, str], ...] = (("R", "MLO"), ("L", "MLO"), ("L", "CC"), ("R", "CC"))
@@ -64,15 +75,12 @@ VIEW_LABELS = {
 _LOW_TOP = (0.017, 30.0)
 _SENIOR = (0.045, 65.0)
 
+# The server answers "Year 1" .. "Year 5".
+_YEARS = tuple(f"Year {n}" for n in range(1, 6))
+
 
 def available() -> bool:
-    """Whether the arm can produce a reading at all.
-
-    True while simulating even with no server configured: the catalogue asks
-    this to decide whether to offer the reader, and a demonstration needs it
-    offered.
-    """
-    return bool(settings.mirai_url) or settings.mirai_simulate
+    return bool(settings.mirai_url)
 
 
 def score_from(five_year_risk: float) -> float:
@@ -118,6 +126,11 @@ def arrange(files: list[bytes]) -> dict[tuple[str, str], bytes]:
 
 
 def _multipart(files: dict[tuple[str, str], bytes]) -> tuple[bytes, str]:
+    """The four views under `dicom`, and the `data` field the server requires.
+
+    `data` is free-form JSON the server echoes back. It is sent empty: nothing
+    about the applicant needs to reach the model, and Mirai would ignore it.
+    """
     boundary = f"----homelander{uuid.uuid4().hex}"
     body = bytearray()
     for (laterality, view), raw in files.items():
@@ -127,109 +140,58 @@ def _multipart(files: dict[tuple[str, str], bytes]) -> tuple[bytes, str]:
             "Content-Type: application/dicom\r\n\r\n"
         ).encode()
         body += raw + b"\r\n"
+    body += f"--{boundary}\r\n".encode()
+    body += b'Content-Disposition: form-data; name="data"\r\n\r\n{}\r\n'
     body += f"--{boundary}--\r\n".encode()
     return bytes(body), f"multipart/form-data; boundary={boundary}"
 
 
 def call(files: dict[tuple[str, str], bytes]) -> dict:
-    """POST the four views to the server and return its JSON."""
+    """POST the four views to the local Mirai service and return its JSON.
+
+    A refusal arrives as HTTP 400 with the reason in `message`. That body is
+    returned like any other answer rather than raised, so the reason reaches
+    the screen instead of a bare status code.
+    """
     body, content_type = _multipart(files)
     request = urllib.request.Request(
-        settings.mirai_url,
+        f"{settings.mirai_url.rstrip('/')}/dicom/files",
         data=body,
         method="POST",
         headers={"Content-Type": content_type, "Content-Length": str(len(body))},
     )
-    with urllib.request.urlopen(request, timeout=settings.mirai_timeout_seconds) as response:
-        return json.loads(response.read().decode("utf-8"))
+    try:
+        with urllib.request.urlopen(request, timeout=settings.mirai_timeout_seconds) as response:
+            return json.loads(response.read().decode("utf-8"))
+    except urllib.error.HTTPError as exc:
+        try:
+            return json.loads(exc.read().decode("utf-8"))
+        except ValueError:
+            raise exc from None
 
 
-# The published five-year risks for screening-age women run from well under a
-# percent to the high-risk decile above 4.5%. The stand-in draws from that
-# range so a demonstration shows the arm's tiers working rather than one
-# number, and never from beyond it.
-_SIMULATED_RISK_RANGE = (0.006, 0.052)
-
-
-# What the stand-in varies its answer by, set once per application before the
-# arm runs. The demonstration mammograms are all the same four CBIS-DDSM views
-# — one study is all we have — so hashing the pixels gives every applicant the
-# same risk. Seeding from the applicant instead gives each their own, which is
-# what a demonstration needs to show. Only ever read by `simulate`.
-_seed = ""
-
-
-def seed_simulation(value: str) -> None:
-    """Vary the stand-in per applicant. No effect unless simulating."""
-    global _seed
-    _seed = value
-
-
-def simulate(views: dict[tuple[str, str], bytes]) -> ArmResult:
-    """A stand-in reading, for demonstrating the flow while the server is down.
-
-    Derived from the pixels, not from chance: the same mammogram gives the same
-    risk every time, so a demonstration can be re-recorded and a screenshot
-    still matches what the screen shows later. Different applicants land on
-    different numbers because their images differ.
-
-    Everything it returns is marked as simulated — `simulated: True` in the
-    reading, the scorer named as a stand-in, and the validation line replaced
-    with a warning instead of Mirai's published figures — because a number that
-    is not a measurement must never be able to pass for one.
-    """
-    digest = hashlib.sha256(
-        _seed.encode() + b"".join(hashlib.sha256(v).digest() for v in sorted(views.values()))
-    ).digest()
-    # The first eight bytes as a fraction of their range: a stable 0-1 draw.
-    fraction = int.from_bytes(digest[:8], "big") / float(1 << 64)
-    low, high = _SIMULATED_RISK_RANGE
-    # Spaced by log, matching how the risks themselves are distributed and how
-    # `score_from` reads them, so the draws are not bunched at the top.
-    five_year = round(math.exp(math.log(low) + fraction * (math.log(high) - math.log(low))), 5)
-    # A plausible one-to-five year curve: risk accumulates year on year.
-    risks = [round(five_year * f, 5) for f in (0.18, 0.37, 0.58, 0.79, 1.0)]
-    log.warning("Mirai stand-in used: no mammogram was read, risk %.4f is simulated", five_year)
-    return ArmResult(
-        score=score_from(five_year),
-        raw_score=five_year,
-        details={
-            "simulated": True,
-            "risk_by_year": risks,
-            "one_year_risk": risks[0],
-            "five_year_risk": five_year,
-            "views": [VIEW_LABELS[v] for v in views],
-            "anchors": {"low_tier_top": _LOW_TOP, "senior_review": _SENIOR},
-            "scorer": f"{NAME} stand-in (no model was run)",
-            "validation": (
-                "SIMULATED — the mammogram service was unavailable and this reading was "
-                "generated to demonstrate the flow. It is not a measurement of this "
-                "applicant and must not be used for any underwriting decision"
-            ),
-            "input_hash": hashlib.sha256(
-                b"".join(hashlib.sha256(v).digest() for v in views.values())
-            ).hexdigest(),
-        },
-    )
+def risks_from(answer: dict) -> list[float] | None:
+    """The five yearly risks, or None if the answer does not carry all five."""
+    predictions = (answer.get("data") or {}).get("predictions")
+    if not isinstance(predictions, dict):
+        return None
+    try:
+        return [round(float(predictions[year]), 5) for year in _YEARS]
+    except (KeyError, TypeError, ValueError):
+        return None
 
 
 def run_set(files: list[bytes]) -> ArmResult:
     """Score one applicant's four-view mammogram. Never raises."""
-    if not available() and not settings.mirai_simulate:
+    if not available():
         return ArmResult(score=None, error="MIRAI_URL is not set")
-    # The views are arranged and checked before the stand-in too: a mammogram
-    # missing a view is a real error the operator must see, and a demonstration
-    # that skipped that check would be showing a flow that does not exist.
     try:
         views = arrange(files)
     except ValueError as exc:
         return ArmResult(score=None, error=f"a four-view mammogram is needed: {exc}")
 
-    if settings.mirai_simulate:
-        return simulate(views)
-
     timed_out = (
-        f"the mammogram service did not answer within {settings.mirai_timeout_seconds} seconds, "
+        f"the mammogram reader did not finish within {settings.mirai_timeout_seconds} seconds, "
         "so this reading is missing; the rest of the application was scored without it"
     )
     try:
@@ -242,21 +204,25 @@ def run_set(files: list[bytes]) -> ArmResult:
             return ArmResult(score=None, error=timed_out)
         return ArmResult(
             score=None,
-            error=f"the mammogram service could not be reached: {exc.reason}",
+            error=(
+                f"the mammogram reader is not running ({exc.reason}); "
+                "start it with `docker compose up -d mirai`"
+            ),
         )
     except Exception as exc:
         return ArmResult(
             score=None,
-            error=f"the mammogram service failed: {type(exc).__name__}: {exc}",
+            error=f"the mammogram reader failed: {type(exc).__name__}: {exc}",
         )
 
-    prediction = answer.get("prediction")
-    if not isinstance(prediction, list) or len(prediction) != 5:
+    risks = risks_from(answer)
+    if risks is None:
+        reason = answer.get("message") or "no prediction returned"
         return ArmResult(
             score=None,
-            error=f"the Mirai server answered without a prediction: {answer.get('msg', '')}"[:200],
+            error=f"the mammogram reader could not read this exam: {reason}"[:240],
         )
-    risks = [round(float(p), 5) for p in prediction]
+
     five_year = risks[4]
     digest = hashlib.sha256(
         b"".join(hashlib.sha256(v).digest() for v in views.values())
@@ -270,11 +236,8 @@ def run_set(files: list[bytes]) -> ArmResult:
             "five_year_risk": five_year,
             "views": [VIEW_LABELS[v] for v in views],
             "anchors": {"low_tier_top": _LOW_TOP, "senior_review": _SENIOR},
-            "server": {
-                "model_name": answer.get("model_name"),
-                "onconet_version": answer.get("onconet_version"),
-                "oncoserve_version": answer.get("oncoserve_version"),
-            },
+            # How long the model itself took, as the server measured it.
+            "runtime": answer.get("runtime"),
             "scorer": f"{NAME} v{VERSION}",
             "validation": VALIDATION,
             "input_hash": digest,

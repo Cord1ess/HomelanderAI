@@ -1,12 +1,23 @@
 # The mammogram arm — audit, options, and the plan
 
-**Status:** Phase 1 (understand the problem) complete for everything measurable.
-Licence verification of Mirai is outstanding and marked below.
+**Status:** Phases 1–4 done. **Mirai runs on this laptop, on the CPU, and is
+the arm.** The remote server and the stand-in are gone. What was measured:
 
-The mammogram arm is the only one that does not run on this machine. Everything
-else — chest film, retina, ECG, clinical note, blood panel — runs locally on CPU
-in under five seconds. This document records what was measured, what the options
-are, and what each would cost.
+| check | result |
+|---|---|
+| container on CPU, no `--gpus` | `mitjclinic/mirai:v0.14.1`, `torch.cuda.is_available() == False` |
+| the authors' demo exam | `0.0298 0.0483 0.0684 0.09 0.1016` — **exactly their published output** |
+| … after our de-identification | identical to four decimal places |
+| our CBIS-DDSM demo films | accepted; `0.001 … 0.0115`, the same numbers the old remote server gave |
+| one exam, 8 threads | **≈ 43 s** (52 s at 4, 49 s at 16) |
+| refusal (three views) | HTTP 400, reason passed through to the screen |
+| full application end to end | all six readers, Fatema moderate (58.97), every check passes |
+
+Phase 5 (the honesty pass across all six arms) is next. Phase 6 (Gail) is not
+needed for the mammogram, since Mirai works on our films.
+
+The rest of this document is the audit as it was written, kept because the
+reasoning is the useful part.
 
 ---
 

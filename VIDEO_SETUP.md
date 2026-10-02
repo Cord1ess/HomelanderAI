@@ -59,10 +59,9 @@ npm run dev
 
 Wait for both lines to appear, then open **http://localhost:5173**.
 
-> The mammogram model runs on a server that is currently down, so the app uses
-> a stand-in for it. That is already switched on — you do not need to do
-> anything. The mammogram panel will carry an orange banner saying the reading
-> is simulated. **That banner is meant to be there.** See Part 6.
+> The mammogram model (Mirai) runs on this laptop in Docker, and `npm run dev`
+> starts it. Docker Desktop must be running. A mammogram takes about 45 seconds
+> to read.
 
 > The first start downloads the model backbones (about 600 MB) and takes a few
 > minutes. Later starts are quick. Do not record the first one.
@@ -174,9 +173,8 @@ Sign out completely.
 Sign in as **underwriter** and submit `demo/test/test-02-fatema`.
 
 - She comes out **moderate**.
-- Scroll to the mammogram panel. It carries an orange banner saying the reading
-  is **simulated**. **Show this banner** — do not crop it out. It is there
-  because the real mammogram server is down, and the honesty is the point.
+- Scroll to the mammogram panel: Mirai's five-year risk curve, read on this
+  laptop in about 45 seconds.
 
 Then sign out and sign in as **admin**:
 
@@ -206,9 +204,9 @@ Then `npm run dev` again. Same for port 5173 and the dashboard.
 Check the database is running: open http://127.0.0.1:8000/api/health/database —
 it should say `"connected": true`. If not, start PostgreSQL and try again.
 
-**The mammogram panel shows an error instead of a reading.**
-Someone has turned the stand-in off. Check for `MIRAI_SIMULATE=false` in the
-`.env` file at the repository root and remove that line, then restart.
+**The mammogram panel says the reader is not running.**
+Docker Desktop was not running when the app started. Start it, then run
+`docker compose up -d mirai`.
 
 **A file is not recognised on the drop zone.**
 Make sure you dragged the whole folder's contents, including `client.json` and
@@ -229,4 +227,3 @@ Run `scripts/check_demo.py` (Section 2) and send Jonay the output.
 - Light mode reads better on a projector; the toggle is in the top bar.
 - The reference numbers (`HL-001234`) differ every run — do not cut between
   takes in a way that makes them jump.
-- The simulated-mammogram banner is deliberate. Leave it in.

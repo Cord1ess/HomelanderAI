@@ -55,34 +55,16 @@ class Settings(BaseSettings):
     # (docs/DESIGN_POLICY.md §9). Already gitignored.
     data_dir: Path = _REPO_ROOT / "data"
 
-    # The Mirai breast-cancer model runs on a teammate's server (the published
-    # OncoServe container). Empty disables the arm. Four 25 MB DICOMs and a
-    # CPU inference take minutes, hence the timeout.
-    mirai_url: str = "http://34.173.36.245:5000/serve"
-    # One minute. The server is on someone else's machine and has been seen to
-    # drop the connection part-way through the upload; waiting longer does not
-    # make it answer, and the other readers' results should not be held up for
-    # it. A timeout is reported on the screen as a timeout.
-    mirai_timeout_seconds: int = 60
-    # A stand-in for the Mirai server, used while the real one is down.
-    #
-    # ON by default, which is a deliberate and temporary choice. The server has
-    # been unreachable since before the showcase, and starting without the
-    # stand-in gives a demonstration where one panel shows a timeout error —
-    # worse than an obvious failure, because it is easy to miss until the
-    # footage is being cut. Defaulting it on means nobody has to remember a
-    # flag to get a working demo.
-    #
-    # It is safe to default because it cannot lie about what it is: every
-    # reading it produces carries `simulated: true`, names itself a stand-in
-    # instead of the model, and replaces Mirai's published validation figures
-    # with a warning — on the screen, in the stored reading and in the audit
-    # log. The four views are still required and still checked, so the flow on
-    # screen is the real flow; only the network call is replaced.
-    #
-    # **Set MIRAI_SIMULATE=false once the server is back**, and this reverts to
-    # reading real mammograms.
-    mirai_simulate: bool = True
+    # The Mirai breast-cancer model runs on this machine, in the container
+    # `docker compose up -d mirai` starts. It cannot run in the API process —
+    # it pins Python 3.8 and torch 1.9 — so the arm talks to it over HTTP on
+    # localhost. Empty disables the arm.
+    mirai_url: str = "http://127.0.0.1:5000"
+    # One exam measured about 43 s at 8 threads on an Intel Core Ultra 5, and
+    # 52 s at 4. Three minutes leaves room for a slower laptop or a busy one
+    # without holding the other readers' results hostage for long; a timeout is
+    # reported on the screen as a timeout.
+    mirai_timeout_seconds: int = 180
 
     # ── Outgoing mail ─────────────────────────────────────────
     # Used to send applicants their portal sign-in and a note when a decision

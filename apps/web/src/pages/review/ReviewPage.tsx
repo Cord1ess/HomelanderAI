@@ -1386,13 +1386,12 @@ function MortalityPanel({ run }: { run: ArmRun }) {
 
 // What the Mirai arm stores per run (`apps/api/app/arms/mirai.py`).
 interface MiraiDetails {
-  /** Set when the reading came from the stand-in rather than the model. */
-  simulated?: boolean
   risk_by_year?: number[]
   five_year_risk?: number
   views?: string[]
   anchors?: { low_tier_top: [number, number]; senior_review: [number, number] }
-  server?: { model_name?: string | null; onconet_version?: string | null }
+  /** How long the model took, as the Mirai service measured it ("43.10s"). */
+  runtime?: string | null
   scorer?: string
   validation?: string
 }
@@ -1511,26 +1510,6 @@ function MiraiPanel({ run }: { run: ArmRun }) {
         )}
       </Group>
 
-      {/* A stand-in reading says so, every time it is shown. A simulated number
-          that looks like a measured one is the one thing this screen must
-          never do. */}
-      {d.simulated && (
-        <Text
-          size="xs"
-          fw={600}
-          mb="sm"
-          p="xs"
-          c="orange.8"
-          style={{
-            backgroundColor: 'var(--mantine-color-orange-light)',
-            borderRadius: 'var(--mantine-radius-sm)',
-          }}
-        >
-          Demonstration only — the mammogram service was unavailable and this reading was
-          simulated. It is not a measurement of this applicant.
-        </Text>
-      )}
-
       {run.error || five == null ? (
         <Text size="sm" c="dimmed">
           Could not be assessed: {run.error ?? 'no result was stored'}.
@@ -1587,7 +1566,7 @@ function MiraiPanel({ run }: { run: ArmRun }) {
 
       <Text size="xs" c="dimmed" mt="md">
         {d.scorer}
-        {d.server?.model_name ? ` (${d.server.model_name}, onconet ${d.server.onconet_version})` : ''}.{' '}
+        {d.runtime ? `, read on this machine in ${d.runtime}` : ''}.{' '}
         {d.validation}. A risk estimate, not a finding on the film: nothing here says where to look.
       </Text>
     </Paper>

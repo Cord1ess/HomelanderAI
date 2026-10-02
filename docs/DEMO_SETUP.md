@@ -386,27 +386,20 @@ discharge note — for a shorter run.
 Only the two women over forty carry a mammogram, because that is who screening
 mammography is offered to. The men's folders exercise five readers, not six.
 
-### When the mammogram server is down
+### The mammogram reader
 
-Mirai runs on a teammate's machine. If it is unreachable, the application is
-still scored — the reader reports a timeout after a minute and the other five
-carry on — but the mammogram panel shows an error, which is not what you want
-on camera.
+Mirai runs on this laptop, in Docker, on the CPU. `npm run dev` starts it
+first; Docker Desktop must be running, and if it is not, `npm run dev` says so
+and starts everything else.
 
-The stand-in for it is **on by default** while the server is down, so
-`npm run dev` already gives a working demonstration. Set `MIRAI_SIMULATE=false`
-to go back to the real server once it is reachable.
+The first start pulls the image (about 1.1 GB to download, 3.7 GB on disk), so
+do that once before the day. After that an exam takes about 45 seconds — the
+slowest reader by far — so **submit Fatema or Nusrat first** and let it work
+while you show something else.
 
-It does not read the mammogram. It produces a plausible five-year risk derived
-from the applicant, so each one gets their own stable number and the tiers can
-be shown; re-record as often as you like and the numbers do not move. The four
-views are still required and still checked, so the flow on screen is the real
-flow.
-
-**Everything it produces is marked as simulated** — a banner on the review
-screen, `simulated: true` in the stored reading, and a validation line saying
-so in place of Mirai's published figures. Leave it off for anything but a
-demonstration.
+Both women's folders carry the same four films (only one public study is
+available), so both get the same mammogram reading: a five-year risk of 1.15%.
+That is the model's real answer for those films, every time.
 
 ---
 
@@ -424,7 +417,7 @@ demonstration.
 | Dashboard | `http://localhost:5173` |
 | Images to demo with | `data/demo/` — **not** `Reference/Nirnoy/assets/samples/` |
 | Folders to demo with | `demo/test/` — drop a whole folder, nothing to type |
-| Mammogram reader | Stand-in is on by default; readings are marked simulated on screen |
+| Mammogram reader | Runs locally in Docker; `npm run dev` starts it; ~45 s per exam |
 | Pricing per tier | Pricing tab in the dashboard |
 
 Both machines must be on the same network. A phone hotspot works if the office

@@ -7,8 +7,8 @@ proves the setup someone else is about to record actually works.
 Case A — test-01-rahim, a healthy 34-year-old man. Five readers, no mammogram,
          must come out low.
 Case B — test-02-fatema, a 52-year-old diabetic woman. Six readers including
-         the mammogram stand-in, must come out moderate, and that reading must
-         be marked simulated everywhere it is stored.
+         Mirai, run for real in its local container; the mammogram reading must
+         be the model's own answer for these films, not an error or a guess.
 
 Run it with the API already up (`npm run dev`), from the repo root:
 
@@ -186,19 +186,21 @@ def run_case(session: requests.Session, case: dict) -> None:
         f"extra: {sorted(ran - case['expect_arms'])}",
     )
 
-    # ── 5. the mammogram stand-in, where it matters ─────────────────────────
+    # ── 5. the mammogram, read by the real model ────────────────────────────
     mirai = next((a for a in arms if a["arm"] == "mirai"), None)
     if case["expect_mammogram"]:
         if check(mirai is not None, "mammogram reader present"):
             d = mirai.get("details") or {}
             check(mirai.get("score") is not None, "mammogram produced a reading", str(mirai.get("error")))
-            check(d.get("simulated") is True, "reading marked simulated in the stored record")
-            check("stand-in" in (d.get("scorer") or ""), "scorer names the stand-in", d.get("scorer", ""))
+            check("simulated" not in d, "the reading is not simulated")
+            # What Mirai v0.14.1 returns for these four films, every time. A
+            # different number means the films or the model changed.
             check(
-                (d.get("validation") or "").startswith("SIMULATED"),
-                "validation line warns it is simulated",
+                d.get("risk_by_year") == [0.001, 0.0028, 0.0052, 0.0084, 0.0115],
+                "Mirai's own answer for these films",
+                str(d.get("risk_by_year")),
             )
-            check("AUC" not in (d.get("validation") or ""), "Mirai's published figures not attached")
+            check(bool(d.get("runtime")), "the model reported its runtime", str(d.get("runtime")))
     else:
         check(mirai is None, "no mammogram reader for a male applicant")
 

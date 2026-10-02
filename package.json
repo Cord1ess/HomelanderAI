@@ -9,6 +9,7 @@
   "scripts": {
     "postinstall": "npm --prefix apps/web install",
     "setup": "npm install && uv sync --directory apps/api",
+    "predev": "node scripts/start-mirai.mjs",
     "dev": "concurrently -n api,web -c cyan,magenta -k \"npm:dev:api\" \"npm:dev:web\"",
     "dev:api": "uv run --directory apps/api python -m uvicorn app.main:app --reload --host 127.0.0.1 --port 8000",
     "dev:web": "npm --prefix apps/web run dev",
@@ -21,7 +22,9 @@
     "gen:api": "npm --prefix apps/web run gen:api",
     "infra:up": "docker compose up -d",
     "infra:down": "docker compose down",
-    "infra:ps": "docker compose ps"
+    "infra:ps": "docker compose ps",
+    "mirai:up": "docker compose up -d mirai",
+    "mirai:logs": "docker compose logs -f mirai"
   },
   "devDependencies": {
     "concurrently": "^10.0.5"

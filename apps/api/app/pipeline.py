@@ -12,7 +12,6 @@ land, a thin layer writes `Evaluation` into `model_runs`, `sub_scores`,
 from dataclasses import dataclass, field
 
 from app.arms import ArmResult, arms_for, form_arms, set_arms
-from app.config import settings
 from app.evidence import EvidenceKind, label
 from app.intake import IntakeError, ProcessedFile, process_upload
 from app.scoring import INSUFFICIENT, Adjustment, ScoreResult, Thresholds, fuse, score
@@ -149,16 +148,6 @@ def evaluate(
 
     # The arms that read all the files of a kind together: Mirai wants the four
     # views of one mammogram, not four separate readings of one view each.
-    #
-    # The Mirai stand-in, when it is switched on for a demonstration, varies
-    # its answer by the applicant rather than by the pixels: every sample
-    # mammogram we have is the same study, so pixels alone would give every
-    # applicant an identical risk. This does nothing when the real server is
-    # in use.
-    if settings.mirai_simulate:
-        from app.arms import mirai as _mirai
-
-        _mirai.seed_simulation(f"{age}|{sex}|{sorted((declared_history or {}).items())}")
 
     for arm in set_arms():
         members = [

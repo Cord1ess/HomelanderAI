@@ -22,9 +22,10 @@ Where the files come from:
   Shenzhen    Hugging Face mirror, as individual PNGs so they can be fetched in
               parallel. The original NLM host serves at ~0.16 MB/s (a 13-hour
               download); the mirror runs at ~2.5 MB/s per connection.
-  Montgomery  Only available from the slow NLM host, but it is 588 MB rather
-              than 3.6 GB. Expect roughly an hour; it is the external test set,
-              so it is not needed to get a first result.
+  Montgomery  The same mirror, folder by folder (138 PNGs). The NLM host is
+              kept as a fallback only: it rate-limits to an HTML error page
+              after a few requests. Montgomery is the external test set — the
+              number that says whether the model works outside Shenzhen.
 
 Labels live in the filename: the digit before `.png` is 0 for normal, 1 for TB.
     CHNCXR_0001_0.png  -> normal        MCUCXR_0001_1.png  -> TB
@@ -47,6 +48,8 @@ RAW = DATA / "raw"
 
 HF_REPO = "Famatsu123/montgomery-shenzhen-tuberculosis-cxr"
 HF_TREE = f"https://huggingface.co/api/datasets/{HF_REPO}/tree/main?recursive=true"
+# Listed by folder: the recursive listing above paginates and omits it.
+HF_MONTGOMERY = f"https://huggingface.co/api/datasets/{HF_REPO}/tree/main/MontgomerySet/CXR_png"
 HF_FILE = f"https://huggingface.co/datasets/{HF_REPO}/resolve/main/"
 
 MONTGOMERY_ZIP = "https://openi.nlm.nih.gov/imgs/collections/NLM-MontgomeryCXRSet.zip"
@@ -75,7 +78,11 @@ def fetch_shenzhen() -> int:
         entry["path"]
         for entry in tree
         if entry.get("type") == "file"
-        and "/CXR_png/" in entry["path"]
+        # Pinned to the Shenzhen folder. The mirror also holds Montgomery, the
+        # external test set, under a path that also contains /CXR_png/ — a
+        # Montgomery film in the training folder would make the external
+        # number meaningless.
+        and entry["path"].startswith("ChinaSet_AllFiles/CXR_png/")
         and entry["path"].endswith(".png")
     ]
 
@@ -163,6 +170,25 @@ def _curl_download(url: str, target: Path) -> None:
     partial.replace(target)
 
 
+def _montgomery_from_mirror(destination: Path) -> int:
+    listing = json.loads(get(HF_MONTGOMERY, timeout=90))
+    wanted = [e["path"] for e in listing if e.get("type") == "file" and e["path"].endswith(".png")]
+    print(f"  {len(wanted)} images on the mirror")
+
+    def fetch_one(path: str) -> bool:
+        target = destination / Path(path).name
+        partial = target.with_suffix(".part")
+        partial.write_bytes(get(HF_FILE + path))
+        partial.replace(target)
+        return True
+
+    with ThreadPoolExecutor(max_workers=PARALLEL) as pool:
+        for i, _ in enumerate(as_completed([pool.submit(fetch_one, p) for p in wanted]), 1):
+            if i % 25 == 0 or i == len(wanted):
+                print(f"    {i}/{len(wanted)}")
+    return len(list(destination.glob("*.png")))
+
+
 def fetch_montgomery() -> int:
     destination = DATA / "montgomery"
     destination.mkdir(parents=True, exist_ok=True)
@@ -173,6 +199,11 @@ def fetch_montgomery() -> int:
         return len(existing)
 
     print("montgomery:")
+    try:
+        return _montgomery_from_mirror(destination)
+    except Exception as exc:
+        print(f"  mirror failed ({type(exc).__name__}: {exc}); trying the NLM host")
+
     archive = RAW / "NLM-MontgomeryCXRSet.zip"
     if not (archive.exists() and archive.stat().st_size > 1_000_000):
         archive.parent.mkdir(parents=True, exist_ok=True)
