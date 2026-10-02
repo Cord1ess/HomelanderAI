@@ -167,6 +167,9 @@ def export(model, columns: list[str], cv, n_images: int) -> None:
                 "n_images": n_images,
                 "cv_auc_mean": round(float(cv.mean()), 4),
                 "cv_auc_std": round(float(cv.std()), 4),
+                # A fresh retrain has not been externally tested. Run
+                # scripts/tb_external.py and write its result back before
+                # this model is shown to anyone.
                 "validation": "internal 5-fold cross-validation; NOT externally validated",
                 "features": columns,
                 "mean": [round(float(v), 6) for v in scaler.mean_],

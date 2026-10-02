@@ -6,7 +6,7 @@
   "n_images": 662,
   "cv_auc_mean": 0.8766,
   "cv_auc_std": 0.0367,
-  "validation": "internal 5-fold cross-validation; NOT externally validated",
+  "validation": "trained on Shenzhen, China (662 films): internal 5-fold CV AUC 0.877. External test on Montgomery County, USA (138 films, never seen): AUC 0.909 (95% CI 0.855-0.956). The ranking transfers but the cut-points do not: there, 71% of normal films scored above 30. NOT clinically validated, NOT validated in South Asia",
   "features": [
     "Atelectasis",
     "Cardiomegaly",
@@ -87,5 +87,28 @@
     0.453638,
     0.870436
   ],
-  "intercept": 0.43144
+  "intercept": 0.43144,
+  "external": {
+    "dataset": "montgomery",
+    "source": "NLM Montgomery County CXR set (USA), via the Hugging Face mirror",
+    "n": 138,
+    "tb": 58,
+    "normal": 80,
+    "auc": 0.909,
+    "auc_ci95": [
+      0.855,
+      0.956
+    ],
+    "operating_points": {
+      "above_30": {
+        "sensitivity": 0.98,
+        "specificity": 0.29
+      },
+      "above_65": {
+        "sensitivity": 0.93,
+        "specificity": 0.64
+      }
+    },
+    "how": "scripts/tb_external.py: the shipped model through intake.process_upload and tb_xray.run; nothing trained or tuned on these films"
+  }
 }

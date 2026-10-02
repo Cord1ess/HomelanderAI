@@ -161,7 +161,8 @@ def test_scores_a_synthetic_image():
     # The score must be reported alongside how it was produced and how well it
     # was validated — an underwriter and an examiner both need that context.
     assert "logistic_regression" in result.details["scorer"]
-    assert "NOT externally validated" in result.details["validation"]
+    assert "Montgomery" in result.details["validation"]
+    assert "cut-points do not" in result.details["validation"]
 
 
 @needs_vision

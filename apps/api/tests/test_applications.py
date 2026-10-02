@@ -256,7 +256,7 @@ def test_a_scored_application_carries_its_provenance(carrier):
         detail = client.get(f"/api/applications/{created['id']}").json()
 
     assert detail["modelInfo"]["scorer"]
-    assert "NOT externally validated" in detail["modelInfo"]["validation"]
+    assert "Montgomery" in detail["modelInfo"]["validation"]
     assert len(detail["findings"]) == 18
     assert detail["score"]["thresholds"] == {"low_max": 30.0, "moderate_max": 65.0}
 
@@ -489,7 +489,7 @@ def test_the_form_is_told_which_models_actually_run(carrier):
     assert by_id["cxr_lung"]["available"] is True
     assert by_id["cxr_lung"]["armName"] == "tb_xray"
     # The caveat travels with the model, not a document.
-    assert "NOT externally validated" in by_id["cxr_lung"]["validation"]
+    assert "Montgomery" in by_id["cxr_lung"]["validation"]
 
     # The retinal arm runs too, and carries its own caveat the same way. The
     # panel keeps the id `eyepacs`; the model behind it is `dr_fundus`.

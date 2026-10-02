@@ -733,7 +733,6 @@ function Review({ data, state }: { data: ApplicationDetail; state: ReviewState }
               {data.modelInfo.validation && (
                 <Text size="xs" c="yellow.7">
                   {data.modelInfo.validation}
-                  {data.modelInfo.cvAuc != null && ` (AUC ${data.modelInfo.cvAuc.toFixed(3)})`}
                 </Text>
               )}
             </Stack>

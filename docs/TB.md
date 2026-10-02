@@ -245,20 +245,42 @@ often the TB one gets the higher score. 0.5 is a coin flip. 1.0 is perfect.
 
 ### Three limits to state honestly
 
-**1. It has only been tested on one hospital.** The 0.877 comes from
-cross-validation on Shenzhen — the data is split into five parts, and each part
-is scored by a model trained on the other four. That is a fair internal test,
-but every image still comes from the same hospital and the same equipment.
+**1. Its ranking travels to a new hospital; its cut-points do not.** The
+0.877 comes from cross-validation on Shenzhen — fair, but every image is from
+the same hospital and the same equipment. So the shipped model was run on
+**Montgomery County, USA**: 138 films (58 TB, 80 normal) from another country,
+other equipment and another decade, none seen in training. Same path as an
+application — `intake.process_upload`, then `tb_xray.run` — and nothing
+trained or tuned on them (`scripts/tb_external.py`):
 
-Published TB research routinely sees large drops on data from elsewhere; one
-study fell from 85% to 65%. **Treat 0.877 as a best case.** A second dataset
-(Montgomery) is the intended external test and is not currently downloadable.
+| | AUC |
+|---|---|
+| Shenzhen, 5-fold CV (internal) | 0.877 ± 0.037 |
+| **Montgomery, external** | **0.909** (95% CI 0.855–0.956) |
+
+The model still puts TB above normal, as well as it did at home. But the scale
+shifts:
+
+| platform cut | sensitivity | specificity |
+|---|---|---|
+| score above 30 | 0.98 | 0.29 |
+| score above 65 | 0.93 | 0.64 |
+
+**71% of normal Montgomery films score above 30**, where every normal
+Shenzhen demo film scores under 26. A different hospital's films sit higher on
+the scale, so the tier an applicant lands in depends partly on where the film
+was taken. The retina arm shows the same pattern (`docs/RETINA.md`).
+
+The fix is to recalibrate the score on a *third* dataset. Tuning the cut-points
+on Montgomery would turn the only external test into training data and make
+0.909 meaningless, so it has not been done.
 
 **2. Two weights do not match medical reasoning.** Fracture pushes *toward* TB,
 and Fibrosis pushes *away* from it — but broken ribs are not a TB sign, and lung
 scarring is classically associated with past TB. The model has likely latched
 onto patterns that hold in this particular hospital's data and may not hold
-elsewhere. This is the strongest reason to obtain an external test set.
+elsewhere. The external AUC says the ranking survives this; the shifted scale
+in point 1 may be where it shows instead.
 
 **3. It is not a diagnosis.** Confirming TB requires a laboratory test on a
 sputum sample. This system decides who is worth a closer look.
@@ -344,5 +366,7 @@ medicine.
 `tb_experiment.py`. Errors there do not raise exceptions; they silently degrade
 the results.
 
-**Do not report the 0.877 as external performance.** It is internal until
-Montgomery is tested.
+**Report 0.909 (Montgomery, n=138) as the external figure and 0.877 as
+internal.** Never tune anything on Montgomery: it is the only external set, and
+the moment it informs a choice it stops being one. A retrained model is
+unvalidated until `scripts/tb_external.py` has been run on it.
