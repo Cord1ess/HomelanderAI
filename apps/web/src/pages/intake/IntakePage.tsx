@@ -227,7 +227,7 @@ const MODELS: ModelDef[] = [
   {
     id: 'biobert',
     label: 'Clinical notes and prescriptions',
-    modality: 'Medication check · disclosure',
+    modality: 'BioBERT · medications and diagnoses',
     upload: {
       category: 'Clinical note',
       accept: DOCUMENT,

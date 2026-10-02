@@ -1586,14 +1586,33 @@ interface MedicationDetails {
     status: 'undisclosed' | 'explained' | 'immaterial'
     note?: string | null
     sentence: string
+    /** Which reader found it: "biobert", "table", or both. */
+    found_by?: string[]
+    /** BioBERT found a misspelling and the table matched it by similarity. */
+    spelling?: boolean
   }[]
   undisclosed?: {
     condition: string
     label: string
     medications: string[]
+    /** How the note itself names the condition, when it does. */
+    stated?: string[]
     points: number
     asked_on_form: boolean
   }[]
+  /** Drugs BioBERT found that the table does not list. */
+  unlisted?: { as_written: string; assertion: string; sentence: string }[]
+  /** Diagnoses BioBERT found written in the note. */
+  conditions_in_note?: {
+    as_written: string
+    labels: string[]
+    assertion: string
+    declared: boolean
+    sentence: string
+  }[]
+  /** Everything else BioBERT called a disease — symptoms, mostly. Never scored. */
+  other_findings?: { as_written: string; assertion: string }[]
+  biobert?: { drugs_found: number; diseases_found: number; models: Record<string, string> }
   explained?: string[]
   immaterial?: string[]
   excluded?: { generic: string; as_written: string; assertion: string; sentence: string }[]
@@ -1632,11 +1651,11 @@ function MedicationPanel({ run, noteId }: { run: ArmRun; noteId: string | null }
       <Group justify="space-between" align="flex-start" mb="sm">
         <div>
           <Text fw={600} size="sm">
-            Medications against the declared history
+            Clinical note, read by BioBERT
           </Text>
           <Text size="xs" c="dimmed">
-            Each prescription in the note, what it is prescribed for, and whether the form said
-            so
+            BioBERT finds the medications and diagnoses written in the note; each is checked
+            against what the form declared
           </Text>
         </div>
         {run.score != null && (
@@ -1652,8 +1671,8 @@ function MedicationPanel({ run, noteId }: { run: ArmRun; noteId: string | null }
         </Text>
       ) : flags.length === 0 ? (
         <Text size="sm">
-          Every medication found is explained by the declared history or implies nothing
-          material.
+          Everything BioBERT found in the note is explained by the declared history or implies
+          nothing material.
         </Text>
       ) : (
         <Stack gap={6}>
@@ -1666,7 +1685,16 @@ function MedicationPanel({ run, noteId }: { run: ArmRun; noteId: string | null }
                 <Text span fw={600}>
                   {f.label}
                 </Text>{' '}
-                — implied by {f.medications.join(', ')}.{' '}
+                —{' '}
+                {[
+                  (f.stated ?? []).length
+                    ? `written in the note as “${f.stated!.join('”, “')}”`
+                    : null,
+                  f.medications.length ? `implied by ${f.medications.join(', ')}` : null,
+                ]
+                  .filter(Boolean)
+                  .join(', and ')}
+                .{' '}
                 <Text span c="dimmed">
                   {f.asked_on_form
                     ? 'The form asks about this and it was not declared: ask the applicant.'
@@ -1685,6 +1713,7 @@ function MedicationPanel({ run, noteId }: { run: ArmRun; noteId: string | null }
               <Table.Th>Medication</Table.Th>
               <Table.Th>As written</Table.Th>
               <Table.Th>Prescribed for</Table.Th>
+              <Table.Th>Found by</Table.Th>
               <Table.Th></Table.Th>
             </Table.Tr>
           </Table.Thead>
@@ -1715,6 +1744,21 @@ function MedicationPanel({ run, noteId }: { run: ArmRun; noteId: string | null }
                   )}
                 </Table.Td>
                 <Table.Td>
+                  <Text size="xs">
+                    {(m.found_by ?? []).includes('biobert')
+                      ? (m.found_by ?? []).includes('table')
+                        ? 'BioBERT + table'
+                        : 'BioBERT'
+                      : 'table (brand name)'}
+                    {m.spelling && (
+                      <Text span c="dimmed">
+                        {' '}
+                        · misspelt
+                      </Text>
+                    )}
+                  </Text>
+                </Table.Td>
+                <Table.Td>
                   <Badge
                     size="xs"
                     variant="light"
@@ -1733,6 +1777,37 @@ function MedicationPanel({ run, noteId }: { run: ArmRun; noteId: string | null }
             ))}
           </Table.Tbody>
         </Table>
+      )}
+
+      {(d.conditions_in_note ?? []).length > 0 && (
+        <Text size="xs" mt="sm">
+          <Text span fw={600}>
+            Diagnoses written in the note:
+          </Text>{' '}
+          {d
+            .conditions_in_note!.map((c) =>
+              c.assertion === 'PRESENT' || c.assertion === 'PAST'
+                ? `${c.as_written} (${c.declared ? 'declared' : 'not declared'})`
+                : `${c.as_written} (${ASSERTION_WORDS[c.assertion] ?? c.assertion})`,
+            )
+            .join('; ')}
+          .
+        </Text>
+      )}
+
+      {(d.unlisted ?? []).length > 0 && (
+        <Text size="xs" c="dimmed" mt="xs">
+          BioBERT also found {d.unlisted!.map((u) => u.as_written).join(', ')} — not in the
+          medication table, so nothing says what it is prescribed for and it is not scored. Worth a
+          look.
+        </Text>
+      )}
+
+      {(d.other_findings ?? []).length > 0 && (
+        <Text size="xs" c="dimmed" mt="xs">
+          Symptoms and other findings mentioned, not scored:{' '}
+          {[...new Set(d.other_findings!.map((o) => o.as_written.toLowerCase()))].join(', ')}.
+        </Text>
       )}
 
       {excluded.length > 0 && (
@@ -1786,8 +1861,12 @@ function MedicationPanel({ run, noteId }: { run: ArmRun; noteId: string | null }
       )}
 
       <Text size="xs" c="dimmed" mt="md">
-        {d.scorer}. {d.validation}. The note is not de-identified and is shown here only to the
-        underwriter holding the case.
+        {d.scorer}
+        {d.biobert
+          ? `: BioBERT found ${d.biobert.drugs_found} drug and ${d.biobert.diseases_found} disease mentions`
+          : ''}
+        . {d.validation}. The note is not de-identified and is shown here only to the underwriter
+        holding the case.
       </Text>
     </Paper>
   )

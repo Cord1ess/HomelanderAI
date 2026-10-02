@@ -386,6 +386,16 @@ discharge note — for a shorter run.
 Only the two women over forty carry a mammogram, because that is who screening
 mammography is offered to. The men's folders exercise five readers, not six.
 
+### The clinical-note reader (BioBERT)
+
+Two BioBERT models, about 860 MB, downloaded once. They fetch themselves on the
+first note, but that first note would then wait for the download — so fetch
+them before the day:
+
+```bash
+uv run --directory apps/api python ../../scripts/fetch_biobert_models.py
+```
+
 ### The mammogram reader
 
 Mirai runs on this laptop, in Docker, on the CPU. `npm run dev` starts it

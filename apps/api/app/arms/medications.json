@@ -1,151 +1,209 @@
 {
-  "version": "1.0.0",
+  "version": "1.1.0",
   "note": "Generic name -> the conditions it is prescribed for, with the brand names an applicant in Bangladesh is likely to write down. Indications follow the BNF and MED-RT may_treat; brands are DGDA-registered products and global originators. A medication that is prescribed for several conditions lists them in order of likelihood and is marked ambiguous, which halves its points. Extend by adding rows; nothing here is learned.",
   "conditions": {
     "diabetes": {
       "label": "Diabetes",
       "weight": 45,
-      "declared_by": [{"key": "history.diabetes"}, {"key": "diabetes_duration", "not": "No diabetes"}]
+      "declared_by": [{"key": "history.diabetes"}, {"key": "diabetes_duration", "not": "No diabetes"}],
+      "mentioned_as": ["diabetes", "diabetes mellitus", "diabetic"],
+      "abbreviations": ["DM", "T1DM", "T2DM", "IDDM", "NIDDM"]
     },
     "hypertension": {
       "label": "Hypertension",
       "weight": 35,
-      "declared_by": [{"key": "hypertension"}]
+      "declared_by": [{"key": "hypertension"}],
+      "mentioned_as": ["hypertension", "high blood pressure"],
+      "abbreviations": ["HTN"]
     },
     "high_cholesterol": {
       "label": "High cholesterol or cardiovascular prevention",
       "weight": 30,
-      "declared_by": [{"key": "high_cholesterol"}]
+      "declared_by": [{"key": "high_cholesterol"}],
+      "mentioned_as": ["hypercholesterolaemia", "hypercholesterolemia", "hyperlipidaemia", "hyperlipidemia", "dyslipidaemia", "dyslipidemia", "high cholesterol"],
+      "abbreviations": []
     },
     "coronary_heart_disease": {
       "label": "Coronary heart disease (angina, stent, heart attack)",
       "weight": 70,
-      "declared_by": []
+      "declared_by": [],
+      "mentioned_as": ["coronary artery disease", "coronary heart disease", "ischaemic heart disease", "ischemic heart disease", "myocardial infarction", "heart attack", "angina", "acute coronary syndrome"],
+      "abbreviations": ["IHD", "CAD", "CHD", "MI", "ACS", "NSTEMI", "STEMI"]
     },
     "heart_failure": {
       "label": "Heart failure",
       "weight": 80,
-      "declared_by": []
+      "declared_by": [],
+      "mentioned_as": ["heart failure", "cardiac failure", "cardiomyopathy", "left ventricular dysfunction"],
+      "abbreviations": ["CHF", "HFrEF", "HFpEF", "CCF"]
     },
     "arrhythmia": {
       "label": "Arrhythmia or long-term anticoagulation",
       "weight": 65,
-      "declared_by": [{"key": "known_arrhythmia"}]
+      "declared_by": [{"key": "known_arrhythmia"}],
+      "mentioned_as": ["arrhythmia", "atrial fibrillation", "atrial flutter", "heart block", "supraventricular tachycardia", "ventricular tachycardia"],
+      "abbreviations": ["AF", "AFib", "SVT", "VT"]
     },
     "venous_thromboembolism": {
       "label": "Deep vein thrombosis or pulmonary embolism",
       "weight": 45,
-      "declared_by": []
+      "declared_by": [],
+      "mentioned_as": ["deep vein thrombosis", "deep venous thrombosis", "pulmonary embolism", "thromboembolism", "venous thrombosis"],
+      "abbreviations": ["DVT", "PE", "VTE"]
     },
     "stroke": {
       "label": "Stroke or TIA",
       "weight": 75,
-      "declared_by": []
+      "declared_by": [],
+      "mentioned_as": ["stroke", "cerebrovascular accident", "transient ischaemic attack", "transient ischemic attack", "cerebral infarction", "intracerebral haemorrhage", "intracerebral hemorrhage"],
+      "abbreviations": ["CVA", "TIA"]
     },
     "tuberculosis": {
       "label": "Tuberculosis under treatment",
       "weight": 85,
-      "declared_by": []
+      "declared_by": [],
+      "mentioned_as": ["tuberculosis", "koch's"],
+      "abbreviations": ["TB", "PTB"]
     },
     "hiv": {
       "label": "HIV",
       "weight": 85,
-      "declared_by": [{"key": "history.hiv"}]
+      "declared_by": [{"key": "history.hiv"}],
+      "mentioned_as": ["hiv infection", "acquired immunodeficiency syndrome"],
+      "abbreviations": ["HIV", "AIDS"]
     },
     "hepatitis_b": {
       "label": "Chronic hepatitis B",
       "weight": 70,
-      "declared_by": []
+      "declared_by": [],
+      "mentioned_as": ["hepatitis b"],
+      "abbreviations": ["HBV", "CHB"]
     },
     "hepatitis_c": {
       "label": "Hepatitis C",
       "weight": 65,
-      "declared_by": []
+      "declared_by": [],
+      "mentioned_as": ["hepatitis c"],
+      "abbreviations": ["HCV"]
     },
     "asthma_copd": {
       "label": "Asthma or COPD",
       "weight": 40,
-      "declared_by": []
+      "declared_by": [],
+      "mentioned_as": ["asthma", "chronic obstructive pulmonary disease", "emphysema", "chronic bronchitis"],
+      "abbreviations": ["COPD"]
     },
     "epilepsy": {
       "label": "Epilepsy",
       "weight": 55,
-      "declared_by": []
+      "declared_by": [],
+      "mentioned_as": ["epilepsy", "seizure disorder", "epileptic"],
+      "abbreviations": []
     },
     "depression_anxiety": {
       "label": "Depression or anxiety disorder",
       "weight": 35,
-      "declared_by": []
+      "declared_by": [],
+      "mentioned_as": ["depression", "depressive disorder", "anxiety disorder", "generalised anxiety", "generalized anxiety", "panic disorder"],
+      "abbreviations": ["MDD", "GAD"]
     },
     "psychosis_bipolar": {
       "label": "Bipolar disorder or psychosis",
       "weight": 60,
-      "declared_by": []
+      "declared_by": [],
+      "mentioned_as": ["schizophrenia", "psychosis", "psychotic disorder", "bipolar", "mania"],
+      "abbreviations": []
     },
     "thyroid": {
       "label": "Thyroid disease",
       "weight": 20,
-      "declared_by": []
+      "declared_by": [],
+      "mentioned_as": ["hypothyroidism", "hyperthyroidism", "thyroid disease", "thyroid disorder", "thyrotoxicosis", "graves' disease", "hashimoto"],
+      "abbreviations": []
     },
     "cancer": {
       "label": "Cancer, current or recent",
       "weight": 85,
-      "declared_by": [{"key": "prior_skin_cancer"}]
+      "declared_by": [{"key": "prior_skin_cancer"}],
+      "mentioned_as": ["cancer", "carcinoma", "malignancy", "malignant", "lymphoma", "leukaemia", "leukemia", "sarcoma", "melanoma", "myeloma", "metastatic", "metastases"],
+      "abbreviations": []
     },
     "kidney_disease": {
       "label": "Chronic kidney disease",
       "weight": 80,
-      "declared_by": []
+      "declared_by": [],
+      "mentioned_as": ["chronic kidney disease", "kidney disease", "renal failure", "kidney failure", "renal impairment", "renal insufficiency", "end-stage renal disease", "nephropathy"],
+      "abbreviations": ["CKD", "ESRD", "ESKD"]
     },
     "autoimmune": {
       "label": "Autoimmune or inflammatory disease (rheumatoid arthritis, lupus, colitis)",
       "weight": 50,
-      "declared_by": []
+      "declared_by": [],
+      "mentioned_as": ["rheumatoid arthritis", "lupus", "systemic lupus erythematosus", "psoriatic arthritis", "ankylosing spondylitis", "crohn's disease", "crohn disease", "ulcerative colitis", "inflammatory bowel disease"],
+      "abbreviations": ["RA", "SLE", "IBD", "UC"]
     },
     "transplant": {
       "label": "Organ transplant",
       "weight": 85,
-      "declared_by": []
+      "declared_by": [],
+      "mentioned_as": ["transplant", "transplantation"],
+      "abbreviations": []
     },
     "dementia": {
       "label": "Dementia",
       "weight": 70,
-      "declared_by": [{"key": "memory_concerns"}]
+      "declared_by": [{"key": "memory_concerns"}],
+      "mentioned_as": ["dementia", "alzheimer"],
+      "abbreviations": []
     },
     "parkinsons": {
       "label": "Parkinson's disease",
       "weight": 65,
-      "declared_by": [{"key": "mobility_concerns"}]
+      "declared_by": [{"key": "mobility_concerns"}],
+      "mentioned_as": ["parkinson's disease", "parkinson disease", "parkinsonism"],
+      "abbreviations": []
     },
     "gout": {
       "label": "Gout",
       "weight": 15,
-      "declared_by": []
+      "declared_by": [],
+      "mentioned_as": ["gout", "gouty"],
+      "abbreviations": []
     },
     "osteoporosis": {
       "label": "Osteoporosis",
       "weight": 15,
-      "declared_by": []
+      "declared_by": [],
+      "mentioned_as": ["osteoporosis"],
+      "abbreviations": []
     },
     "smoking": {
       "label": "Smoking (cessation treatment)",
       "weight": 30,
-      "declared_by": [{"key": "history.smoker"}, {"key": "smoker"}]
+      "declared_by": [{"key": "history.smoker"}, {"key": "smoker"}],
+      "mentioned_as": [],
+      "abbreviations": []
     },
     "alcohol_dependence": {
       "label": "Alcohol dependence",
       "weight": 60,
-      "declared_by": [{"key": "alcohol", "equals": "Regularly"}]
+      "declared_by": [{"key": "alcohol", "equals": "Regularly"}],
+      "mentioned_as": ["alcohol dependence", "alcoholism", "alcohol use disorder", "alcohol abuse"],
+      "abbreviations": []
     },
     "opioid_dependence": {
       "label": "Opioid dependence",
       "weight": 75,
-      "declared_by": []
+      "declared_by": [],
+      "mentioned_as": ["opioid dependence", "opioid use disorder", "opioid addiction"],
+      "abbreviations": []
     },
     "steroid_dependent": {
       "label": "A condition needing long-term steroids",
       "weight": 45,
-      "declared_by": []
+      "declared_by": [],
+      "mentioned_as": [],
+      "abbreviations": []
     }
   },
   "medications": [

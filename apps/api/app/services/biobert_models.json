@@ -1,0 +1,21 @@
+{
+  "note": "BioBERT v1.1 (Lee et al., Bioinformatics 2020) fine-tuned for biomedical NER by A. Alonso, Apache-2.0. Pinned by commit; the safetensors hash is checked on every load. scripts/fetch_biobert_models.py downloads and converts them; app.services.biobert does the same on first use.",
+  "models": {
+    "drugs": {
+      "repo": "alvaroalon2/biobert_chemical_ner",
+      "commit": "b57181cea10a3943c35cf31bb375ff9217886730",
+      "pickle_sha256": "d33a0abdf138c713c38f9333abafea255e5a0a50ed0390a0ab43f95b86f8ae85",
+      "safetensors_sha256": "c72656e5d5a5e114871936a11e5d259b1922c4497d73a3351f8c414bafbe9795",
+      "entity": "CHEMICAL",
+      "trained_on": "BC5CDR-chemicals and BC4CHEMD"
+    },
+    "diseases": {
+      "repo": "alvaroalon2/biobert_diseases_ner",
+      "commit": "0a4ed7dd4fd3e6db7229e5b801b70eefcb253759",
+      "pickle_sha256": "87fe36f411970978003b90ead891057c31b0adcb32e5338dda79d745aa57965c",
+      "safetensors_sha256": "82e8465134606d057adf4a34e57a630a12f1ce3c2a87389c72c9933d8c68bb02",
+      "entity": "DISEASE",
+      "trained_on": "BC5CDR-diseases and NCBI-disease"
+    }
+  }
+}

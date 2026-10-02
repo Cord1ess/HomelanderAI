@@ -61,7 +61,7 @@ CATALOGUE: list[CatalogueEntry] = [
         id="biobert",
         label="Clinical notes and prescriptions",
         evidence="Discharge summary, prescription or physician note (.pdf with text, .txt)",
-        screens_for="Medications that imply a condition the form did not declare",
+        screens_for="Medications and diagnoses the form did not declare (BioBERT)",
     ),
     CatalogueEntry(
         id="xgboost",

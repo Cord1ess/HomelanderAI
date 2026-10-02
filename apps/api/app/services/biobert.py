@@ -1,19 +1,63 @@
-"""BioBERT & spaCy Clinical NLP Service.
+"""BioBERT: the clinical-note reader's language model.
 
-Generic clinical entity extraction and assertion detection service.
-Processes EHR notes and physician reports, identifies clinical entity spans,
-and determines their assertion status (PRESENT, NEGATED, FAMILY_HISTORY, HYPOTHETICAL).
+Two BioBERT v1.1 networks (Lee et al., *Bioinformatics* 2020 — BERT pretrained
+on PubMed abstracts and PMC full text), each fine-tuned for biomedical named
+entity recognition and published under Apache-2.0 by A. Alonso:
+
+  drugs      `alvaroalon2/biobert_chemical_ner` — BC5CDR-chemicals + BC4CHEMD
+  diseases   `alvaroalon2/biobert_diseases_ner` — BC5CDR-diseases + NCBI-disease
+
+They read the note and mark every word that is part of a drug or a disease
+name, from context rather than from a list: a misspelt "metfromin" or an
+unlisted "empagliflozin" is found because of how it is written about, not
+because it is in a table. What a drug is *for* is not something an NER model
+knows, so the medication check still looks that up (`arms/medications.json`).
+
+Each mention is then given an assertion — present, negated, family history,
+hypothetical — by the clause rules below, so "no history of diabetes" and
+"mother had breast cancer" do not count against the applicant.
+
+How it reads:
+
+- **Whole words.** BERT splits rare words into pieces ("metfromin" becomes
+  `met ##f ##rom ##in`) and these models were trained on the label of each
+  word's first piece, so a word takes that label and its whole span. Labelling
+  pieces separately splits "atorvastatin" into "at" + "orvastatin".
+- **Long notes in overlapping windows.** BERT reads at most 512 pieces at
+  once. A discharge summary can be longer, so it is read in 512-piece windows
+  that overlap by 128, and entities found twice are kept once.
+- **Pinned and verified.** Each model is pinned to a commit
+  (`biobert_models.json`) and its weights file is checked against a sha256
+  every time it loads. The published files are PyTorch pickles; they are
+  hash-checked before being opened and converted to safetensors, so nothing is
+  unpickled at runtime.
 """
 
 from __future__ import annotations
 
+import hashlib
+import json
 import logging
 import re
+import threading
+import urllib.request
+from dataclasses import dataclass
+from pathlib import Path
 from typing import Any
 
+from app.config import settings
 from app.schemas.model import AssertionStatus, EntityResult, ModelResult, NLPRawOutput
 
 logger = logging.getLogger(__name__)
+
+PINS_PATH = Path(__file__).with_name("biobert_models.json")
+PINS: dict[str, dict] = json.loads(PINS_PATH.read_text(encoding="utf-8"))["models"]
+MODELS_DIR = settings.data_dir / "nlp" / "models"
+
+# BERT's limit, and how far consecutive windows overlap so an entity on a
+# window edge is seen whole in one of them.
+_WINDOW = 512
+_STRIDE = 128
 
 # Non-clinical structural and grammatical tokens often picked up by generic biomedical models
 NON_CLINICAL_STOP_ENTITIES: frozenset[str] = frozenset(
@@ -108,6 +152,11 @@ NON_CLINICAL_STOP_ENTITIES: frozenset[str] = frozenset(
         "follow-up",
         "note",
         "notes",
+        # The disease model sometimes tags the word that introduces an allergy;
+        # the allergy is the drug, read by the drug model.
+        "allergic",
+        "allergy",
+        "allergies",
     }
 )
 
@@ -187,85 +236,6 @@ CLAUSE_DELIMITERS = re.compile(
     r"(?:[,;]\s+(?:but|however|although|yet|though|except|nevertheless)\s+|[;\n]+)",
     re.IGNORECASE,
 )
-
-# Common clinical entities across major medical domains to augment statistical NER
-CANONICAL_CLINICAL_PATTERNS = [
-    # Cardiovascular
-    {"label": "DISEASE", "pattern": "hypertension"},
-    {"label": "DISEASE", "pattern": "acute hypertension"},
-    {"label": "DISEASE", "pattern": "hypotension"},
-    {"label": "DISEASE", "pattern": "coronary artery disease"},
-    {"label": "DISEASE", "pattern": "myocardial infarction"},
-    {"label": "DISEASE", "pattern": "acute myocardial infarction"},
-    {"label": "DISEASE", "pattern": "heart failure"},
-    {"label": "DISEASE", "pattern": "atrial fibrillation"},
-    {"label": "DISEASE", "pattern": "angina"},
-    {"label": "DISEASE", "pattern": "stroke"},
-    {"label": "DISEASE", "pattern": "arrhythmia"},
-    {"label": "DISEASE", "pattern": "atherosclerosis"},
-    # Respiratory
-    {"label": "DISEASE", "pattern": "pneumonia"},
-    {"label": "DISEASE", "pattern": "asthma"},
-    {"label": "DISEASE", "pattern": "copd"},
-    {"label": "DISEASE", "pattern": "bronchitis"},
-    {"label": "DISEASE", "pattern": "pulmonary embolism"},
-    {"label": "DISEASE", "pattern": "tuberculosis"},
-    {"label": "DISEASE", "pattern": "pneumothorax"},
-    {"label": "SYMPTOM", "pattern": "dyspnea"},
-    {"label": "SYMPTOM", "pattern": "cough"},
-    {"label": "SYMPTOM", "pattern": "shortness of breath"},
-    {"label": "SYMPTOM", "pattern": "hemoptysis"},
-    # Endocrine & Metabolic
-    {"label": "DISEASE", "pattern": "diabetes"},
-    {"label": "DISEASE", "pattern": "type 1 diabetes"},
-    {"label": "DISEASE", "pattern": "type 2 diabetes"},
-    {"label": "DISEASE", "pattern": "diabetes mellitus"},
-    {"label": "DISEASE", "pattern": "diabetic ketoacidosis"},
-    {"label": "DISEASE", "pattern": "hypothyroidism"},
-    {"label": "DISEASE", "pattern": "hyperthyroidism"},
-    {"label": "DISEASE", "pattern": "hyperlipidemia"},
-    {"label": "DISEASE", "pattern": "dyslipidemia"},
-    {"label": "DISEASE", "pattern": "obesity"},
-    # Oncology
-    {"label": "DISEASE", "pattern": "cancer"},
-    {"label": "DISEASE", "pattern": "breast cancer"},
-    {"label": "DISEASE", "pattern": "lung cancer"},
-    {"label": "DISEASE", "pattern": "colon cancer"},
-    {"label": "DISEASE", "pattern": "melanoma"},
-    {"label": "DISEASE", "pattern": "lymphoma"},
-    {"label": "DISEASE", "pattern": "leukemia"},
-    {"label": "DISEASE", "pattern": "carcinoma"},
-    {"label": "DISEASE", "pattern": "sarcoma"},
-    {"label": "DISEASE", "pattern": "tumor"},
-    {"label": "DISEASE", "pattern": "neoplasm"},
-    {"label": "DISEASE", "pattern": "metastasis"},
-    # Neurological
-    {"label": "DISEASE", "pattern": "dementia"},
-    {"label": "DISEASE", "pattern": "alzheimer's"},
-    {"label": "DISEASE", "pattern": "parkinson's"},
-    {"label": "DISEASE", "pattern": "epilepsy"},
-    {"label": "DISEASE", "pattern": "seizure"},
-    {"label": "DISEASE", "pattern": "neuropathy"},
-    # Symptoms
-    {"label": "SYMPTOM", "pattern": "chest pain"},
-    {"label": "SYMPTOM", "pattern": "abdominal pain"},
-    {"label": "SYMPTOM", "pattern": "fever"},
-    {"label": "SYMPTOM", "pattern": "chills"},
-    {"label": "SYMPTOM", "pattern": "headache"},
-    {"label": "SYMPTOM", "pattern": "dizziness"},
-    {"label": "SYMPTOM", "pattern": "fatigue"},
-    {"label": "SYMPTOM", "pattern": "nausea"},
-    {"label": "SYMPTOM", "pattern": "vomiting"},
-    {"label": "SYMPTOM", "pattern": "edema"},
-    # Medications
-    {"label": "CHEMICAL", "pattern": "aspirin"},
-    {"label": "CHEMICAL", "pattern": "metformin"},
-    {"label": "CHEMICAL", "pattern": "lisinopril"},
-    {"label": "CHEMICAL", "pattern": "atorvastatin"},
-    {"label": "CHEMICAL", "pattern": "insulin"},
-    {"label": "CHEMICAL", "pattern": "amoxicillin"},
-]
-
 
 class AssertionDetector:
     """Classifies entity assertions into PRESENT, NEGATED, FAMILY_HISTORY, or HYPOTHETICAL."""
@@ -347,211 +317,270 @@ class AssertionDetector:
         return AssertionStatus.PRESENT
 
 
-class BioBERTClinicalNLPService:
-    """Clinical NLP Model Service powered by scispaCy, negspaCy, and BioBERT/PubMedBERT.
+@dataclass
+class Reader:
+    """One loaded BioBERT NER network."""
 
-    Extracts generic clinical entities from any EHR narrative or clinical note,
-    assigns assertion statuses, and formats output conforming to ModelResult schema.
+    name: str
+    entity: str
+    tokenizer: Any
+    model: Any
+
+
+@dataclass(frozen=True)
+class Span:
+    """A drug or disease BioBERT found, as character offsets into the text."""
+
+    text: str
+    start: int
+    end: int
+    confidence: float
+
+
+class ModelUnavailable(RuntimeError):
+    """The weights are missing and could not be fetched, or do not match."""
+
+
+_READERS: dict[str, Reader] = {}
+_LOCK = threading.Lock()
+
+
+def _sha256(path: Path) -> str:
+    digest = hashlib.sha256()
+    with open(path, "rb") as handle:
+        while chunk := handle.read(1 << 20):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def weights_path(name: str) -> Path:
+    return MODELS_DIR / name / "model.safetensors"
+
+
+def is_downloaded(name: str) -> bool:
+    return weights_path(name).exists()
+
+
+def ensure_downloaded(name: str) -> Path:
+    """The model's folder, fetching and converting it first if it is missing.
+
+    The pickle is hash-checked before it is opened, and opened with
+    `weights_only=True` even then; what is kept is the safetensors copy.
+    """
+    spec = PINS[name]
+    folder = MODELS_DIR / name
+    weights = weights_path(name)
+    if weights.exists():
+        return folder
+
+    folder.mkdir(parents=True, exist_ok=True)
+    base = f"https://huggingface.co/{spec['repo']}/resolve/{spec['commit']}/"
+
+    def get(file: str, target: Path) -> None:
+        partial = target.with_suffix(target.suffix + ".part")
+        request = urllib.request.Request(base + file, headers={"User-Agent": "homelander"})
+        with urllib.request.urlopen(request, timeout=600) as response, open(partial, "wb") as out:
+            while chunk := response.read(1 << 20):
+                out.write(chunk)
+        partial.replace(target)
+
+    logger.info("Fetching BioBERT %s from %s (431 MB, once)", name, spec["repo"])
+    for small in ("config.json", "vocab.txt", "tokenizer_config.json", "special_tokens_map.json"):
+        if not (folder / small).exists():
+            get(small, folder / small)
+    pickle = folder / "pytorch_model.bin"
+    if not pickle.exists():
+        get("pytorch_model.bin", pickle)
+    if _sha256(pickle) != spec["pickle_sha256"]:
+        pickle.unlink()
+        raise ModelUnavailable(f"BioBERT {name}: downloaded weights do not match the pinned hash")
+
+    import torch
+    from safetensors.torch import save_file
+
+    state = torch.load(pickle, map_location="cpu", weights_only=True)
+    save_file({k: v.contiguous() for k, v in state.items()}, str(weights))
+    pickle.unlink()
+    return folder
+
+
+def load_reader(name: str) -> Reader:
+    """The named network, loaded once per process and verified every load."""
+    with _LOCK:
+        if name in _READERS:
+            return _READERS[name]
+        try:
+            folder = ensure_downloaded(name)
+        except ModelUnavailable:
+            raise
+        except Exception as exc:
+            raise ModelUnavailable(f"BioBERT {name} could not be fetched: {exc}") from exc
+
+        spec = PINS[name]
+        if _sha256(weights_path(name)) != spec["safetensors_sha256"]:
+            raise ModelUnavailable(
+                f"BioBERT {name}: {weights_path(name)} does not match the pinned hash; "
+                "delete it to re-download"
+            )
+
+        from transformers import AutoModelForTokenClassification, AutoTokenizer
+
+        tokenizer = AutoTokenizer.from_pretrained(folder)
+        model = AutoModelForTokenClassification.from_pretrained(folder).eval()
+        reader = Reader(name=name, entity=spec["entity"], tokenizer=tokenizer, model=model)
+        _READERS[name] = reader
+        return reader
+
+
+def find(name: str, text: str) -> list[Span]:
+    """Every drug (`drugs`) or disease (`diseases`) BioBERT finds in the text."""
+    if not text or not text.strip():
+        return []
+    import torch
+
+    reader = load_reader(name)
+    tokenizer = reader.tokenizer
+    full = tokenizer(text, add_special_tokens=False, return_offsets_mapping=True)
+    ids, all_offsets, all_words = full["input_ids"], full["offset_mapping"], full.word_ids()
+
+    # Windows of content pieces, each wrapped in [CLS] ... [SEP] below. The
+    # tokenizer's own overflow handling stops early on long input, so the cut
+    # is made here, from one encoding of the whole note.
+    content = _WINDOW - 2
+    starts = list(range(0, max(len(ids) - _STRIDE, 1), content - _STRIDE)) or [0]
+    windows = [(a, min(a + content, len(ids))) for a in starts]
+
+    batch_ids, offsets, word_ids = [], [], []
+    for a, b in windows:
+        batch_ids.append([tokenizer.cls_token_id, *ids[a:b], tokenizer.sep_token_id])
+        offsets.append([(0, 0), *all_offsets[a:b], (0, 0)])
+        word_ids.append([None, *all_words[a:b], None])
+    width = max(len(row) for row in batch_ids)
+    mask = [[1] * len(row) + [0] * (width - len(row)) for row in batch_ids]
+    batch_ids = [row + [tokenizer.pad_token_id] * (width - len(row)) for row in batch_ids]
+
+    with torch.no_grad():
+        probs = reader.model(
+            input_ids=torch.tensor(batch_ids), attention_mask=torch.tensor(mask)
+        ).logits.softmax(-1)
+    labels = probs.argmax(-1).tolist()
+    confidence = probs.max(-1).values.tolist()
+    id2label = reader.model.config.id2label
+    begin, inside = f"B-{reader.entity}", f"I-{reader.entity}"
+
+    found: dict[tuple[int, int], Span] = {}
+    for window in range(len(offsets)):
+        # One entry per word: the first piece's label, the whole word's span.
+        words: dict[int, list] = {}
+        for pos, word in enumerate(word_ids[window]):
+            if word is None:
+                continue
+            a, b = offsets[window][pos]
+            if word not in words:
+                words[word] = [a, b, id2label[labels[window][pos]], confidence[window][pos]]
+            else:
+                words[word][1] = b
+
+        current: list | None = None
+        for word in sorted(words):
+            a, b, label, p = words[word]
+            if label == begin or (label == inside and current is None):
+                if current:
+                    _keep(found, text, current)
+                current = [a, b, p]
+            elif label == inside:
+                current[1] = b
+                current[2] = min(current[2], p)
+            else:
+                if current:
+                    _keep(found, text, current)
+                current = None
+        if current:
+            _keep(found, text, current)
+
+    # An entity seen whole in one window and cut at the edge of another: keep
+    # the longest of any that overlap.
+    spans = sorted(found.values(), key=lambda s: (s.start, -(s.end - s.start)))
+    kept: list[Span] = []
+    for span in spans:
+        if kept and span.start < kept[-1].end:
+            continue
+        kept.append(span)
+    return kept
+
+
+def _keep(found: dict, text: str, run: list) -> None:
+    start, end, p = run
+    found[(start, end)] = Span(text=text[start:end], start=start, end=end, confidence=round(p, 3))
+
+
+class BioBERTClinicalNLPService:
+    """Clinical entities in a note, with their assertion status.
+
+    BioBERT finds the drug and disease names; `AssertionDetector` decides
+    whether each is present, negated, family history or hypothetical.
     """
 
     MODEL_ID = "biobert"
-
-    def __init__(
-        self,
-        spacy_model: str = "en_core_sci_sm",
-        transformer_model: str = "dmis-lab/biobert-v1.1",
-        device: str | None = None,
-        load_transformer: bool = False,
-    ) -> None:
-        self.spacy_model_name = spacy_model
-        self.transformer_model_name = transformer_model
-        self.device = device
-        self._nlp = None
-        self._tokenizer = None
-        self._transformer = None
-
-        if load_transformer:
-            self._load_transformer()
-
-    def _get_nlp(self):
-        """Lazy-load the spaCy / scispaCy pipeline with negspaCy integration."""
-        if self._nlp is None:
-            import spacy
-            from negspacy.negation import Negex
-
-            try:
-                nlp = spacy.load(self.spacy_model_name)
-            except Exception as err:
-                logger.warning(
-                    "Could not load '%s' (%s). Falling back to blank 'en' pipeline.",
-                    self.spacy_model_name,
-                    err,
-                )
-                nlp = spacy.blank("en")
-                if "sentencizer" not in nlp.pipe_names:
-                    nlp.add_pipe("sentencizer")
-
-            # Augment pipeline with canonical clinical patterns
-            if "entity_ruler" not in nlp.pipe_names:
-                ruler_kwargs = {}
-                if "ner" in nlp.pipe_names:
-                    ruler_kwargs["before"] = "ner"
-                ruler = nlp.add_pipe("entity_ruler", **ruler_kwargs)
-                ruler.add_patterns(CANONICAL_CLINICAL_PATTERNS)
-
-            # Add negex pipeline component if not already attached
-            if "negex" not in nlp.pipe_names:
-                try:
-                    nlp.add_pipe("negex")
-                except Exception:
-                    negex_comp = Negex(nlp)
-                    nlp.add_pipe(negex_comp)
-
-            self._nlp = nlp
-        return self._nlp
-
-    def _load_transformer(self):
-        """Load HuggingFace transformer tokenizer and model on demand."""
-        if self._transformer is None:
-            from transformers import AutoModel, AutoTokenizer
-
-            logger.info("Loading BioBERT transformer model: %s", self.transformer_model_name)
-            self._tokenizer = AutoTokenizer.from_pretrained(self.transformer_model_name)
-            self._transformer = AutoModel.from_pretrained(self.transformer_model_name)
-            if self.device:
-                self._transformer = self._transformer.to(self.device)
-            self._transformer.eval()
-        return self._transformer, self._tokenizer
+    LABELS = {"drugs": "CHEMICAL", "diseases": "DISEASE"}
 
     def extract_entities(self, text: str) -> list[EntityResult]:
-        """Extract generic medical entities and their assertion statuses from text.
-
-        Returns a list of EntityResult objects with exact character spans.
-        """
         if not text or not text.strip():
             return []
-
-        nlp = self._get_nlp()
-        doc = nlp(text)
-
         results: list[EntityResult] = []
-        seen_spans: set[tuple[int, int]] = set()
-
-        for ent in doc.ents:
-            raw_text = ent.text.strip()
-            start_char = ent.start_char
-            end_char = ent.end_char
-
-            # Filter out non-clinical stopwords or empty matches
-            cleaned_text = raw_text.lower().strip(" ,.;:-_()[]{}")
-            if not cleaned_text or cleaned_text in NON_CLINICAL_STOP_ENTITIES:
-                continue
-
-            # Strip leading trigger words that NER absorbed into the entity span
-            assertion_override: str | None = None
-            for trigger_pat, trigger_assertion in PREFIX_TRIGGERS:
-                match = trigger_pat.match(raw_text)
-                if match:
-                    prefix_len = match.end()
-                    raw_text = raw_text[prefix_len:].strip()
-                    start_char += prefix_len
-                    assertion_override = trigger_assertion
-                    break
-
-            cleaned_after_strip = raw_text.lower().strip(" ,.;:-_()[]{}")
-            if (
-                not cleaned_after_strip
-                or cleaned_after_strip in NON_CLINICAL_STOP_ENTITIES
-                or len(raw_text) < 2
-            ):
-                continue
-
-            # Check duplication
-            if (start_char, end_char) in seen_spans:
-                continue
-            seen_spans.add((start_char, end_char))
-
-            # Determine assertion status
-            if assertion_override:
-                assertion = assertion_override
-            else:
-                sent = ent.sent if ent.sent is not None else doc
-                ent_start_in_sent = max(0, start_char - sent.start_char)
-                ent_end_in_sent = max(0, end_char - sent.start_char)
-                negex_flag = getattr(ent._, "negex", False)
-
-                assertion = AssertionDetector.determine_assertion(
-                    ent_text=raw_text,
-                    sent_text=sent.text,
-                    ent_start_in_sent=ent_start_in_sent,
-                    ent_end_in_sent=ent_end_in_sent,
-                    negex_flag=negex_flag,
+        for name, label in self.LABELS.items():
+            for span in find(name, text):
+                cleaned = span.text.lower().strip(" ,.;:-_()[]{}")
+                if not cleaned or cleaned in NON_CLINICAL_STOP_ENTITIES or len(cleaned) < 2:
+                    continue
+                s_start, s_end = _sentence_around(text, span.start, span.end)
+                sentence = text[s_start:s_end]
+                results.append(
+                    EntityResult(
+                        text=span.text,
+                        label=label,
+                        assertion=AssertionDetector.determine_assertion(
+                            ent_text=span.text,
+                            sent_text=sentence,
+                            ent_start_in_sent=span.start - s_start,
+                            ent_end_in_sent=span.end - s_start,
+                        ),
+                        start_char=span.start,
+                        end_char=span.end,
+                    )
                 )
-
-            label = ent.label_ if ent.label_ else "ENTITY"
-
-            results.append(
-                EntityResult(
-                    text=raw_text,
-                    label=label,
-                    assertion=assertion,
-                    start_char=start_char,
-                    end_char=end_char,
-                )
-            )
-
-        return results
+        return sorted(results, key=lambda e: e.start_char)
 
     def predict(self, input_data: str | dict[str, Any]) -> ModelResult:
-        """Process clinical text and produce standardized ModelResult.
-
-        Accepts either a raw text string or a dict containing a 'text' key.
-        """
         text = (
             str(input_data.get("text", ""))
             if isinstance(input_data, dict)
             else str(input_data)
         )
-
         try:
             entities = self.extract_entities(text)
-            raw_output = NLPRawOutput(entities=entities).model_dump()
-
             return ModelResult(
                 model_id=self.MODEL_ID,
                 status="success",
-                raw_output=raw_output,
+                raw_output=NLPRawOutput(entities=entities).model_dump(),
             )
         except Exception as exc:
-            logger.exception("BioBERT Clinical NLP service failed: %s", exc)
+            logger.exception("BioBERT clinical NLP failed: %s", exc)
             return ModelResult(
                 model_id=self.MODEL_ID,
                 status="error",
                 raw_output={"error": str(exc), "entities": []},
             )
 
-    def encode(self, texts: list[str]) -> Any:
-        """Encode text batch into contextual embedding vectors using BioBERT backbone."""
-        import torch
 
-        model, tokenizer = self._load_transformer()
-        inputs = tokenizer(
-            texts,
-            padding=True,
-            truncation=True,
-            max_length=512,
-            return_tensors="pt",
-        )
-        if self.device:
-            inputs = {k: v.to(self.device) for k, v in inputs.items()}
+# A sentence ends at . ! ? ; or a line break — clinical notes are terse.
+_SENTENCE_END = re.compile(r"[.!?;]\s+|\n+")
 
-        with torch.no_grad():
-            outputs = model(**inputs)
-            # Pool token embeddings (mean pooling over last hidden state)
-            attention_mask = inputs["attention_mask"].unsqueeze(-1)
-            token_embeddings = outputs.last_hidden_state
-            pooled = torch.sum(token_embeddings * attention_mask, dim=1) / torch.clamp(
-                attention_mask.sum(dim=1), min=1e-9
-            )
 
-        return pooled.cpu().numpy()
+def _sentence_around(text: str, start: int, end: int) -> tuple[int, int]:
+    """(start, end) of the sentence containing a span."""
+    s_start = 0
+    for match in _SENTENCE_END.finditer(text, 0, start):
+        s_start = match.end()
+    following = _SENTENCE_END.search(text, end)
+    return s_start, following.start() + 1 if following else len(text)

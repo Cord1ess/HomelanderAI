@@ -53,7 +53,7 @@ def test_no_name_is_shared_between_two_generics():
 
 
 def test_brands_are_read_as_their_generic():
-    mentions = mc.find_mentions("Rx: Comet 500 mg bd, Amdocal 5 mg, Seclo 20 mg.")
+    mentions = mc.find_mentions("Rx: Comet 500 mg bd, Amdocal 5 mg, Seclo 20 mg.")[0]
     assert [(m.term, m.generic) for m in mentions] == [
         ("Comet", "metformin"),
         ("Amdocal", "amlodipine"),
@@ -63,22 +63,22 @@ def test_brands_are_read_as_their_generic():
 
 
 def test_the_longer_name_wins_and_case_does_not_matter():
-    mentions = mc.find_mentions("insulin glargine 10 units nocte; METFORMIN 1 g bd")
+    mentions = mc.find_mentions("insulin glargine 10 units nocte; METFORMIN 1 g bd")[0]
     assert [m.term for m in mentions] == ["insulin glargine", "METFORMIN"]
     assert [m.generic for m in mentions] == ["insulin", "metformin"]
 
 
 def test_short_capital_abbreviations_match_only_as_written():
-    assert [m.generic for m in mc.find_mentions("on INH and PTU")] == [
+    assert [m.generic for m in mc.find_mentions("on INH and PTU")[0]] == [
         "isoniazid",
         "propylthiouracil",
     ]
     # In lower case they are ordinary letters, not drugs.
-    assert mc.find_mentions("the inh sound; ptu...") == []
+    assert mc.find_mentions("the inh sound; ptu...")[0] == []
 
 
 def test_a_measurement_is_not_a_prescription():
-    assert mc.find_mentions("Insulin resistance noted. Lithium level normal.") == []
+    assert mc.find_mentions("Insulin resistance noted. Lithium level normal.")[0] == []
 
 
 @pytest.mark.parametrize(
@@ -93,7 +93,7 @@ def test_a_measurement_is_not_a_prescription():
     ],
 )
 def test_how_a_medication_is_asserted(sentence, assertion):
-    (mention,) = mc.find_mentions(sentence)
+    (mention,) = mc.find_mentions(sentence)[0]
     assert str(mention.assertion) == assertion
 
 
@@ -185,6 +185,159 @@ def test_the_arm_reads_documents_against_the_form():
     assert arms_for(EvidenceKind.DOCUMENT) == [arm]
     assert arm.run is None and arm.run_with_form is not None
     assert arm.read(b"Amdocal 5 mg.", {"hypertension": True}).score == 10.0
+
+
+# ── BioBERT ──────────────────────────────────────────────────────────────────
+#
+# The first group feeds `check` what BioBERT would return, so the rules around
+# it are pinned without loading a model. The second runs the real models.
+
+from app.services import biobert  # noqa: E402
+from app.services.biobert import Span  # noqa: E402
+
+
+def span(text: str, word: str) -> Span:
+    start = text.index(word)
+    return Span(text=word, start=start, end=start + len(word), confidence=1.0)
+
+
+def test_a_misspelt_drug_biobert_found_is_matched_to_the_table():
+    note = "Takes metfromin 500 mg bd."
+    report = mc.check(note, {}, drug_spans=[span(note, "metfromin")])
+    (med,) = report["medications"]
+    assert med["generic"] == "metformin" and med["spelling"] is True
+    assert med["found_by"] == ["biobert"]
+    assert report["undisclosed"][0]["condition"] == "diabetes"
+
+
+def test_a_misspelling_needs_biobert_to_have_called_it_a_drug():
+    """The table alone never stretches a word into a drug."""
+    report = mc.check("Takes metfromin 500 mg bd.", {}, drug_spans=[])
+    assert report["medications"] == []
+
+
+def test_a_near_name_that_is_another_drug_is_not_matched():
+    assert mc.table_name_for("metoprolol")[0] == "metoprolol"
+    assert mc.table_name_for("metfromin") == ("metformin", True)
+    assert mc.table_name_for("paracetamolx")[1] is True  # a slip, still paracetamol
+    assert mc.table_name_for("ibuprofenazole") == (None, False)
+
+
+def test_a_drug_the_table_does_not_list_is_shown_and_not_scored():
+    note = "Started finasteride 5 mg daily."
+    report = mc.check(note, {}, drug_spans=[span(note, "finasteride")])
+    assert report["medications"] == []
+    assert report["unlisted"][0]["as_written"] == "finasteride"
+    assert report["score"] == mc._NOTHING_MATERIAL
+
+
+def test_both_readers_finding_a_drug_is_recorded_once_with_both():
+    note = "On metformin 1 g bd."
+    report = mc.check(note, DECLARED_DIABETES, drug_spans=[span(note, "metformin")])
+    (med,) = report["medications"]
+    assert med["found_by"] == ["biobert", "table"]
+
+
+def test_a_brand_biobert_misses_is_still_found_by_the_table():
+    """BioBERT learned from PubMed, which writes generic names."""
+    report = mc.check("On Glucophage 500 mg.", {}, drug_spans=[])
+    assert report["medications"][0]["generic"] == "metformin"
+    assert report["medications"][0]["found_by"] == ["table"]
+
+
+def test_a_condition_written_in_the_note_and_not_declared_is_flagged_at_full_weight():
+    note = "Known case of chronic kidney disease stage 3."
+    report = mc.check(note, {}, disease_spans=[span(note, "chronic kidney disease")])
+    (flag,) = report["undisclosed"]
+    assert flag["condition"] == "kidney_disease"
+    assert flag["stated"] == ["chronic kidney disease"]
+    assert flag["points"] == mc.CONDITIONS["kidney_disease"]["weight"]
+
+
+@pytest.mark.parametrize(
+    "note, term",
+    [
+        ("No history of diabetes.", "diabetes"),
+        ("Mother had breast cancer.", "breast cancer"),
+        ("Rule out tuberculosis.", "tuberculosis"),
+    ],
+)
+def test_a_condition_negated_or_a_relatives_or_proposed_does_not_count(note, term):
+    report = mc.check(note, {}, disease_spans=[span(note, term)])
+    assert report["undisclosed"] == []
+    assert report["conditions_in_note"][0]["assertion"] != "PRESENT"
+
+
+def test_a_declared_condition_written_in_the_note_raises_nothing():
+    note = "Type 2 diabetes mellitus, on diet."
+    spans = [span(note, "Type 2 diabetes mellitus")]
+    report = mc.check(note, DECLARED_DIABETES, disease_spans=spans)
+    assert report["undisclosed"] == []
+    assert report["conditions_in_note"][0]["declared"] is True
+
+
+def test_abbreviations_match_only_as_written():
+    assert mc.conditions_named("HTN") == ["hypertension"]
+    assert mc.conditions_named("IHD") == ["coronary_heart_disease"]
+    assert mc.conditions_named("htn") == []
+    assert mc.conditions_named("diabetic nephropathy") == ["diabetes", "kidney_disease"]
+    assert mc.conditions_named("cough") == []
+
+
+def test_a_symptom_is_shown_but_never_scored():
+    note = "Presented with cough and fever."
+    report = mc.check(note, {}, disease_spans=[span(note, "cough"), span(note, "fever")])
+    assert report["undisclosed"] == []
+    assert [o["as_written"] for o in report["other_findings"]] == ["cough", "fever"]
+
+
+needs_biobert = pytest.mark.skipif(
+    not (biobert.is_downloaded("drugs") and biobert.is_downloaded("diseases")),
+    reason="BioBERT weights not downloaded — python scripts/fetch_biobert_models.py",
+)
+
+
+@needs_biobert
+def test_the_real_models_read_a_note_end_to_end():
+    note = (
+        b"Known case of hypertension, on amlodipine 5 mg. Takes metfromin 500 mg bd. "
+        b"No history of stroke. Mother had breast cancer. Started finasteride."
+    )
+    result = mc.run_with_form(note, {})
+    d = result.details
+    flagged = {f["condition"] for f in d["undisclosed"]}
+    assert {"hypertension", "diabetes"} <= flagged
+    assert "stroke" not in flagged and "cancer" not in flagged
+    meds = {m["generic"]: m for m in d["medications"]}
+    assert meds["metformin"]["spelling"] is True and "biobert" in meds["metformin"]["found_by"]
+    assert any(u["as_written"] == "finasteride" for u in d["unlisted"])
+    assert d["biobert"]["drugs_found"] >= 3 and d["biobert"]["diseases_found"] >= 3
+
+
+@needs_biobert
+def test_the_weights_on_disk_are_the_pinned_ones():
+    for name, spec in biobert.PINS.items():
+        assert biobert._sha256(biobert.weights_path(name)) == spec["safetensors_sha256"]
+
+
+@needs_biobert
+def test_a_long_note_is_read_past_the_512_piece_limit():
+    """BERT sees 512 pieces at once; a drug after that must still be found."""
+    filler = "The patient was reviewed on the ward and remained comfortable overnight. " * 60
+    note = filler + "Discharged on warfarin 5 mg."
+    assert len(biobert.load_reader("drugs").tokenizer(note)["input_ids"]) > 512
+    assert any(s.text == "warfarin" for s in biobert.find("drugs", note))
+
+
+def test_no_silent_fallback_when_biobert_cannot_load(monkeypatch):
+    """A reading that says BioBERT must have had BioBERT in it."""
+
+    def broken(name, text):
+        raise biobert.ModelUnavailable("weights missing")
+
+    monkeypatch.setattr(biobert, "find", broken)
+    result = mc.run_with_form(b"On metformin 500 mg bd.", {})
+    assert result.score is None and "BioBERT could not be loaded" in result.error
 
 
 # ── documents through intake ─────────────────────────────────────────────────
