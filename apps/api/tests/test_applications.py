@@ -726,6 +726,31 @@ def test_the_confirmed_kind_decides_which_model_runs(carrier):
     assert asyncio.run(stored_kind()) == "chest_xray"
 
 
+def test_a_heatmap_is_paired_with_the_image_its_reader_read(carrier):
+    """Files dropped into the drop zone carry their kind and no reader, so
+    pairing a heatmap by the reader's own file left every heatmap unpaired —
+    and none was shown. The run records the hash of the file it read; that is
+    the link, and it must hold for a drop-zone submission."""
+    account = asyncio.run(carrier())
+
+    with TestClient(app) as client:
+        sign_in(client, account)
+        response = client.post(
+            "/api/applications",
+            # Kind only, no reader: exactly what the drop zone sends.
+            data={"payload": intake_payload(), "file_kinds": ["chest_xray"]},
+            files={"files": ("xray.png", a_chest_xray(), "image/png")},
+        )
+        assert response.status_code == 201, response.text
+        detail = client.get(f"/api/applications/{response.json()['id']}").json()
+
+    files = detail["files"]
+    (film,) = [f for f in files if f["kind"] == "evidence"]
+    heatmaps = [f for f in files if f["kind"] == "gradcam"]
+    assert heatmaps, "the chest reader produced no heatmap"
+    assert all(h["ofFileId"] == film["id"] for h in heatmaps)
+
+
 def test_an_unconfirmed_file_is_stored_but_never_scored(carrier):
     """A file whose kind nobody established must not be handed to whichever
     model happens to be registered."""

@@ -142,14 +142,14 @@ def test_a_revision_needs_a_reason_and_a_future_date(carrier):
 def test_the_carrier_default_is_admin_only_and_does_not_move_existing_promises(carrier):
     """Changing the company default applies to future applicants. One already
     told 'by Wednesday' keeps Wednesday."""
-    underwriter = asyncio.run(carrier())
+    underwriter = asyncio.run(carrier(role="underwriter"))
 
     with TestClient(app) as client:
         sign_in(client, underwriter)
         created = submit(client)
         before = client.get(f"/api/applications/{created['id']}").json()["expectedBy"]
 
-        # A medical professional is not an administrator.
+        # An underwriter is not an administrator.
         forbidden = client.patch("/api/tenant/settings", json={"turnaroundBusinessDays": 5})
         assert forbidden.status_code == 403
         assert client.get("/api/tenant/settings").json()["turnaroundBusinessDays"] == 2

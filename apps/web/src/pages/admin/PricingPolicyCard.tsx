@@ -81,7 +81,7 @@ export function PricingPolicyCard() {
       <Text size="sm" mt={4} mb="xs">
         The monthly premium for each plan at the reference cover. A client asking for twice the
         reference cover is quoted twice the premium. Elevated-risk applications carry no rate until
-        a medical professional decides.
+        a doctor has checked the results and the underwriter sets one.
       </Text>
 
       {value && (

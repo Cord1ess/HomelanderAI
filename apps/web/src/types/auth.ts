@@ -13,7 +13,7 @@ export type UserRole = 'underwriter' | 'medical_professional' | 'admin'
 /** How each role is named on screen. One place, so the screens cannot disagree. */
 export const ROLE_LABEL: Record<UserRole, string> = {
   underwriter: 'Underwriter',
-  medical_professional: 'Medical Professional',
+  medical_professional: 'Doctor',
   admin: 'Administrator',
 }
 

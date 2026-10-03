@@ -1,6 +1,6 @@
-"""The three built-in accounts: `underwriter`, `medical` and `admin`.
+"""The built-in accounts: three underwriters, three doctors and one administrator.
 
-One per staff role, all with the password in ADMIN_PASSWORD. They bypass the
+All with the password in ADMIN_PASSWORD until a person changes their own. They bypass the
 database, so the tests that matter most are the ones proving they stay off
 outside development.
 """
@@ -25,8 +25,12 @@ from tests.conftest import needs_database
 
 # username -> the role it must present as
 EXPECTED = {
-    "underwriter": "underwriter",
-    "medical": "medical_professional",
+    "underwriter1": "underwriter",
+    "underwriter2": "underwriter",
+    "underwriter3": "underwriter",
+    "doctor1": "medical_professional",
+    "doctor2": "medical_professional",
+    "doctor3": "medical_professional",
     "admin": "admin",
 }
 
@@ -53,9 +57,18 @@ def test_there_are_exactly_three_staff_roles():
     assert {role.value for role in UserRole} == {"underwriter", "medical_professional", "admin"}
 
 
-def test_there_is_exactly_one_built_in_account_per_role():
+def test_three_underwriters_three_doctors_and_one_administrator():
+    """A company has more than one of each; the work is shared and attributed."""
     assert {a.username: a.role.value for a in BUILT_IN_ACCOUNTS} == EXPECTED
-    assert len({a.user_id for a in BUILT_IN_ACCOUNTS}) == 3
+    assert len({a.user_id for a in BUILT_IN_ACCOUNTS}) == len(EXPECTED)
+
+
+def test_the_old_single_usernames_still_sign_in(dev):
+    """`underwriter` and `medical` were the only two until 2026-10-03."""
+    with TestClient(app) as client:
+        assert sign_in(client, "underwriter")["user"]["email"] == "underwriter1"
+    with TestClient(app) as client:
+        assert sign_in(client, "medical")["user"]["email"] == "doctor1"
 
 
 # ── the guards ───────────────────────────────────────────────────────────────
@@ -139,11 +152,12 @@ def test_an_unrecognised_built_in_token_is_refused_not_promoted(dev):
 def test_editing_a_profile_answers_as_the_account_that_asked(dev):
     """This used to answer with the admin's identity whoever was signed in."""
     with TestClient(app) as client:
-        sign_in(client, "underwriter")
+        sign_in(client, "underwriter2")
         response = client.patch("/api/auth/profile", json={"fullName": "A. Underwriter"})
         assert response.status_code == 200, response.text
-        assert response.json()["email"] == "underwriter"
+        assert response.json()["email"] == "underwriter2"
         assert response.json()["role"] == "underwriter"
+        client.patch("/api/auth/profile", json={"fullName": "Underwriter 2"})
 
 
 @pytest.mark.parametrize("username", ["underwriter", "medical"])
@@ -222,7 +236,7 @@ def _built_in_rows() -> dict[str, tuple[str, str]]:
 
 
 @needs_database
-def test_signing_in_gives_all_three_accounts_a_real_row(dev):
+def test_signing_in_gives_every_account_a_real_row(dev):
     """A decision and an audit entry point at their author by foreign key. Only
     the old `admin` was ever seeded, so the other two could sign in but were
     refused the moment they decided anything."""
@@ -302,6 +316,82 @@ def test_database_url_follows_db_host(monkeypatch):
     """Changing DB_HOST must be enough to point at another machine."""
     monkeypatch.setattr(settings, "db_host", "192.168.0.42")
 
+    # The database name is whatever is configured — the tests run on their own.
     assert settings.database_url == (
-        "postgresql+asyncpg://homelander:devpassword@192.168.0.42:5432/homelander"
+        f"postgresql+asyncpg://homelander:devpassword@192.168.0.42:5432/{settings.db_name}"
     )
+
+
+# ── changes a person makes to their own account stick ────────────────────────
+
+
+def _reset(username: str) -> None:
+    """Put a built-in account back on the demo password, as the tests found it."""
+
+    async def run() -> None:
+        from app.core.security import hash_password
+        from app.db.session import AsyncSessionLocal
+        from app.models import User
+        from app.routers.auth import _built_in
+
+        account = _built_in(username=username)
+        async with AsyncSessionLocal() as db:
+            row = await db.get(User, account.user_id)
+            row.password_hash = hash_password(uuid.uuid4().hex)
+            row.password_changed_at = None
+            row.full_name = account.full_name
+            await db.commit()
+
+    asyncio.run(run())
+
+
+@needs_database
+def test_a_changed_password_is_the_one_that_works(dev):
+    """The built-in path used to answer "ok" and change nothing."""
+    try:
+        with TestClient(app) as client:
+            sign_in(client, "underwriter3")
+            r = client.post(
+                "/api/auth/profile/change-password",
+                json={"currentPassword": "admin123", "newPassword": "a-new-password-1"},
+            )
+            assert r.status_code == 200, r.text
+        with TestClient(app) as client:
+            old = client.post(
+                "/api/auth/login", json={"email": "underwriter3", "password": "admin123"}
+            )
+            assert old.status_code == 401
+            new = client.post(
+                "/api/auth/login", json={"email": "underwriter3", "password": "a-new-password-1"}
+            )
+            assert new.status_code == 200, new.text
+            assert new.json()["user"]["role"] == "underwriter"
+    finally:
+        _reset("underwriter3")
+
+
+@needs_database
+def test_a_changed_name_is_kept(dev):
+    try:
+        with TestClient(app) as client:
+            sign_in(client, "doctor3")
+            client.patch("/api/auth/profile", json={"fullName": "Dr. Rahman"})
+        with TestClient(app) as client:
+            assert sign_in(client, "doctor3")["user"]["fullName"] == "Dr. Rahman"
+            assert client.get("/api/auth/me").json()["user"]["fullName"] == "Dr. Rahman"
+    finally:
+        _reset("doctor3")
+
+
+@needs_database
+def test_the_company_name_can_be_changed(dev):
+    with TestClient(app) as client:
+        sign_in(client, "admin")
+        before = client.get("/api/tenant/settings").json()["name"]
+        try:
+            r = client.patch("/api/tenant/settings", json={"name": "Meghna Life Insurance"})
+            assert r.status_code == 200, r.text
+            assert client.get("/api/auth/me").json()["tenant"]["name"] == "Meghna Life Insurance"
+            assert client.patch("/api/tenant/settings", json={"name": " "}).status_code == 422
+        finally:
+            client.patch("/api/tenant/settings", json={"name": before})

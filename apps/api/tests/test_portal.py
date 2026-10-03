@@ -21,8 +21,16 @@ pytestmark = needs_database
 
 # Nothing clinical may appear anywhere in what the applicant receives.
 FORBIDDEN_KEYS = {
-    "crs", "score", "tier", "findings", "probability", "contribution",
-    "adjustments", "visionScore", "thresholds", "modelInfo",
+    "crs",
+    "score",
+    "tier",
+    "findings",
+    "probability",
+    "contribution",
+    "adjustments",
+    "visionScore",
+    "thresholds",
+    "modelInfo",
 }
 
 
@@ -313,7 +321,7 @@ def test_an_escalation_is_not_presented_as_a_refusal(carrier, monkeypatch):
 
     assert body["stage"] == "senior_review"
     assert body["offer"] is None
-    assert "not a refusal" in body["stageDetail"]
+    assert "does not mean you have been refused" in body["stageDetail"]
 
 
 # ── the two sign-ins are not interchangeable ─────────────────────────────────
@@ -410,3 +418,88 @@ def test_a_decision_emails_a_notice_that_carries_no_outcome(carrier, sent):
     assert notice["to"] == "client@example.com"
     for word in ("approved", "premium", "9000", "9,000", "declin", "elevated"):
         assert word not in notice["body"].lower()
+
+
+# ── the client uploads what was asked for ────────────────────────────────────
+
+
+def _asked_for_a_document(carrier, monkeypatch) -> tuple[dict, dict, dict]:
+    """(staff account, application, portal sign-in) with one document requested."""
+    monkeypatch.setattr(mailer.settings, "smtp_host", "")
+    account = asyncio.run(carrier())
+    with TestClient(app) as client:
+        sign_in(client, account)
+        created = submit_with_email(client, None)
+        asked = client.post(
+            f"/api/applications/{created['id']}/evidence-request",
+            json={"items": ["Your last blood test"]},
+        )
+        assert asked.status_code == 201, asked.text
+    return account, created, created["portal"]
+
+
+def test_the_client_uploads_a_requested_document(carrier, monkeypatch):
+    account, created, sign_in_details = _asked_for_a_document(carrier, monkeypatch)
+
+    with TestClient(app) as client:
+        me = client.post("/api/portal/login", json=sign_in_details).json()
+        assert me["stage"] == "waiting_on_you"
+        [doc] = me["documents"]
+        assert doc["received"] is False
+
+        done = client.post(
+            f"/api/portal/documents/{doc['id']}/upload",
+            files={"file": ("blood-test.png", a_chest_xray(), "image/png")},
+        )
+        assert done.status_code == 200, done.text
+        body = done.json()
+        [doc] = body["documents"]
+        assert doc["received"] is True and doc["fileName"] == "blood-test.png"
+        assert body["stage"] != "waiting_on_you"
+        assert any(f["fileName"] == "blood-test.png" for f in body["files"])
+        assert not keys_in(body) & FORBIDDEN_KEYS
+
+        # The same request twice is refused, kindly.
+        again = client.post(
+            f"/api/portal/documents/{doc['id']}/upload",
+            files={"file": ("again.png", a_chest_xray(), "image/png")},
+        )
+        assert again.status_code == 409
+
+    with TestClient(app) as client:
+        sign_in(client, account)
+        told = [
+            n
+            for n in client.get("/api/notifications").json()
+            if n["notificationType"] == "documents_uploaded"
+        ]
+        assert told and "Your last blood test" in told[0]["message"]
+        detail = client.get(f"/api/applications/{created['id']}").json()
+        assert any(f["filename"] == "blood-test.png" for f in detail["files"])
+
+
+def test_a_client_cannot_upload_against_someone_elses_request(carrier, monkeypatch):
+    _, _, theirs = _asked_for_a_document(carrier, monkeypatch)
+    _, _, mine = _asked_for_a_document(carrier, monkeypatch)
+
+    with TestClient(app) as client:
+        [their_doc] = client.post("/api/portal/login", json=theirs).json()["documents"]
+    with TestClient(app) as client:
+        client.post("/api/portal/login", json=mine)
+        r = client.post(
+            f"/api/portal/documents/{their_doc['id']}/upload",
+            files={"file": ("x.png", a_chest_xray(), "image/png")},
+        )
+        assert r.status_code == 404
+
+
+def test_an_unreadable_upload_is_refused_in_plain_words(carrier, monkeypatch):
+    _, _, details = _asked_for_a_document(carrier, monkeypatch)
+    with TestClient(app) as client:
+        [doc] = client.post("/api/portal/login", json=details).json()["documents"]
+        r = client.post(
+            f"/api/portal/documents/{doc['id']}/upload",
+            files={"file": ("virus.exe", b"MZ\x90\x00not a document", "application/octet-stream")},
+        )
+        assert r.status_code == 422
+        assert "photo" in r.json()["detail"]

@@ -53,7 +53,9 @@ CREATE TYPE underwriter_decision_type AS ENUM (
 
 CREATE TYPE notification_type AS ENUM (
     'application_submitted', 'processing_complete', 'tier_escalation',
-    'decision_recorded', 'evidence_requested', 'api_key_expiring'
+    'decision_recorded', 'evidence_requested', 'api_key_expiring', 'doctor_reviewed',
+    'access_requested', 'access_decided', 'documents_uploaded',
+    'policy_issued', 'policy_cancelled'
 );
 
 CREATE TYPE notification_channel AS ENUM ('email', 'in_app', 'sms');
@@ -106,6 +108,9 @@ CREATE TABLE users (
     license_number   VARCHAR(100),
     is_active        BOOLEAN NOT NULL DEFAULT TRUE,
     last_login_at    TIMESTAMPTZ,
+    -- Set when the person chose their own password, so a built-in staff
+    -- account is never reset to the demo password after that.
+    password_changed_at TIMESTAMPTZ,
     created_at       TIMESTAMPTZ NOT NULL DEFAULT now(),
 
     -- Email is unique across the whole system, not per company.
@@ -197,6 +202,9 @@ CREATE TABLE applications (
     -- kept in expected_by_note and in the audit log. A date, not a countdown.
     expected_by            DATE,
     expected_by_note       VARCHAR(300),
+    -- When an underwriter first sent it to a doctor. A doctor sees only the
+    -- applications with this set; nothing else in the company is theirs.
+    sent_to_doctor_at      TIMESTAMPTZ,
     evaluated_at           TIMESTAMPTZ,
     processing_started_at  TIMESTAMPTZ,
     submitted_at           TIMESTAMPTZ NOT NULL DEFAULT now()
@@ -374,6 +382,116 @@ CREATE TABLE requested_documents (
 );
 
 CREATE INDEX idx_requested_documents_tenant_id ON requested_documents(tenant_id);
+
+-- A doctor's review of the readers' results. The doctor does not decide the
+-- policy: they say whether the results are medically right, and the
+-- application goes back to the underwriter carrying that verdict as a tag.
+CREATE TABLE doctor_reviews (
+    id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    tenant_id       UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+    application_id  UUID NOT NULL REFERENCES applications(id) ON DELETE CASCADE,
+    doctor_id       UUID NOT NULL REFERENCES users(id) ON DELETE RESTRICT,
+    verdict         VARCHAR(20) NOT NULL CHECK (verdict IN ('accurate', 'inaccurate')),
+    note            TEXT,
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX idx_doctor_reviews_application ON doctor_reviews(application_id, created_at DESC);
+
+-- A doctor writing to the client directly, when what the evidence shows
+-- cannot wait for the policy: "see a doctor today". Shown on the client's
+-- portal and emailed when mail is set up. Never carries a score.
+CREATE TABLE client_messages (
+    id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    tenant_id       UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+    application_id  UUID NOT NULL REFERENCES applications(id) ON DELETE CASCADE,
+    sender_id       UUID NOT NULL REFERENCES users(id) ON DELETE RESTRICT,
+    urgency         VARCHAR(20) NOT NULL CHECK (urgency IN ('urgent', 'routine')),
+    message         TEXT NOT NULL,
+    emailed         BOOLEAN NOT NULL DEFAULT false,
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX idx_client_messages_application ON client_messages(application_id, created_at DESC);
+
+-- A client's personal details are the company owner's to hand out. An
+-- underwriter or a doctor who needs them asks, with a reason; an administrator
+-- approves or declines. An approval opens that one client to that one person
+-- for a day.
+-- An approved application becomes a policy: the plan, the monthly premium, the
+-- sum assured paid out on a claim, and the dates it runs between. Only an
+-- administrator cancels one.
+CREATE TABLE policies (
+    id                   UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    tenant_id            UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+    application_id       UUID NOT NULL UNIQUE REFERENCES applications(id) ON DELETE CASCADE,
+    applicant_id         UUID NOT NULL REFERENCES applicants(id) ON DELETE CASCADE,
+    policy_number        VARCHAR(40) NOT NULL UNIQUE,
+    plan_name            VARCHAR(100) NOT NULL,
+    coverage_type        VARCHAR(50),
+    sum_assured_bdt      NUMERIC(14, 2) NOT NULL,
+    monthly_premium_bdt  NUMERIC(12, 2) NOT NULL,
+    term_years           INTEGER NOT NULL CHECK (term_years BETWEEN 1 AND 40),
+    start_date           DATE NOT NULL,
+    end_date             DATE NOT NULL,
+    status               VARCHAR(20) NOT NULL DEFAULT 'active'
+                         CHECK (status IN ('active', 'cancelled')),
+    cancelled_at         TIMESTAMPTZ,
+    cancelled_by         UUID REFERENCES users(id) ON DELETE SET NULL,
+    cancel_reason        TEXT,
+    created_at           TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX idx_policies_tenant ON policies(tenant_id, status);
+CREATE INDEX idx_policies_applicant ON policies(applicant_id);
+
+-- Each month's premium, recorded when it is paid.
+CREATE TABLE premium_payments (
+    id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    tenant_id       UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+    policy_id       UUID NOT NULL REFERENCES policies(id) ON DELETE CASCADE,
+    due_date        DATE NOT NULL,
+    amount_bdt      NUMERIC(12, 2) NOT NULL,
+    method          VARCHAR(30) NOT NULL DEFAULT 'cash',
+    reference       VARCHAR(100),
+    paid_at         TIMESTAMPTZ NOT NULL DEFAULT now(),
+    recorded_by     UUID REFERENCES users(id) ON DELETE SET NULL,
+    UNIQUE (policy_id, due_date)
+);
+
+CREATE INDEX idx_premium_payments_policy ON premium_payments(policy_id, due_date);
+
+-- Every message the platform tried to send. Never the body: it can hold a
+-- password.
+CREATE TABLE email_log (
+    id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    tenant_id       UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+    application_id  UUID REFERENCES applications(id) ON DELETE CASCADE,
+    kind            VARCHAR(40) NOT NULL,
+    recipient       VARCHAR(255) NOT NULL,
+    subject         VARCHAR(255) NOT NULL,
+    status          VARCHAR(20) NOT NULL
+                    CHECK (status IN ('sent', 'not_configured', 'failed')),
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX idx_email_log_application ON email_log(application_id, created_at DESC);
+
+CREATE TABLE client_access_requests (
+    id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    tenant_id       UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+    applicant_id    UUID NOT NULL REFERENCES applicants(id) ON DELETE CASCADE,
+    requester_id    UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    reason          TEXT NOT NULL,
+    status          VARCHAR(20) NOT NULL DEFAULT 'pending'
+                    CHECK (status IN ('pending', 'approved', 'declined')),
+    decided_by      UUID REFERENCES users(id) ON DELETE SET NULL,
+    decided_at      TIMESTAMPTZ,
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX idx_client_access_requests_tenant ON client_access_requests(tenant_id, status, created_at DESC);
+CREATE INDEX idx_client_access_requests_requester ON client_access_requests(requester_id, applicant_id);
 CREATE INDEX idx_requested_documents_application_id ON requested_documents(application_id);
 
 -- ============================================================================

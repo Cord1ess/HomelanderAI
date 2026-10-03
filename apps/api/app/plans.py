@@ -93,7 +93,7 @@ PLANS: dict[str, Plan] = {
         # No rate is quoted here on purpose. Tier 3 is a routing decision, and
         # attaching a price to it would imply an outcome that has not been
         # decided. Never an automated denial (SPEC §7).
-        recommendation="Route to a medical professional with the full evidence pack",
+        recommendation="Send to a doctor with the full evidence pack",
         human_step="Mandatory medical review — never an automated denial",
         base_monthly_bdt=None,
     ),

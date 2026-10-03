@@ -6,6 +6,7 @@ import {
   Box,
   Button,
   Divider,
+  Grid,
   Group,
   Image,
   NumberInput,
@@ -14,7 +15,9 @@ import {
   Stack,
   Switch,
   Table,
+  Tabs,
   Text,
+  ThemeIcon,
   Tooltip,
   Textarea,
   TextInput,
@@ -30,7 +33,7 @@ import {
 } from '@tabler/icons-react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useState } from 'react'
-import { useParams } from 'react-router-dom'
+import { useParams, useSearchParams } from 'react-router-dom'
 
 import {
   escalateApplication,
@@ -50,6 +53,11 @@ import {
 } from '../../api/client'
 import { PageHeader } from '../../components/PageHeader'
 import { StatusBadge } from '../../components/StatusBadge'
+import { DoctorVerdictBadge } from '../../components/DoctorVerdictBadge'
+import { PolicyPanel } from '../clients/PolicyPanel'
+import { DoctorPanel } from './DoctorPanel'
+import { ReaderCards } from './ReaderCards'
+import { groupRuns, infoFor, limitsOf, bandFor, type Limits } from './readers'
 import { ScoringProgress } from './ScoringProgress'
 import { ErrorState, LoadingState } from '../../components/states'
 import { TierBadge, type Tier } from '../../components/TierBadge'
@@ -71,7 +79,7 @@ import { ROLE_LABEL } from '../../types/auth'
 const DECISIONS: { value: DecisionType; label: string }[] = [
   { value: 'confirmed_fast_track', label: 'Confirm fast-track' },
   { value: 'approved_with_adjustment', label: 'Approve with adjustment' },
-  { value: 'escalated_senior_review', label: 'Escalate to a medical professional' },
+  { value: 'escalated_senior_review', label: 'Send to a doctor' },
   // "Request more evidence" is deliberately not here. Decisions are
   // write-once, so recording a request as one would decide the application
   // forever the moment a document was asked for. It has its own panel and
@@ -195,7 +203,7 @@ export function ReviewPage() {
       void queryClient.invalidateQueries({ queryKey: ['audit', id] })
       if (decision === 'escalated_senior_review') {
         notifications.show({
-          title: 'Handed to a medical professional',
+          title: 'Handed to a doctor',
           message: 'They have been told. The decision is now theirs.',
           color: 'grape',
         })
@@ -442,38 +450,7 @@ function EvidencePanel({ file, heatmap }: { file: EvidenceFile; heatmap?: Eviden
 }
 
 function Review({ data, state }: { data: ApplicationDetail; state: ReviewState }) {
-  const findings = data.findings ?? []
-  const adjustments = data.adjustments ?? []
-  const files = data.files ?? []
   const errors = data.errors ?? []
-
-  // A note is stored as text and read in its own panel; the image box is for
-  // the evidence that is a picture (or, for an ECG, drawn as one).
-  const isText = (f: { mimeType?: string | null }) => Boolean(f.mimeType?.startsWith('text/'))
-  const images = files.filter((f) => f.kind === 'evidence' && !isText(f))
-  const evidence = images[0]
-  const note = files.find((f) => f.kind === 'evidence' && isText(f))
-  const heatmaps = files.filter((f) => f.kind === 'gradcam')
-  // Each overlay goes over the image its reader read (`ofFileId`). Older
-  // applications, scored before the API said which, fall back to the first.
-  const heatmapFor = (image: EvidenceFile) =>
-    heatmaps.find((h) => h.ofFileId === image.id) ??
-    (heatmaps.length === 1 && images.length === 1 ? heatmaps[0] : undefined)
-
-  // Each arm's own report. The image and findings panels above belong to the
-  // vision arm; an application scored from the blood panel alone has neither,
-  // and showing "no image was stored" for it would read as a fault.
-  const arms = data.arms ?? []
-  const hasVision = arms.some((a) => a.armType === 'vision') || Boolean(evidence)
-
-  // Ranked by absolute contribution: the findings that moved the score most, in
-  // either direction. Not by probability — the two disagree, and contribution
-  // is the one that explains the number.
-  const ranked = [...findings].sort(
-    (a, b) => Math.abs(b.contribution) - Math.abs(a.contribution),
-  )
-  const shown = state.showAll ? ranked : ranked.slice(0, TOP_N)
-  const scale = Math.max(...ranked.map((f) => Math.abs(f.contribution)), 0.01)
 
   const decided = Boolean(data.decision)
   const scored =
@@ -485,6 +462,12 @@ function Review({ data, state }: { data: ApplicationDetail; state: ReviewState }
   const isElevated = data.score?.tier === 'elevated'
   const isUnderwriter = user?.role === 'underwriter'
   const isMedical = user?.role === 'medical_professional'
+  // The owner: decides anything, and may do a doctor's work too.
+  const isAdmin = user?.role === 'admin'
+  // The latest doctor's verdict, if a doctor has checked the results. It is
+  // what lets an underwriter decide an elevated case.
+  const latestReview = (data.doctorReviews ?? [])[0]
+  const reviewedByDoctor = Boolean(latestReview)
 
   return (
     <Stack gap="md">
@@ -605,6 +588,7 @@ function Review({ data, state }: { data: ApplicationDetail; state: ReviewState }
                 </span>
               </div>
               <TierBadge tier={data.score.tier as Tier} />
+              <DoctorVerdictBadge verdict={latestReview?.verdict} />
             </Group>
           )}
         </Group>
@@ -628,451 +612,741 @@ function Review({ data, state }: { data: ApplicationDetail; state: ReviewState }
         </Alert>
       )}
 
-      {hasVision && (
-      <SimpleGrid cols={{ base: 1, lg: 2 }} spacing="md">
-        {/* ── Left · the evidence, one panel per image ─────── */}
-        <Stack gap="md">
-          {images.length > 0 ? (
-            images.map((image) => (
-              <EvidencePanel key={image.id} file={image} heatmap={heatmapFor(image)} />
-            ))
+      {/* The readings on the left, what is done about them on the right. One
+          page, one scroll bar: the right column used to scroll on its own and
+          cut its last card off. Both columns run the same height, and the last
+          card in each fills what is left, so their bottoms line up. */}
+      <Grid gap="md" align="stretch">
+        <Grid.Col span={{ base: 12, lg: 8 }}>
+          <div className="review-col">
+            <Readings data={data} state={state} />
+          </div>
+        </Grid.Col>
+        <Grid.Col span={{ base: 12, lg: 4 }}>
+          <Stack gap="md" className="review-col">
+          {isMedical ? (
+            <DoctorPanel data={data} />
           ) : (
-            <Paper p="sm" bd="1px solid var(--mantine-color-default-border)">
-              <Text c="dimmed" size="sm">
-                No image was stored for this application.
-              </Text>
-            </Paper>
-          )}
-        </Stack>
-
-        {/* ── Right · why this score ────────────────────────── */}
-        <Stack gap="md">
-          <Paper p="sm" bd="1px solid var(--mantine-color-default-border)">
-            <Group justify="space-between" mb={4}>
+          <>
+          {/* With a doctor, the owner's first job here is likely the doctor's. */}
+          {isAdmin && escalated && <DoctorPanel data={data} />}
+          {/* ── Decision ────────────────────────────────────────── */}
+          <Paper p="md" bd="1px solid var(--mantine-color-default-border)">
+            <Group justify="space-between" align="center" mb="sm">
               <Text fw={600} size="sm">
-                What moved the score
+                Decision
               </Text>
-              <Text size="xs" c="dimmed">
-                {shown.length} of {findings.length} shown
-              </Text>
+              {user && (
+                <Text size="xs" style={{ color: 'var(--neo-muted)' }}>
+                  Deciding as {ROLE_LABEL[user.role]}
+                </Text>
+              )}
             </Group>
-            <Text size="xs" mb="sm" style={{ color: 'var(--neo-muted)' }}>
-              Findings from the image, ranked by how much each moved the score. The first
-              figure is how confident the model is that the finding is present; the second is
-              its push on the score, up or down.
-            </Text>
+            {!decided && (
+              <Text size="xs" mb="sm" style={{ color: 'var(--neo-muted)' }}>
+                Pick one. It is recorded under your name, written to the audit trail, and cannot be
+                changed afterwards. The client is emailed that there is an update.
+              </Text>
+            )}
 
-            {findings.length === 0 ? (
+            {escalated && !decided && (
+              <Alert color="grape" variant="light" icon={<IconShieldCheck size={18} />} title="With a doctor" mb="sm">
+                <Text size="xs">
+                  {isAdmin
+                    ? 'A doctor is checking the results. As the owner you can still decide now, or give the verdict yourself below.'
+                    : 'A doctor is checking the results. You can decide once they send it back with their verdict.'}
+                </Text>
+              </Alert>
+            )}
+
+            {isUnderwriter && isElevated && !decided && !escalated && !reviewedByDoctor && (
+              <Alert color="red" variant="light" icon={<IconAlertTriangle size={18} />} title="Elevated risk" mb="sm">
+                <Text size="xs">
+                  The models put this application in the elevated tier. Send it to a doctor first;
+                  once they have checked the results you can decide it.
+                </Text>
+              </Alert>
+            )}
+
+            {latestReview && !escalated && (
+              <Alert
+                color={latestReview.verdict === 'accurate' ? 'teal' : 'red'}
+                variant="light"
+                icon={<IconShieldCheck size={18} />}
+                title={
+                  latestReview.verdict === 'accurate'
+                    ? 'Doctor verified: the results are correct'
+                    : 'Doctor verified: the results are wrong'
+                }
+                mb="sm"
+              >
+                {latestReview.note && <Text size="xs">{latestReview.note}</Text>}
+                <Text size="xs" c="dimmed" mt={latestReview.note ? 4 : 0}>
+                  {latestReview.doctorName ?? 'A doctor'}, {relativeTime(latestReview.createdAt)}
+                </Text>
+              </Alert>
+            )}
+
+            {decided ? (
+              <Alert
+                icon={<IconCircleCheck size={18} />}
+                color="teal"
+                variant="light"
+                title="Decision recorded"
+                className="decision-recorded"
+              >
+                <Text size="sm">
+                  <strong>
+                    {DECISIONS.find((d) => d.value === data.decision?.decision)?.label ??
+                      data.decision?.decision}
+                  </strong>{' '}
+                  by {data.decision?.underwriterName ?? 'an underwriter'},{' '}
+                  {relativeTime(data.decision?.decidedAt)}.
+                  {data.decision?.finalPremium != null &&
+                    ` Final premium ${Number(data.decision.finalPremium).toLocaleString()}.`}{' '}
+                  A recorded decision cannot be changed.
+                </Text>
+              </Alert>
+            ) : !scored && data.status !== 'insufficient_evidence' && data.status !== 'awaiting_evidence' ? (
               <Text size="sm" c="dimmed">
-                The model produced no findings for this application.
+                A decision can be recorded once the models have finished reading the evidence.
               </Text>
             ) : (
               <>
-                <Stack gap="sm">
-                  {shown.map((f) => (
-                    <FindingBar key={f.label} finding={f} scale={scale} />
-                  ))}
-                </Stack>
-                <Button
-                  variant="subtle"
-                  size="xs"
-                  mt="sm"
-                  fullWidth
-                  rightSection={<IconChevronDown size={14} />}
-                  onClick={() => state.setShowAll(!state.showAll)}
-                >
-                  {state.showAll ? `Show top ${TOP_N}` : `Show all ${findings.length}`}
-                </Button>
+                <SimpleGrid cols={1} spacing="xs">
+                  {DECISIONS.filter((d) => !(escalated && d.value === 'escalated_senior_review')).map((d) => {
+                    const isApprovalAction =
+                      d.value === 'confirmed_fast_track' || d.value === 'approved_with_adjustment'
+                    const isBlockedForUnderwriter =
+                      isApprovalAction &&
+                      ((escalated && !isAdmin) || (isUnderwriter && isElevated && !reviewedByDoctor))
+                    const isEscalate = d.value === 'escalated_senior_review'
+
+                    const btn = (
+                      <Button
+                        key={d.value}
+                        variant={state.decision === d.value ? 'filled' : 'light'}
+                        color={
+                          state.decision === d.value
+                            ? isEscalate
+                              ? 'orange'
+                              : isMedical
+                              ? 'grape'
+                              : 'clinical'
+                            : 'gray'
+                        }
+                        justify="space-between"
+                        disabled={isBlockedForUnderwriter}
+                        onClick={() => {
+                          state.setDecision(d.value)
+                          // Start from the plan's figure rather than an empty box, so
+                          // the rate is anchored to the tier and the cover requested.
+                          // The underwriter still sets the final number.
+                          if (d.value === 'approved_with_adjustment' && state.premium == null) {
+                            state.setPremium(data.plan?.monthlyPremiumBdt ?? undefined)
+                          }
+                        }}
+                      >
+                        {d.label}
+                      </Button>
+                    )
+
+                    if (isBlockedForUnderwriter) {
+                      return (
+                        <Tooltip
+                          key={d.value}
+                          label={
+                            escalated
+                              ? 'With a doctor: decide once they send it back'
+                              : 'Elevated risk: send this to a doctor first'
+                          }
+                          withArrow
+                        >
+                          <div>{btn}</div>
+                        </Tooltip>
+                      )
+                    }
+
+                    return btn
+                  })}
+                </SimpleGrid>
+
+                {state.decision === 'escalated_senior_review' && (
+                  <Textarea
+                    mt="md"
+                    label="A note for the doctor"
+                    description="Optional. What you want them to look at. They see it with the notification."
+                    placeholder="The apex of the right lung; the client reports a cough of six weeks."
+                    autosize
+                    minRows={2}
+                    value={state.escalateNote}
+                    onChange={(e) => state.setEscalateNote(e.currentTarget.value)}
+                  />
+                )}
+
+                {state.decision === 'approved_with_adjustment' && (
+                  <NumberInput
+                    mt="md"
+                    label="Final monthly premium (BDT)"
+                    description={
+                      data.plan?.monthlyPremiumBdt != null
+                        ? `Plan suggests ৳${Math.round(
+                            data.plan.monthlyPremiumBdt,
+                          ).toLocaleString('en-IN')} for the cover requested. Adjust as you see fit.`
+                        : 'Set the rate you are approving at.'
+                    }
+                    placeholder="7,500"
+                    thousandSeparator=","
+                    min={0}
+                    value={state.premium}
+                    onChange={(v) =>
+                      state.setPremium(typeof v === 'number' ? v : Number(v) || undefined)
+                    }
+                  />
+                )}
+
+                <Group justify="space-between" mt="md">
+                  <Text size="xs" c="dimmed">
+                    There is no decline here. If this should not be approved, send it to a doctor.
+                  </Text>
+                  <Button
+                    size="xs"
+                    disabled={
+                      !state.decision ||
+                      // An adjusted approval without a rate is not a decision.
+                      (state.decision === 'approved_with_adjustment' && (state.premium ?? 0) <= 0)
+                    }
+                    onClick={() => state.submit.mutate()}
+                    loading={state.submit.isPending}
+                  >
+                    {state.decision === 'escalated_senior_review' ? 'Send to doctor' : 'Record decision'}
+                  </Button>
+                </Group>
               </>
             )}
           </Paper>
+          {/* ── What this means for the policy ──────────────────── */}
+          {data.plan && <PlanPanel plan={data.plan} coverage={data.coverage} />}
+          {/* ── Requested documents ─────────────────────────────── */}
+          {((data.requestedDocuments ?? []).length > 0 || (!decided && !pending)) && (
+            <Paper p="md" bd="1px solid var(--mantine-color-default-border)">
+              <Group justify="space-between" align="center" mb="sm">
+                <Text fw={600} size="sm">
+                  Documents requested from the applicant
+                </Text>
+                {data.status === 'awaiting_evidence' && (
+                  <Badge color="orange" variant="light" size="xs">
+                    Waiting on applicant
+                  </Badge>
+                )}
+              </Group>
 
-          <Paper p="sm" bd="1px solid var(--mantine-color-default-border)">
-            <Text fw={600} size="sm" mb={4}>
-              What the declared history changed
-            </Text>
-            <Text size="xs" mb="sm" style={{ color: 'var(--neo-muted)' }}>
-              Points added or removed by the answers given at intake, applied after the image score.
-            </Text>
-            {adjustments.length === 0 ? (
-              <Text size="sm" c="dimmed">
-                Nothing declared changed the score. It is the imaging result alone.
-              </Text>
-            ) : (
-              <Stack gap={6}>
-                {adjustments.map((a) => (
-                  <Group key={a.key} gap="sm" wrap="nowrap" align="flex-start">
-                    <Badge
+              {(data.requestedDocuments ?? []).length === 0 && (
+                <Text size="sm" c="dimmed" mb="sm">
+                  Nothing has been requested.
+                </Text>
+              )}
+
+              <Stack gap={6} mb="sm">
+                {(data.requestedDocuments ?? []).map((doc) => (
+                  <Group key={doc.id} justify="space-between" wrap="nowrap">
+                    <Text
                       size="sm"
-                      variant="light"
-                      color={a.points >= 0 ? 'orange' : 'teal'}
-                      ff="monospace"
+                      c={doc.fulfilledAt ? 'dimmed' : undefined}
+                      td={doc.fulfilledAt ? 'line-through' : undefined}
                     >
-                      {a.points >= 0 ? '+' : ''}
-                      {a.points}
-                    </Badge>
-                    <Text size="sm" c="dimmed" style={{ flex: 1 }}>
-                      {a.reason}
+                      {doc.description}
                     </Text>
+                    {doc.fulfilledAt ? (
+                      <Group gap={6} wrap="nowrap">
+                        <Badge size="xs" variant="light" color="teal">
+                          Received
+                        </Badge>
+                        {doc.fulfilledByFileId && (
+                          <Anchor href={fileUrl(doc.fulfilledByFileId)} target="_blank" size="xs">
+                            Open the document
+                          </Anchor>
+                        )}
+                      </Group>
+                    ) : (
+                      <Group gap={6} wrap="nowrap">
+                        <FileButton
+                          onChange={(file) => file && state.receive.mutate({ documentId: doc.id, file })}
+                          accept="image/png,image/jpeg,application/pdf,text/plain,text/csv,application/dicom"
+                        >
+                          {(props) => (
+                            <Button {...props} size="xs" variant="light" loading={state.receive.isPending}>
+                              Attach and mark received
+                            </Button>
+                          )}
+                        </FileButton>
+                        <Button
+                          size="xs"
+                          variant="subtle"
+                          onClick={() => state.receive.mutate({ documentId: doc.id })}
+                          loading={state.receive.isPending}
+                        >
+                          Received, no file
+                        </Button>
+                      </Group>
+                    )}
                   </Group>
                 ))}
               </Stack>
-            )}
-          </Paper>
 
-          {/*
-            The validation string is not decoration: the model has only ever
-            been tested on one hospital, and that caveat has to travel with the
-            score rather than live in a document.
-          */}
-          {data.modelInfo && (
-            <Stack gap={2}>
-              <Text size="xs" c="dimmed">
-                {data.modelInfo.scorer} · evaluated {relativeTime(data.evaluatedAt)}
-              </Text>
-              {data.modelInfo.validation && (
-                <Text size="xs" c="yellow.7">
-                  {data.modelInfo.validation}
-                </Text>
-              )}
-            </Stack>
-          )}
-        </Stack>
-      </SimpleGrid>
-      )}
-
-      {/* ── The tracing: what was reported, and the ECG age ──── */}
-      {/* Every reader that ran, in the order it ran. One panel per run, not
-          per reader name: two retinal photos are two readings and both belong
-          on the screen. A reader with no panel of its own falls back to a
-          plain one, so a reading is never dropped because nobody wrote a
-          view for it. */}
-      {arms.map((run, i) => {
-        const key = `${run.arm}-${i}`
-        if (run.arm === 'ecg_12lead') {
-          return (
-            <EcgPanel key={key} run={run} age={ageAt(data.applicant.dateOfBirth, data.submittedAt)} />
-          )
-        }
-        if (run.arm === 'mirai') return <MiraiPanel key={key} run={run} />
-        if (run.arm === 'medication_check') {
-          return <MedicationPanel key={key} run={run} noteId={note?.id ?? null} />
-        }
-        if (run.arm === 'mortality') return <MortalityPanel key={key} run={run} />
-        return <ReaderPanel key={key} run={run} />
-      })}
-
-      {/* ── What this means for the policy ──────────────────── */}
-      {data.plan && <PlanPanel plan={data.plan} coverage={data.coverage} />}
-
-      {/* ── Requested documents ─────────────────────────────── */}
-      {((data.requestedDocuments ?? []).length > 0 || (!decided && !pending)) && (
-        <Paper p="md" bd="1px solid var(--mantine-color-default-border)">
-          <Group justify="space-between" align="center" mb="sm">
-            <Text fw={600} size="sm">
-              Documents requested from the applicant
-            </Text>
-            {data.status === 'awaiting_evidence' && (
-              <Badge color="orange" variant="light" size="xs">
-                Waiting on applicant
-              </Badge>
-            )}
-          </Group>
-
-          {(data.requestedDocuments ?? []).length === 0 && (
-            <Text size="sm" c="dimmed" mb="sm">
-              Nothing has been requested.
-            </Text>
-          )}
-
-          <Stack gap={6} mb="sm">
-            {(data.requestedDocuments ?? []).map((doc) => (
-              <Group key={doc.id} justify="space-between" wrap="nowrap">
-                <Text
-                  size="sm"
-                  c={doc.fulfilledAt ? 'dimmed' : undefined}
-                  td={doc.fulfilledAt ? 'line-through' : undefined}
-                >
-                  {doc.description}
-                </Text>
-                {doc.fulfilledAt ? (
-                  <Group gap={6} wrap="nowrap">
-                    <Badge size="xs" variant="light" color="teal">
-                      Received
-                    </Badge>
-                    {doc.fulfilledByFileId && (
-                      <Anchor href={fileUrl(doc.fulfilledByFileId)} target="_blank" size="xs">
-                        Open the document
-                      </Anchor>
-                    )}
-                  </Group>
-                ) : (
-                  <Group gap={6} wrap="nowrap">
-                    <FileButton
-                      onChange={(file) => file && state.receive.mutate({ documentId: doc.id, file })}
-                      accept="image/png,image/jpeg,application/pdf,text/plain,text/csv,application/dicom"
-                    >
-                      {(props) => (
-                        <Button {...props} size="xs" variant="light" loading={state.receive.isPending}>
-                          Attach and mark received
-                        </Button>
-                      )}
-                    </FileButton>
-                    <Button
+              {!decided &&
+                (state.requestOpen ? (
+                  <Stack gap="xs">
+                    <Textarea
                       size="xs"
-                      variant="subtle"
-                      onClick={() => state.receive.mutate({ documentId: doc.id })}
-                      loading={state.receive.isPending}
-                    >
-                      Received, no file
-                    </Button>
-                  </Group>
-                )}
-              </Group>
-            ))}
-          </Stack>
-
-          {!decided &&
-            (state.requestOpen ? (
-              <Stack gap="xs">
-                <Textarea
-                  size="xs"
-                  label="What is needed"
-                  description="One document per line, in words the applicant will understand."
-                  placeholder={'A chest X-ray taken within the last 6 months\nHbA1c blood test result'}
-                  autosize
-                  minRows={2}
-                  value={state.requestItems}
-                  onChange={(e) => state.setRequestItems(e.currentTarget.value)}
-                />
-                <Textarea
-                  size="xs"
-                  label="Note to the applicant (optional)"
-                  autosize
-                  minRows={1}
-                  value={state.requestNote}
-                  onChange={(e) => state.setRequestNote(e.currentTarget.value)}
-                />
-                <Group justify="flex-end" gap="xs">
-                  <Button size="xs" variant="subtle" onClick={() => state.setRequestOpen(false)}>
-                    Cancel
-                  </Button>
+                      label="What is needed"
+                      description="One document per line, in words the applicant will understand."
+                      placeholder={'A chest X-ray taken within the last 6 months\nHbA1c blood test result'}
+                      autosize
+                      minRows={2}
+                      value={state.requestItems}
+                      onChange={(e) => state.setRequestItems(e.currentTarget.value)}
+                    />
+                    <Textarea
+                      size="xs"
+                      label="Note to the applicant (optional)"
+                      autosize
+                      minRows={1}
+                      value={state.requestNote}
+                      onChange={(e) => state.setRequestNote(e.currentTarget.value)}
+                    />
+                    <Group justify="flex-end" gap="xs">
+                      <Button size="xs" variant="subtle" onClick={() => state.setRequestOpen(false)}>
+                        Cancel
+                      </Button>
+                      <Button
+                        size="xs"
+                        color="orange"
+                        onClick={() => state.request.mutate()}
+                        loading={state.request.isPending}
+                        disabled={state.requestItems.split('\n').every((line) => !line.trim())}
+                      >
+                        Send request
+                      </Button>
+                    </Group>
+                  </Stack>
+                ) : (
                   <Button
                     size="xs"
+                    variant="light"
                     color="orange"
-                    onClick={() => state.request.mutate()}
-                    loading={state.request.isPending}
-                    disabled={state.requestItems.split('\n').every((line) => !line.trim())}
+                    onClick={() => state.setRequestOpen(true)}
                   >
-                    Send request
+                    Request more evidence
                   </Button>
-                </Group>
-              </Stack>
-            ) : (
-              <Button
-                size="xs"
-                variant="light"
-                color="orange"
-                onClick={() => state.setRequestOpen(true)}
-              >
-                Request more evidence
-              </Button>
-            ))}
+                ))}
 
-          <Text size="xs" c="dimmed" mt="sm">
-            Asking for documents pauses the application. It does not decide it; the
-            decision below stays open.
-          </Text>
-        </Paper>
-      )}
-
-      {/* ── Decision ────────────────────────────────────────── */}
-      <Paper p="md" bd="1px solid var(--mantine-color-default-border)">
-        <Group justify="space-between" align="center" mb="sm">
-          <Text fw={600} size="sm">
-            Decision
-          </Text>
-          {user && (
-            <Text size="xs" style={{ color: 'var(--neo-muted)' }}>
-              Deciding as {ROLE_LABEL[user.role]}
-            </Text>
-          )}
-        </Group>
-        {!decided && (
-          <Text size="xs" mb="sm" style={{ color: 'var(--neo-muted)' }}>
-            Pick one. It is recorded under your name, written to the audit trail, and cannot be
-            changed afterwards. The client is emailed that there is an update.
-          </Text>
-        )}
-
-        {isMedical && isElevated && !decided && !escalated && (
-          <Alert color="grape" variant="light" icon={<IconShieldCheck size={18} />} title="Elevated risk" mb="sm">
-            <Text size="xs">
-              The models put this application in the elevated tier. Only a medical professional can
-              approve it, and that is you. Read the image and the findings, then decide.
-            </Text>
-          </Alert>
-        )}
-
-        {escalated && !decided && (
-          <Alert color="grape" variant="light" icon={<IconShieldCheck size={18} />} title="With a medical professional" mb="sm">
-            <Text size="xs">
-              {isMedical
-                ? 'An underwriter passed this application to you. The decision is yours to record.'
-                : 'This application has been passed to a medical professional. Only they can decide it now.'}
-            </Text>
-          </Alert>
-        )}
-
-        {isUnderwriter && isElevated && !decided && !escalated && (
-          <Alert color="red" variant="light" icon={<IconAlertTriangle size={18} />} title="Elevated risk" mb="sm">
-            <Text size="xs">
-              The models put this application in the elevated tier. You can escalate it to a
-              medical professional; approving it is not available to you.
-            </Text>
-          </Alert>
-        )}
-
-        {decided ? (
-          <Alert
-            icon={<IconCircleCheck size={18} />}
-            color="teal"
-            variant="light"
-            title="Decision recorded"
-            className="decision-recorded"
-          >
-            <Text size="sm">
-              <strong>
-                {DECISIONS.find((d) => d.value === data.decision?.decision)?.label ??
-                  data.decision?.decision}
-              </strong>{' '}
-              by {data.decision?.underwriterName ?? 'an underwriter'},{' '}
-              {relativeTime(data.decision?.decidedAt)}.
-              {data.decision?.finalPremium != null &&
-                ` Final premium ${Number(data.decision.finalPremium).toLocaleString()}.`}{' '}
-              A recorded decision cannot be changed.
-            </Text>
-          </Alert>
-        ) : !scored && data.status !== 'insufficient_evidence' && data.status !== 'awaiting_evidence' ? (
-          <Text size="sm" c="dimmed">
-            A decision can be recorded once the models have finished reading the evidence.
-          </Text>
-        ) : (
-          <>
-            <SimpleGrid cols={{ base: 1, sm: 2 }} spacing="sm">
-              {DECISIONS.filter((d) => !(escalated && d.value === 'escalated_senior_review')).map((d) => {
-                const isApprovalAction =
-                  d.value === 'confirmed_fast_track' || d.value === 'approved_with_adjustment'
-                const isBlockedForUnderwriter =
-                  isUnderwriter && isApprovalAction && (isElevated || escalated)
-                const isEscalate = d.value === 'escalated_senior_review'
-
-                const btn = (
-                  <Button
-                    key={d.value}
-                    variant={state.decision === d.value ? 'filled' : 'light'}
-                    color={
-                      state.decision === d.value
-                        ? isEscalate
-                          ? 'orange'
-                          : isMedical
-                          ? 'grape'
-                          : 'clinical'
-                        : 'gray'
-                    }
-                    justify="space-between"
-                    disabled={isBlockedForUnderwriter}
-                    onClick={() => {
-                      state.setDecision(d.value)
-                      // Start from the plan's figure rather than an empty box, so
-                      // the rate is anchored to the tier and the cover requested.
-                      // The underwriter still sets the final number.
-                      if (d.value === 'approved_with_adjustment' && state.premium == null) {
-                        state.setPremium(data.plan?.monthlyPremiumBdt ?? undefined)
-                      }
-                    }}
-                  >
-                    {d.label}
-                  </Button>
-                )
-
-                if (isBlockedForUnderwriter) {
-                  return (
-                    <Tooltip
-                      key={d.value}
-                      label={
-                        escalated
-                          ? 'Escalated: a medical professional decides this'
-                          : 'Elevated risk: escalate this to a medical professional'
-                      }
-                      withArrow
-                    >
-                      <div>{btn}</div>
-                    </Tooltip>
-                  )
-                }
-
-                return btn
-              })}
-            </SimpleGrid>
-
-            {state.decision === 'escalated_senior_review' && (
-              <Textarea
-                mt="md"
-                label="A note for the medical professional"
-                description="Optional. What you want them to look at. They see it with the notification."
-                placeholder="The apex of the right lung; the client reports a cough of six weeks."
-                autosize
-                minRows={2}
-                value={state.escalateNote}
-                onChange={(e) => state.setEscalateNote(e.currentTarget.value)}
-              />
-            )}
-
-            {state.decision === 'approved_with_adjustment' && (
-              <NumberInput
-                mt="md"
-                label="Final monthly premium (BDT)"
-                description={
-                  data.plan?.monthlyPremiumBdt != null
-                    ? `Plan suggests ৳${Math.round(
-                        data.plan.monthlyPremiumBdt,
-                      ).toLocaleString('en-IN')} for the cover requested. Adjust as you see fit.`
-                    : 'Set the rate you are approving at.'
-                }
-                placeholder="7,500"
-                thousandSeparator=","
-                min={0}
-                value={state.premium}
-                onChange={(v) =>
-                  state.setPremium(typeof v === 'number' ? v : Number(v) || undefined)
-                }
-              />
-            )}
-
-            <Group justify="space-between" mt="md">
-              <Text size="xs" c="dimmed">
-                There is no decline here. If this should not be approved, escalate it.
+              <Text size="xs" c="dimmed" mt="sm">
+                Asking for documents pauses the application. It does not decide it; the
+                decision stays open.
               </Text>
-              <Button
-                size="xs"
-                disabled={
-                  !state.decision ||
-                  // An adjusted approval without a rate is not a decision.
-                  (state.decision === 'approved_with_adjustment' && (state.premium ?? 0) <= 0)
-                }
-                onClick={() => state.submit.mutate()}
-                loading={state.submit.isPending}
-              >
-                {state.decision === 'escalated_senior_review' ? 'Hand over' : 'Record decision'}
-              </Button>
-            </Group>
+            </Paper>
+          )}
+
+          {/* The owner may do a doctor's work as well: check the results, or
+              write to the client directly. */}
+          {/* The policy this approval issued, with its payments. */}
+          {data.policy && (
+            <PolicyPanel policies={[data.policy]} clientId={data.policy.clientId} compact />
+          )}
+          {isAdmin && !escalated && <DoctorPanel data={data} />}
           </>
-        )}
-      </Paper>
+          )}
+          </Stack>
+        </Grid.Col>
+      </Grid>
 
       <AuditTrail applicationId={data.id} />
     </Stack>
+  )
+}
+
+// ── The readings: an overview, then one tab per reader ──────────────────────
+
+function Readings({ data, state }: { data: ApplicationDetail; state: ReviewState }) {
+  const limits = limitsOf(data)
+  const groups = groupRuns(data.arms ?? [])
+  const [params] = useSearchParams()
+  const [picked, setPicked] = useState<string | null>(params.get('reader'))
+  const active = picked && groups.some((g) => g.arm === picked) ? picked : (groups[0]?.arm ?? null)
+
+  if (groups.length === 0) return null
+  const adjustments = data.adjustments ?? []
+
+  return (
+    <Stack gap="md" className="review-col">
+      <Paper p="md" bd="1px solid var(--mantine-color-default-border)">
+        <Group justify="space-between" align="baseline" mb="sm">
+          <Text fw={600} size="sm">
+            What each reader found
+          </Text>
+          <Text size="xs" c="dimmed">
+            {groups.length} reader{groups.length === 1 ? '' : 's'} · select one to open it
+          </Text>
+        </Group>
+        <ReaderCards groups={groups} limits={limits} active={active} onSelect={setPicked} />
+
+        {/* The declared history moves the overall score, not any one reader's,
+            so it sits with the overview rather than inside a reader. */}
+        <Box mt="md" pt="sm" style={{ borderTop: '1px solid var(--mantine-color-default-border)' }}>
+          <Text size="xs" fw={600} tt="uppercase" lts={0.4} c="dimmed" mb={6}>
+            Declared history · applied to the overall score
+          </Text>
+          {adjustments.length === 0 ? (
+            <Text size="sm" c="dimmed">
+              Nothing declared on the form changed the score.
+            </Text>
+          ) : (
+            <Stack gap={4}>
+              {adjustments.map((a) => (
+                <Group key={a.key} gap="sm" wrap="nowrap" align="flex-start">
+                  <Badge
+                    size="sm"
+                    variant="light"
+                    color={a.points >= 0 ? 'orange' : 'teal'}
+                    ff="monospace"
+                    miw={44}
+                  >
+                    {a.points >= 0 ? '+' : ''}
+                    {a.points}
+                  </Badge>
+                  <Text size="sm" c="dimmed" style={{ flex: 1 }}>
+                    {a.reason}
+                  </Text>
+                </Group>
+              ))}
+            </Stack>
+          )}
+        </Box>
+      </Paper>
+
+      <Tabs value={active} onChange={setPicked} keepMounted={false}>
+        <Tabs.List>
+          {groups.map((g) => {
+            const Icon = infoFor(g.arm).icon
+            return (
+              <Tabs.Tab key={g.arm} value={g.arm} leftSection={<Icon size={14} />}>
+                {infoFor(g.arm).title}
+              </Tabs.Tab>
+            )
+          })}
+        </Tabs.List>
+        {groups.map((g) => (
+          <Tabs.Panel key={g.arm} value={g.arm} pt="md">
+            <Stack gap="md">
+              {g.runs.map((run, i) => (
+                <ModelSection
+                  key={`${run.arm}-${i}`}
+                  run={run}
+                  data={data}
+                  state={state}
+                  limits={limits}
+                  reading={g.runs.length > 1 ? i + 1 : null}
+                />
+              ))}
+            </Stack>
+          </Tabs.Panel>
+        ))}
+      </Tabs>
+    </Stack>
+  )
+}
+
+/**
+ * One reader, framed the same way as every other: what it read and its score,
+ * its own evidence beside its result, then the figure that says how far to
+ * trust it. A reader that failed says so in the same place for every reader.
+ */
+function ModelSection({
+  run,
+  data,
+  state,
+  limits,
+  reading,
+}: {
+  run: ArmRun
+  data: ApplicationDetail
+  state: ReviewState
+  limits: Limits
+  reading: number | null
+}) {
+  const info = infoFor(run.arm)
+  const band = bandFor(run.score, limits)
+  const Icon = info.icon
+  const files = data.files ?? []
+  const isText = (f: EvidenceFile) => Boolean(f.mimeType?.startsWith('text/'))
+  const images = info.evidenceKind
+    ? files.filter((f) => f.kind === 'evidence' && f.evidenceKind === info.evidenceKind && !isText(f))
+    : []
+  const heatmaps = files.filter((f) => f.kind === 'gradcam')
+  const heatmapFor = (image: EvidenceFile) =>
+    heatmaps.find((h) => h.ofFileId === image.id) ??
+    (heatmaps.length === 1 && images.length === 1 ? heatmaps[0] : undefined)
+  const note = files.find((f) => f.kind === 'evidence' && isText(f))
+  const details = (run.details ?? {}) as { scorer?: string; validation?: string }
+
+  const body = (() => {
+    switch (run.arm) {
+      case 'tb_xray':
+        return <ChestPanel run={run} state={state} />
+      case 'dr_fundus':
+        return <RetinaPanel run={run} />
+      case 'ecg_12lead':
+        return <EcgPanel run={run} age={ageAt(data.applicant.dateOfBirth, data.submittedAt)} />
+      case 'mirai':
+        return <MiraiPanel run={run} />
+      case 'medication_check':
+        return <MedicationPanel run={run} noteId={note?.id ?? null} />
+      case 'mortality':
+        return <MortalityPanel run={run} />
+      default:
+        return <ReaderPanel run={run} />
+    }
+  })()
+
+  const evidence =
+    run.arm === 'mirai' ? (
+      <MammogramViews files={images} />
+    ) : (
+      <Stack gap="sm">
+        {images.map((image) => (
+          <EvidencePanel key={image.id} file={image} heatmap={heatmapFor(image)} />
+        ))}
+      </Stack>
+    )
+
+  return (
+    <Paper p="md" bd="1px solid var(--mantine-color-default-border)">
+      <Group justify="space-between" align="flex-start" mb="md" wrap="nowrap">
+        <Group gap="sm" wrap="nowrap" align="flex-start">
+          <ThemeIcon variant="light" size="lg" radius="md">
+            <Icon size={18} />
+          </ThemeIcon>
+          <div>
+            <Text fw={700}>
+              {info.title}
+              {reading != null && (
+                <Text span c="dimmed" fw={400}>
+                  {' '}
+                  · reading {reading}
+                </Text>
+              )}
+            </Text>
+            <Text size="xs" c="dimmed">
+              {info.reads}
+            </Text>
+          </div>
+        </Group>
+        {band && run.score != null && (
+          <Group gap="xs" wrap="nowrap" align="center">
+            <Text fw={700} size="xl" ff="monospace">
+              {run.score.toFixed(1)}
+            </Text>
+            <Badge variant="light" color={band.color} style={{ minWidth: 'max-content' }}>
+              {band.label}
+            </Badge>
+          </Group>
+        )}
+      </Group>
+
+      {run.error ? (
+        <Alert color="yellow" variant="light" icon={<IconAlertTriangle size={18} />} title="Could not be read">
+          <Text size="sm">{run.error}</Text>
+          <Text size="xs" c="dimmed" mt={4}>
+            The application was scored on the other readers without this one.
+          </Text>
+        </Alert>
+      ) : images.length === 0 ? (
+        body
+      ) : info.stacked ? (
+        <Stack gap="md">
+          {evidence}
+          {body}
+        </Stack>
+      ) : (
+        <SimpleGrid cols={{ base: 1, md: 2 }} spacing="md">
+          {evidence}
+          <div>{body}</div>
+        </SimpleGrid>
+      )}
+
+      {(details.scorer || details.validation) && (
+        <Box mt="md" pt="sm" style={{ borderTop: '1px solid var(--mantine-color-default-border)' }}>
+          {details.scorer && (
+            <Text size="xs" c="dimmed">
+              {details.scorer}
+            </Text>
+          )}
+          {details.validation && (
+            <Text size="xs" c="yellow.7" mt={2}>
+              {details.validation}
+            </Text>
+          )}
+        </Box>
+      )}
+    </Paper>
+  )
+}
+
+/** The chest reader: the findings that moved its TB score, strongest first. */
+function ChestPanel({ run, state }: { run: ArmRun; state: ReviewState }) {
+  const d = (run.details ?? {}) as {
+    findings?: Record<string, number>
+    contributions?: Record<string, number>
+  }
+  const probabilities = d.findings ?? {}
+  const contributions = d.contributions ?? {}
+  const ranked = Object.keys({ ...probabilities, ...contributions })
+    .map((label) => ({
+      label,
+      probability: probabilities[label] ?? 0,
+      contribution: contributions[label] ?? 0,
+    }))
+    .sort((a, b) => Math.abs(b.contribution) - Math.abs(a.contribution))
+  const shown = state.showAll ? ranked : ranked.slice(0, TOP_N)
+  const scale = Math.max(...ranked.map((f) => Math.abs(f.contribution)), 0.01)
+
+  if (ranked.length === 0) {
+    return (
+      <Text size="sm" c="dimmed">
+        The model produced no findings.
+      </Text>
+    )
+  }
+  return (
+    <div>
+      <Text size="xs" mb="sm" c="dimmed">
+        The network reports 18 general chest findings; a model trained on TB films weighs them
+        into the score. Ranked by how much each moved it. The first figure is how sure the network
+        is the finding is there; the second is its push on the score, up or down.
+      </Text>
+      <Stack gap="sm">
+        {shown.map((f) => (
+          <FindingBar key={f.label} finding={f} scale={scale} />
+        ))}
+      </Stack>
+      {ranked.length > TOP_N && (
+        <Button
+          variant="subtle"
+          size="xs"
+          mt="sm"
+          fullWidth
+          rightSection={<IconChevronDown size={14} />}
+          onClick={() => state.setShowAll(!state.showAll)}
+        >
+          {state.showAll ? `Show top ${TOP_N}` : `Show all ${ranked.length}`}
+        </Button>
+      )}
+    </div>
+  )
+}
+
+const ICDR_GRADES = ['No DR', 'Mild NPDR', 'Moderate NPDR', 'Severe NPDR', 'Proliferative DR']
+
+/** The retina reader: the grade, how likely it is to need referral, and why. */
+function RetinaPanel({ run }: { run: ArmRun }) {
+  const d = (run.details ?? {}) as {
+    grade_name?: string
+    icdr_grade?: number
+    referable_probability?: number
+    class_probabilities?: Record<string, number>
+  }
+  const referable = d.referable_probability
+  const classes = d.class_probabilities ?? {}
+
+  return (
+    <div>
+      <SimpleGrid cols={2} spacing="sm">
+        <Field label="Grade">{d.grade_name ?? '—'}</Field>
+        <Field label="Needs referral">
+          {referable != null ? (
+            <Text span c={referable >= 0.5 ? 'orange' : 'teal'} fw={700}>
+              {(referable * 100).toFixed(0)}%
+            </Text>
+          ) : (
+            '—'
+          )}
+        </Field>
+      </SimpleGrid>
+      <Text size="xs" c="dimmed" mt="sm">
+        Referable means moderate retinopathy or worse (ICDR grade 2+), the point at which an eye
+        specialist should see the patient. The score is that probability.
+      </Text>
+
+      <Text size="xs" fw={600} tt="uppercase" lts={0.4} c="dimmed" mt="md" mb={6}>
+        Probability of each grade
+      </Text>
+      {/* ICDR order, whatever order the stored probabilities came back in:
+          the grades are a scale, and grade 2 onwards is what needs referral. */}
+      <Stack gap={6}>
+        {ICDR_GRADES.map((name, i) => {
+          const p = classes[name] ?? 0
+          const chosen = d.grade_name === name
+          return (
+            <div key={name}>
+              <Group justify="space-between" mb={2} wrap="nowrap">
+                <Text size="xs" fw={chosen ? 700 : 400}>
+                  {name}
+                </Text>
+                <Text size="xs" ff="monospace" c={chosen ? undefined : 'dimmed'}>
+                  {(p * 100).toFixed(1)}%
+                </Text>
+              </Group>
+              <Box h={6} style={{ backgroundColor: 'var(--mantine-color-dark-5)', borderRadius: 3 }}>
+                <Box
+                  h="100%"
+                  style={{
+                    width: `${Math.min(100, p * 100)}%`,
+                    backgroundColor:
+                      i >= 2 ? 'var(--mantine-color-orange-5)' : 'var(--mantine-color-teal-5)',
+                    borderRadius: 3,
+                  }}
+                />
+              </Box>
+            </div>
+          )
+        })}
+      </Stack>
+    </div>
+  )
+}
+
+/** The four mammogram views, small, in the order a radiologist hangs them. */
+function MammogramViews({ files }: { files: EvidenceFile[] }) {
+  const position = (f: EvidenceFile) => {
+    const name = `${f.filename ?? ''}`.toLowerCase()
+    const right = /right|_r_|\br\b|-r-|rcc|rmlo/.test(name)
+    const mlo = name.includes('mlo')
+    return (right ? 0 : 1) + (mlo ? 2 : 0)
+  }
+  const sorted = [...files].sort((a, b) => position(a) - position(b))
+  return (
+    <SimpleGrid cols={2} spacing="xs">
+      {sorted.map((f) => (
+        <Box key={f.id}>
+          <Box
+            h={170}
+            style={{
+              display: 'grid',
+              placeItems: 'center',
+              backgroundColor: '#000',
+              borderRadius: 'var(--mantine-radius-sm)',
+              overflow: 'hidden',
+            }}
+          >
+            <Image src={fileUrl(f.id)} alt={f.filename ?? 'Mammogram view'} h={170} fit="contain" />
+          </Box>
+          <Text size="xs" c="dimmed" mt={2} truncate>
+            {f.filename}
+          </Text>
+        </Box>
+      ))}
+    </SimpleGrid>
   )
 }
 
@@ -1145,16 +1419,11 @@ const FACTOR_LABELS: Record<string, string> = {
 function MortalityPanel({ run }: { run: ArmRun }) {
   const d = run.details as MortalityDetails
 
-  if (run.error || d.mortality_ratio == null) {
+  if (d.mortality_ratio == null) {
     return (
-      <Paper p="md" bd="1px solid var(--mantine-color-default-border)">
-        <Text fw={600} size="sm">
-          Blood panel and lifestyle
-        </Text>
-        <Text size="sm" c="dimmed" mt={4}>
-          Could not be assessed: {run.error ?? 'no result was stored'}.
-        </Text>
-      </Paper>
+      <Text size="sm" c="dimmed">
+        No result was stored.
+      </Text>
     )
   }
 
@@ -1175,24 +1444,7 @@ function MortalityPanel({ run }: { run: ArmRun }) {
     FACTOR_LABELS[key] ?? d.labels?.[key]?.split(',')[0] ?? key
 
   return (
-    <Paper p="md" bd="1px solid var(--mantine-color-default-border)">
-      <Group justify="space-between" align="flex-start" mb="sm">
-        <div>
-          <Text fw={600} size="sm">
-            Mortality relative to age
-          </Text>
-          <Text size="xs" c="dimmed">
-            From the blood panel and lifestyle answers, against a typical peer of the same age
-            and sex
-          </Text>
-        </div>
-        {run.score != null && (
-          <Badge variant="light" color={elevated ? 'orange' : 'teal'} size="lg">
-            arm score {run.score.toFixed(1)}
-          </Badge>
-        )}
-      </Group>
-
+    <div>
       <Text size="sm">
         Mortality about{' '}
         <Text span fw={700} c={elevated ? 'orange' : 'teal'}>
@@ -1379,7 +1631,7 @@ function MortalityPanel({ run }: { run: ArmRun }) {
         probability, not validated in South Asia, and not a diagnosis. The smoking box reads
         "current or former"; the model learned "current", so a former smoker is scored as one.
       </Text>
-    </Paper>
+    </div>
   )
 }
 
@@ -1423,29 +1675,7 @@ function ReaderPanel({ run }: { run: ArmRun }) {
     .slice(0, TOP_N)
   const scale = Math.max(...ranked.map((f) => Math.abs(f.contribution)), 0.01)
 
-  return (
-    <Paper p="md" bd="1px solid var(--mantine-color-default-border)">
-      <Group justify="space-between" align="flex-start" mb="sm">
-        <div>
-          <Text fw={600} size="sm">
-            {READER_LABELS[run.arm] ?? run.arm}
-          </Text>
-          <Text size="xs" style={{ color: 'var(--neo-muted)' }}>
-            {run.version}
-          </Text>
-        </div>
-        {run.score != null && (
-          <Badge variant="light" size="lg" color={run.score > 65 ? 'red' : run.score > 30 ? 'yellow' : 'teal'}>
-            {run.score.toFixed(1)}
-          </Badge>
-        )}
-      </Group>
-
-      {run.error ? (
-        <Text size="sm" c="dimmed">
-          Could not be assessed: {run.error}.
-        </Text>
-      ) : ranked.length > 0 ? (
+  return ranked.length > 0 ? (
         <>
           <Text size="xs" mb="sm" style={{ color: 'var(--neo-muted)' }}>
             What this reader found, ranked by how much each finding moved its score.
@@ -1460,25 +1690,7 @@ function ReaderPanel({ run }: { run: ArmRun }) {
         <Text size="sm" c="dimmed">
           No findings were reported.
         </Text>
-      )}
-
-      {details.validation && (
-        <Text size="xs" c="yellow.7" mt="sm">
-          {details.validation}
-        </Text>
-      )}
-    </Paper>
-  )
-}
-
-/** What each reader is called on screen. */
-const READER_LABELS: Record<string, string> = {
-  tb_xray: 'Chest X-ray',
-  dr_fundus: 'Retinal photo',
-  ecg_12lead: '12-lead ECG',
-  mirai: 'Mammogram',
-  medication_check: 'Clinical note',
-  mortality: 'Blood panel and lifestyle',
+      )
 }
 
 function MiraiPanel({ run }: { run: ArmRun }) {
@@ -1491,27 +1703,10 @@ function MiraiPanel({ run }: { run: ArmRun }) {
   const peak = Math.max(high, ...risks)
 
   return (
-    <Paper p="md" bd="1px solid var(--mantine-color-default-border)">
-      <Group justify="space-between" align="flex-start" mb="sm">
-        <div>
-          <Text fw={600} size="sm">
-            Breast-cancer risk from the mammogram
-          </Text>
-          <Text size="xs" c="dimmed">
-            Mirai reads the four views and estimates the chance of a diagnosis within one to five
-            years
-          </Text>
-        </div>
-        {run.score != null && (
-          <Badge variant="light" color={elevated ? 'orange' : five != null && five > average ? 'yellow' : 'teal'} size="lg">
-            arm score {run.score.toFixed(1)}
-          </Badge>
-        )}
-      </Group>
-
-      {run.error || five == null ? (
+    <div>
+      {five == null ? (
         <Text size="sm" c="dimmed">
-          Could not be assessed: {run.error ?? 'no result was stored'}.
+          No result was stored.
         </Text>
       ) : (
         <>
@@ -1564,11 +1759,10 @@ function MiraiPanel({ run }: { run: ArmRun }) {
       )}
 
       <Text size="xs" c="dimmed" mt="md">
-        {d.scorer}
-        {d.runtime ? `, read on this machine in ${d.runtime}` : ''}.{' '}
-        {d.validation}. A risk estimate, not a finding on the film: nothing here says where to look.
+        {d.runtime ? `Read on this machine in ${d.runtime}. ` : ''}A risk estimate, not a finding
+        on the film: nothing here says where to look.
       </Text>
-    </Paper>
+    </div>
   )
 }
 
@@ -1647,29 +1841,8 @@ function MedicationPanel({ run, noteId }: { run: ArmRun; noteId: string | null }
   const excluded = d.excluded ?? []
 
   return (
-    <Paper p="md" bd="1px solid var(--mantine-color-default-border)">
-      <Group justify="space-between" align="flex-start" mb="sm">
-        <div>
-          <Text fw={600} size="sm">
-            Clinical note, read by BioBERT
-          </Text>
-          <Text size="xs" c="dimmed">
-            BioBERT finds the medications and diagnoses written in the note; each is checked
-            against what the form declared
-          </Text>
-        </div>
-        {run.score != null && (
-          <Badge variant="light" color={flags.length ? 'orange' : 'teal'} size="lg">
-            arm score {run.score.toFixed(1)}
-          </Badge>
-        )}
-      </Group>
-
-      {run.error ? (
-        <Text size="sm" c="dimmed">
-          Not checked: {run.error}.
-        </Text>
-      ) : flags.length === 0 ? (
+    <div>
+      {flags.length === 0 ? (
         <Text size="sm">
           Everything BioBERT found in the note is explained by the declared history or implies
           nothing material.
@@ -1707,7 +1880,8 @@ function MedicationPanel({ run, noteId }: { run: ArmRun; noteId: string | null }
       )}
 
       {meds.length > 0 && (
-        <Table fz="xs" withRowBorders={false} verticalSpacing={4} mt="md">
+        <Table.ScrollContainer minWidth={720} mt="md">
+        <Table fz="xs" withRowBorders={false} verticalSpacing={4}>
           <Table.Thead>
             <Table.Tr>
               <Table.Th>Medication</Table.Th>
@@ -1743,7 +1917,7 @@ function MedicationPanel({ run, noteId }: { run: ArmRun; noteId: string | null }
                     </Text>
                   )}
                 </Table.Td>
-                <Table.Td>
+                <Table.Td style={{ whiteSpace: 'nowrap' }}>
                   <Text size="xs">
                     {(m.found_by ?? []).includes('biobert')
                       ? (m.found_by ?? []).includes('table')
@@ -1758,10 +1932,13 @@ function MedicationPanel({ run, noteId }: { run: ArmRun; noteId: string | null }
                     )}
                   </Text>
                 </Table.Td>
-                <Table.Td>
+                <Table.Td style={{ whiteSpace: 'nowrap' }}>
                   <Badge
                     size="xs"
                     variant="light"
+                    // The badge clips its label, so its smallest width is a few letters and
+                    // the cell shrank to that. Its full label is the smallest it may go.
+                    style={{ minWidth: 'max-content' }}
                     color={
                       m.status === 'undisclosed' ? 'orange' : m.status === 'explained' ? 'teal' : 'gray'
                     }
@@ -1777,6 +1954,7 @@ function MedicationPanel({ run, noteId }: { run: ArmRun; noteId: string | null }
             ))}
           </Table.Tbody>
         </Table>
+        </Table.ScrollContainer>
       )}
 
       {(d.conditions_in_note ?? []).length > 0 && (
@@ -1861,14 +2039,12 @@ function MedicationPanel({ run, noteId }: { run: ArmRun; noteId: string | null }
       )}
 
       <Text size="xs" c="dimmed" mt="md">
-        {d.scorer}
         {d.biobert
-          ? `: BioBERT found ${d.biobert.drugs_found} drug and ${d.biobert.diseases_found} disease mentions`
+          ? `BioBERT found ${d.biobert.drugs_found} drug and ${d.biobert.diseases_found} disease mentions. `
           : ''}
-        . {d.validation}. The note is not de-identified and is shown here only to the underwriter
-        holding the case.
+        The note is not de-identified and is shown here only to the underwriter holding the case.
       </Text>
-    </Paper>
+    </div>
   )
 }
 
@@ -1891,16 +2067,11 @@ interface EcgDetails {
 function EcgPanel({ run, age }: { run: ArmRun; age: number | null }) {
   const d = run.details as EcgDetails
 
-  if (run.error || !d.probabilities) {
+  if (!d.probabilities) {
     return (
-      <Paper p="md" bd="1px solid var(--mantine-color-default-border)">
-        <Text fw={600} size="sm">
-          12-lead ECG
-        </Text>
-        <Text size="sm" c="dimmed" mt={4}>
-          Could not be read: {run.error ?? 'no result was stored'}.
-        </Text>
-      </Paper>
+      <Text size="sm" c="dimmed">
+        No result was stored.
+      </Text>
     )
   }
 
@@ -1925,24 +2096,7 @@ function EcgPanel({ run, age }: { run: ArmRun; age: number | null }) {
   const notable = gap != null && fit ? Math.abs(gap) >= fit.notable_gap_years : false
 
   return (
-    <Paper p="md" bd="1px solid var(--mantine-color-default-border)">
-      <Group justify="space-between" align="flex-start" mb="sm">
-        <div>
-          <Text fw={600} size="sm">
-            12-lead ECG
-          </Text>
-          <Text size="xs" c="dimmed">
-            Six rhythm and conduction abnormalities at the authors' operating thresholds, and an
-            ECG age
-          </Text>
-        </div>
-        {run.score != null && (
-          <Badge variant="light" color={reported.length ? 'orange' : 'teal'} size="lg">
-            arm score {run.score.toFixed(1)}
-          </Badge>
-        )}
-      </Group>
-
+    <div>
       <Text size="sm">
         {reported.length === 0 ? (
           <>None of the six abnormalities reported.</>
@@ -2051,10 +2205,10 @@ function EcgPanel({ run, age }: { run: ArmRun; age: number | null }) {
       </SimpleGrid>
 
       <Text size="xs" c="dimmed" mt="md">
-        {d.scorer}. {d.validation}. Trained on Brazilian tracings; not a diagnosis, and a
-        reported abnormality is a reason to obtain the cardiologist's report.
+        Trained on Brazilian tracings; not a diagnosis, and a reported abnormality is a reason to
+        obtain the cardiologist's report.
       </Text>
-    </Paper>
+    </div>
   )
 }
 
@@ -2094,7 +2248,7 @@ function PlanPanel({
         </Badge>
       </Group>
 
-      <SimpleGrid cols={{ base: 1, sm: 3 }} spacing="md">
+      <SimpleGrid cols={1} spacing="sm">
         <Field label="Cover requested">
           {requested ? bdt(requested) : '—'}
           {coverage.coverageType && (
@@ -2133,7 +2287,7 @@ function PlanPanel({
           ? `Illustrative only: ${bdt(plan.baseMonthlyBdt)}/month at ${bdt(
               plan.referenceCoverBdt,
             )} of cover, scaled to the amount requested. Not an actuarial quote — you set the final rate.`
-          : 'No rate is quoted at this tier. A medical professional decides what, if anything, is offered.'}
+          : 'No rate is quoted at this tier. Once a doctor has checked the results, you set what, if anything, is offered.'}
       </Text>
     </Paper>
   )

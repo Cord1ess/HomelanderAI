@@ -1165,6 +1165,33 @@ body {
   box-shadow: 4px 4px 0 var(--neo-shadow);
 }
 
+/* A doctor's message to the applicant. Urgent ones are red: see a doctor. */
+.portal-message[data-urgent='true'] {
+  border-color: var(--neo-danger);
+  background: var(--neo-danger-soft);
+  box-shadow: 4px 4px 0 var(--neo-shadow);
+}
+
+.portal-message[data-urgent='true'] .portal-card__label {
+  color: var(--neo-danger);
+}
+
+.portal-message__item + .portal-message__item {
+  margin-top: 0.9rem;
+  padding-top: 0.9rem;
+  border-top: 1px solid var(--neo-border);
+}
+
+.portal-message__item[data-urgent='true'] .portal-card__body {
+  font-weight: 600;
+}
+
+.portal-message__when {
+  margin: 0.35rem 0 0;
+  font-size: 0.78rem;
+  color: var(--neo-accent-deep);
+}
+
 .portal-card__label {
   margin: 0 0 0.6rem;
   font-size: 0.72rem;
@@ -1255,7 +1282,7 @@ body {
 
 .portal-docs__item {
   display: flex;
-  align-items: baseline;
+  align-items: center;
   justify-content: space-between;
   gap: 1rem;
   padding: 0.7rem 0;
@@ -1283,8 +1310,49 @@ body {
 }
 
 .portal-docs__item[data-received='true'] .portal-docs__text {
-  opacity: 0.55;
-  text-decoration: line-through;
+  opacity: 0.75;
+}
+
+/* A file name or a date under a document, in small print. */
+.portal-docs__file {
+  display: block;
+  margin-top: 0.2rem;
+  font-size: 0.78rem;
+  color: var(--neo-accent-deep);
+}
+
+.portal-docs__error {
+  display: block;
+  margin-top: 0.3rem;
+  font-size: 0.8rem;
+  color: var(--neo-danger);
+}
+
+.portal-docs__item[data-received='true'] .portal-docs__file {
+  text-decoration: none;
+}
+
+/* The one thing an applicant does on the portal. */
+.portal-upload {
+  flex-shrink: 0;
+  padding: 0.45rem 1rem;
+  font: inherit;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--neo-forest-ink);
+  background: var(--neo-forest);
+  border: 1px solid var(--neo-forest);
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.portal-upload:hover:not(:disabled) {
+  box-shadow: 2px 2px 0 var(--neo-shadow);
+}
+
+.portal-upload:disabled {
+  opacity: 0.6;
+  cursor: progress;
 }
 
 .portal-offer {
@@ -1314,4 +1382,233 @@ body {
   font-size: 0.8rem;
   line-height: 1.5;
   color: var(--neo-accent-deep);
+}
+
+/* The result page's two columns: the same height, bottoms lined up. */
+.review-col {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.review-col > :last-child {
+  flex: 1;
+}
+
+/* ── Client portal: sign-in, policy and payments ─────────────────────────── */
+
+.portal-signin {
+  max-width: 440px;
+  margin: 2rem auto 0;
+}
+
+.portal-field {
+  display: block;
+  margin-bottom: 1rem;
+}
+
+.portal-field > span:first-child {
+  display: block;
+  margin-bottom: 0.35rem;
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--neo-ink);
+}
+
+.portal-field input {
+  width: 100%;
+  padding: 0.65rem 0.75rem;
+  font: inherit;
+  font-size: 0.95rem;
+  color: var(--neo-ink);
+  background: var(--neo-bg);
+  border: 1px solid var(--neo-border-mid);
+  border-radius: 6px;
+}
+
+.portal-field input:focus {
+  outline: 2px solid var(--neo-forest);
+  outline-offset: 1px;
+}
+
+.portal-field__row {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.portal-field__toggle {
+  flex-shrink: 0;
+  padding: 0 0.85rem;
+  font: inherit;
+  font-size: 0.8rem;
+  color: var(--neo-ink);
+  background: var(--neo-card);
+  border: 1px solid var(--neo-border-mid);
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.portal-submit {
+  width: 100%;
+  padding: 0.75rem 1rem;
+  font-size: 0.95rem;
+}
+
+.portal-error {
+  margin: 0 0 1rem;
+  padding: 0.6rem 0.75rem;
+  font-size: 0.85rem;
+  color: var(--neo-danger);
+  background: var(--neo-danger-soft);
+  border-radius: 6px;
+}
+
+.portal-policy[data-state='active'] {
+  border-color: var(--neo-forest);
+  box-shadow: 4px 4px 0 var(--neo-shadow);
+}
+
+.portal-policy[data-state='overdue'] {
+  border-color: var(--neo-danger);
+  box-shadow: 4px 4px 0 var(--neo-shadow);
+}
+
+.portal-policy[data-state='cancelled'] {
+  border-style: dashed;
+}
+
+.portal-pay {
+  margin-top: 1rem;
+  padding: 0.9rem 1rem;
+  background: var(--neo-accent-soft);
+  border-radius: 6px;
+}
+
+.portal-pay__next {
+  font-size: 0.95rem;
+  color: var(--neo-ink);
+}
+
+.portal-pay__next[data-overdue='true'] {
+  color: var(--neo-danger);
+}
+
+.portal-pay__bar {
+  height: 8px;
+  margin-top: 0.75rem;
+  overflow: hidden;
+  background: var(--neo-border);
+  border-radius: 99px;
+}
+
+.portal-pay__bar > span {
+  display: block;
+  height: 100%;
+  background: var(--neo-forest);
+  border-radius: 99px;
+}
+
+.portal-payments-wrap {
+  margin-top: 1rem;
+  max-height: 320px;
+  overflow-y: auto;
+  border: 1px solid var(--neo-border);
+  border-radius: 6px;
+}
+
+.portal-payments {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.85rem;
+}
+
+.portal-payments th {
+  position: sticky;
+  top: 0;
+  padding: 0.5rem 0.75rem;
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-align: left;
+  text-transform: uppercase;
+  color: var(--neo-accent-deep);
+  background: var(--neo-card);
+  border-bottom: 1px solid var(--neo-border);
+}
+
+.portal-payments td {
+  padding: 0.5rem 0.75rem;
+  color: var(--neo-ink);
+  border-top: 1px solid var(--neo-border);
+}
+
+.portal-chip {
+  display: inline-block;
+  padding: 0.15rem 0.5rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  border-radius: 99px;
+  color: var(--neo-accent-deep);
+  background: var(--neo-border);
+}
+
+.portal-chip[data-status='paid'] {
+  color: var(--neo-forest-ink);
+  background: var(--neo-forest);
+}
+
+.portal-chip[data-status='overdue'] {
+  color: var(--neo-danger);
+  background: var(--neo-danger-soft);
+}
+
+.portal-chip[data-status='due'] {
+  color: var(--neo-ink);
+  background: var(--neo-warn-soft);
+}
+
+/* The team sign-in page's small label above the form. */
+.auth-eyebrow {
+  margin: 0 0 0.25rem;
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--neo-muted);
+}
+
+/* The intake drop zone answers while files are dragged over it. */
+.drop-all {
+  transition: border-color 120ms ease, background-color 120ms ease;
+}
+
+.drop-all[data-accept] {
+  border-color: var(--neo-forest) !important;
+  background-color: var(--neo-accent-soft) !important;
+}
+
+.drop-all[data-reject] {
+  border-color: var(--neo-danger) !important;
+  background-color: var(--neo-danger-soft) !important;
+}
+
+/* One dropped file: grey while it is read, green once identified, amber if not. */
+.upload-tile {
+  border: 1px solid var(--neo-border-mid);
+  border-radius: 6px;
+  background: var(--neo-card);
+  transition: border-color 200ms ease, background-color 200ms ease;
+}
+
+.upload-tile[data-state='done'] {
+  border-color: var(--neo-forest);
+}
+
+.upload-tile[data-state='unknown'] {
+  border-color: var(--neo-warn);
+  background: var(--neo-warn-soft);
+}
+
+.upload-tile[data-state='reading'] {
+  opacity: 0.8;
 }

@@ -10,6 +10,9 @@ from app.models.application import (
 )
 from app.models.decision import (
     AuditLog,
+    ClientAccessRequest,
+    ClientMessage,
+    DoctorReview,
     Notification,
     NotificationChannel,
     NotificationStatus,
@@ -29,6 +32,7 @@ from app.models.evaluation import (
     RiskTier,
     SubScore,
 )
+from app.models.policy import EmailLog, InsurancePolicy, PremiumPayment
 from app.models.tenant import Tenant, TenantSettingsChange
 from app.models.user import User, UserRole
 
@@ -47,6 +51,12 @@ __all__ = [
     "ModelArmType",
     "ModelRun",
     "ModelRunStatus",
+    "ClientAccessRequest",
+    "ClientMessage",
+    "EmailLog",
+    "InsurancePolicy",
+    "PremiumPayment",
+    "DoctorReview",
     "Notification",
     "NotificationChannel",
     "NotificationStatus",

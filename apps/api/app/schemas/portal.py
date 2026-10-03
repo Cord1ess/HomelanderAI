@@ -15,10 +15,12 @@ suite asserts the serialised payload contains none of those keys.
 
 from datetime import date, datetime
 from decimal import Decimal
+from uuid import UUID
 
 from pydantic import Field
 
 from app.schemas.auth import BaseSchema
+from app.schemas.policy import PolicySchema
 
 
 class PortalLoginIn(BaseSchema):
@@ -29,9 +31,32 @@ class PortalLoginIn(BaseSchema):
 class PortalDocumentSchema(BaseSchema):
     """One thing the underwriter has asked for, in their words."""
 
+    # The applicant uploads against this id. It names a request on their own
+    # application only; the upload endpoint checks that.
+    id: UUID
     description: str
     requested_at: datetime
     received: bool
+    received_at: datetime | None = None
+    # The name of the file they sent, when they sent one.
+    file_name: str | None = None
+
+
+class PortalFileSchema(BaseSchema):
+    """Something the applicant gave us: what kind of document, and when.
+    Never what any model made of it."""
+
+    kind: str
+    file_name: str | None = None
+    uploaded_at: datetime
+
+
+class PortalMessageSchema(BaseSchema):
+    """A doctor's message to the applicant, in the doctor's words only."""
+
+    urgency: str
+    message: str
+    sent_at: datetime
 
 
 class PortalOfferSchema(BaseSchema):
@@ -61,5 +86,12 @@ class PortalStatusSchema(BaseSchema):
     expected_by_note: str | None = None
     overdue: bool = False
 
+    policy_term: str | None = None
     documents: list[PortalDocumentSchema] = Field(default_factory=list)
+    # Everything the applicant has given us, oldest first.
+    files: list[PortalFileSchema] = Field(default_factory=list)
+    # What a doctor has written to the applicant directly, newest first.
+    messages: list[PortalMessageSchema] = Field(default_factory=list)
     offer: PortalOfferSchema | None = None
+    # Once approved: the policy, what they pay each month, and what is paid.
+    policy: PolicySchema | None = None

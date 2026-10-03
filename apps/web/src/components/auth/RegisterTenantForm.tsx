@@ -153,8 +153,8 @@ export function RegisterTenantForm({ onSwitchToLogin }: RegisterTenantFormProps)
           value={form.values.role}
           onChange={(e) => form.setFieldValue('role', e.target.value as UserRole)}
         >
-          <option value="admin">Administrator — manages staff accounts and settings</option>
-          <option value="medical_professional">Medical Professional — decides escalated cases</option>
+          <option value="admin">Administrator — manages the team and settings</option>
+          <option value="medical_professional">Doctor — checks the results underwriters send</option>
           <option value="underwriter">Underwriter — reviews applications</option>
         </select>
       </div>

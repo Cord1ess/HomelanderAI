@@ -1,8 +1,10 @@
 import { BarChart, DonutChart } from '@mantine/charts'
-import { Card, Group, SimpleGrid, Stack, Table, Text } from '@mantine/core'
+import { Anchor, Badge, Card, Group, SimpleGrid, Stack, Table, Text } from '@mantine/core'
 import { useQuery } from '@tanstack/react-query'
 
-import { getAnalytics } from '../../api/client'
+import { Link } from 'react-router-dom'
+
+import { getAnalytics, type Business } from '../../api/client'
 import { PageHeader } from '../../components/PageHeader'
 import { Stat } from '../../components/Stat'
 import { EmptyState, ErrorState, LoadingState } from '../../components/states'
@@ -20,7 +22,7 @@ const taka = (v: string | number) => `৳${BDT.format(Number(v))}`
 const DECISION_LABEL: Record<string, string> = {
   confirmed_fast_track: 'Standard rate',
   approved_with_adjustment: 'Adjusted premium',
-  escalated_senior_review: 'Escalated (old records)',
+  escalated_senior_review: 'Sent to a doctor (old records)',
   requested_additional_evidence: 'Evidence requested (old records)',
 }
 
@@ -29,6 +31,8 @@ const ARM_LABEL: Record<string, string> = {
   dr_fundus: 'Retinal photo',
   ecg_12lead: '12-lead ECG',
   mortality: 'Blood panel',
+  medication_check: 'Clinical notes (BioBERT)',
+  mirai: 'Mammogram (Mirai)',
 }
 
 const TIER_COLOR: Record<string, string> = {
@@ -109,7 +113,7 @@ export function AnalyticsPage() {
       <PageHeader screen="analytics">
         <SimpleGrid cols={{ base: 2, md: 3, lg: 6 }} spacing="xs">
           <Stat label="Applications" value={data.applications} />
-          <Stat label="Waiting" value={data.waiting} color="orange" hint={data.escalated ? `${data.escalated} with a medical professional` : undefined} />
+          <Stat label="Waiting" value={data.waiting} color="orange" hint={data.escalated ? `${data.escalated} with a doctor` : undefined} />
           <Stat label="Decided" value={data.decided} color="teal" hint={approvalRate != null ? `${approvalRate}% approved` : undefined} />
           <Stat label="Average score" value={data.averageCrs ?? '—'} hint="Across scored applications" />
           <Stat label="Cover requested" value={taka(data.coverRequestedBdt)} hint={`${taka(data.coverApprovedBdt)} approved`} />
@@ -117,6 +121,11 @@ export function AnalyticsPage() {
         </SimpleGrid>
       </PageHeader>
 
+      {data.business && <BusinessPanel money={data.business} />}
+
+      <Text fw={700} size="sm" mt="xs">
+        Applications and the readers
+      </Text>
       <SimpleGrid cols={{ base: 1, lg: 3 }} spacing="md">
         <Panel title="Risk tiers" hint="Latest score per application">
           {tiers.length ? (
@@ -201,6 +210,153 @@ export function AnalyticsPage() {
           </Table>
         </Panel>
       </SimpleGrid>
+    </Stack>
+  )
+}
+
+/**
+ * The money: what comes in each month and year, what was actually paid, what
+ * is late, and what the company would pay out if every policy were claimed.
+ */
+function BusinessPanel({ money }: { money: Business }) {
+  const months = (money.months ?? []).map((m) => ({
+    month: new Date(`${m.month}T00:00:00`).toLocaleDateString(undefined, { month: 'short', year: '2-digit' }),
+    Due: Number(m.expectedBdt),
+    Collected: Number(m.collectedBdt),
+  }))
+  const policies = money.policies ?? []
+  return (
+    <Stack gap="md">
+      <Text fw={700} size="sm">
+        The business
+      </Text>
+      <SimpleGrid cols={{ base: 2, md: 4 }} spacing="xs">
+        <Stat label="Clients" value={money.clients} hint={`${money.policiesActive} with a policy in force`} />
+        <Stat
+          label="Premiums due each month"
+          value={taka(money.premiumMonthlyBdt)}
+          color="clinical"
+          hint="From every active policy, if all pay"
+        />
+        <Stat label="Premiums due each year" value={taka(money.premiumYearlyBdt)} color="clinical" hint="Twelve months of the above" />
+        <Stat
+          label="Paid out on claims, at most"
+          value={taka(money.sumAssuredInForceBdt)}
+          color="red"
+          hint="If every active policy were claimed today"
+        />
+        <Stat label="Collected this month" value={taka(money.collectedThisMonthBdt)} color="teal" />
+        <Stat label="Collected this year" value={taka(money.collectedThisYearBdt)} color="teal" hint={`${taka(money.collectedAllTimeBdt)} in all`} />
+        <Stat
+          label="Overdue"
+          value={taka(money.overdueBdt)}
+          color={Number(money.overdueBdt) > 0 ? 'red' : undefined}
+          hint={`${money.overduePolicies} polic${money.overduePolicies === 1 ? 'y' : 'ies'} behind on payments`}
+        />
+        <Stat
+          label="Largest single payout"
+          value={money.largestPayoutBdt != null ? taka(money.largestPayoutBdt) : '—'}
+          hint={money.averagePayoutBdt != null ? `${taka(money.averagePayoutBdt)} on average` : undefined}
+        />
+      </SimpleGrid>
+
+      <Panel title="Premiums, month by month" hint="What active policies were due to pay each month, and what was recorded as paid.">
+        {months.some((m) => m.Due > 0 || m.Collected > 0) ? (
+          <BarChart
+            h={220}
+            data={months}
+            dataKey="month"
+            series={[
+              { name: 'Due', color: 'gray.5' },
+              { name: 'Collected', color: 'teal.6' },
+            ]}
+            valueFormatter={(v) => taka(v)}
+          />
+        ) : (
+          <Text size="sm" c="dimmed">
+            No policy is in force yet. Approving an application issues one.
+          </Text>
+        )}
+      </Panel>
+
+      <Panel
+        title="Policies, and what each pays out"
+        hint="The sum assured is what the company pays the client, or their family, when the policy is claimed."
+      >
+        {policies.length === 0 ? (
+          <Text size="sm" c="dimmed">
+            No policies yet.
+          </Text>
+        ) : (
+          <Table.ScrollContainer minWidth={760}>
+            <Table verticalSpacing={6} highlightOnHover>
+              <Table.Thead>
+                <Table.Tr>
+                  <Table.Th>Client</Table.Th>
+                  <Table.Th>Policy</Table.Th>
+                  <Table.Th ta="right">Pays monthly</Table.Th>
+                  <Table.Th ta="right">Pays yearly</Table.Th>
+                  <Table.Th ta="right">Pays out on a claim</Table.Th>
+                  <Table.Th>Runs</Table.Th>
+                  <Table.Th>Payments</Table.Th>
+                </Table.Tr>
+              </Table.Thead>
+              <Table.Tbody>
+                {policies.map((p) => (
+                  <Table.Tr key={p.id}>
+                    <Table.Td>
+                      <Anchor component={Link} to={`/clients/${p.clientId}`} size="sm" fw={600}>
+                        {p.clientName ?? p.clientReference}
+                      </Anchor>
+                      <Text size="xs" c="dimmed" ff="monospace">
+                        {p.clientReference}
+                      </Text>
+                    </Table.Td>
+                    <Table.Td>
+                      <Text size="sm" ff="monospace">
+                        {p.policyNumber}
+                      </Text>
+                      <Group gap={4}>
+                        <Text size="xs" c="dimmed">
+                          {p.planName}
+                          {p.coverageType ? ` · ${p.coverageType}` : ''}
+                        </Text>
+                        {p.status !== 'active' && (
+                          <Badge size="xs" color="red" variant="light">
+                            Cancelled
+                          </Badge>
+                        )}
+                      </Group>
+                    </Table.Td>
+                    <Table.Td ta="right" fz="sm" ff="monospace">
+                      {taka(p.monthlyPremiumBdt)}
+                    </Table.Td>
+                    <Table.Td ta="right" fz="sm" ff="monospace">
+                      {taka(p.yearlyPremiumBdt)}
+                    </Table.Td>
+                    <Table.Td ta="right" fz="sm" ff="monospace" fw={700}>
+                      {taka(p.sumAssuredBdt)}
+                    </Table.Td>
+                    <Table.Td fz="xs">
+                      {p.termYears} years, to {new Date(`${p.endDate}T00:00:00`).toLocaleDateString(undefined, { month: 'short', year: 'numeric' })}
+                    </Table.Td>
+                    <Table.Td>
+                      <Text size="xs">
+                        {p.paidCount} paid · {taka(p.paidTotalBdt ?? 0)}
+                      </Text>
+                      {(p.overdueCount ?? 0) > 0 && (
+                        <Badge size="xs" color="red" variant="light">
+                          {p.overdueCount} overdue
+                        </Badge>
+                      )}
+                    </Table.Td>
+                  </Table.Tr>
+                ))}
+              </Table.Tbody>
+            </Table>
+          </Table.ScrollContainer>
+        )}
+      </Panel>
     </Stack>
   )
 }

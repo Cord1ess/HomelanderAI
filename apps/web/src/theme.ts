@@ -170,14 +170,22 @@ export const theme: MantineThemeOverride = createTheme({
         // invisible on the light olive. The token knows which ink reads on the
         // fill in each scheme, so the label follows it.
         //
-        // Only `filled`; subtle/light/outline variants draw their label from
-        // the accent itself and are already correct.
-        root: {
-          '&[data-variant="filled"]': {
-            color: 'var(--neo-accent-ink)',
-          },
-        },
+        // Only `filled` in the primary colour; subtle/light/outline variants
+        // draw their label from the accent itself, and a filled button in
+        // another colour (orange, red) keeps Mantine's white.
+        //
+        // Set through the button's own colour variable. This used to be a
+        // nested `&[data-variant="filled"]` selector inside `styles`, which
+        // Mantine applies as an inline style — so it never applied, and the
+        // browser logged "Unsupported style property" on every page.
       },
+      vars: (_theme: unknown, props: { variant?: string; color?: string }) => ({
+        root:
+          (props.variant ?? 'filled') === 'filled' &&
+          (props.color === undefined || props.color === 'clinical')
+            ? { '--button-color': 'var(--neo-accent-ink)' }
+            : {},
+      }),
     },
     ActionIcon: {
       defaultProps: { variant: 'subtle', size: 'md' },

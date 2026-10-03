@@ -12,26 +12,33 @@ computed, from now on. That was agreed explicitly (2026-09-22) over re-tiering
 open cases.
 """
 
+import asyncio
 from decimal import Decimal
 
 from fastapi import APIRouter, Depends, HTTPException, status
+from pydantic import Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app import mailer, outbox
+from app.config import settings
 from app.db.session import get_db
 from app.deps import Principal, current_principal
-from app.models import Tenant, TenantSettingsChange, User
+from app.models import EmailLog, Tenant, TenantSettingsChange, User
 from app.models.user import UserRole
+from app.routers.client_sign_in import EmailLogSchema
 from app.schemas.application import (
     SettingsChangeSchema,
     TenantSettingsIn,
     TenantSettingsSchema,
 )
+from app.schemas.auth import BaseSchema
 
 router = APIRouter(prefix="/tenant", tags=["Tenant"])
 
 # The columns an administrator may change, in the order the history shows them.
 EDITABLE = (
+    "name",
     "turnaround_business_days",
     "tier_low_max",
     "tier_moderate_max",
@@ -65,7 +72,7 @@ def _as_schema(tenant: Tenant) -> TenantSettingsSchema:
     )
 
 
-def _plain(value: object) -> float | int | None:
+def _plain(value: object) -> float | int | str | None:
     """A JSON-safe number for the change log."""
     if value is None:
         return None
@@ -105,6 +112,13 @@ async def update_settings(
 
     tenant = await _tenant_for(db, principal)
     incoming = payload.model_dump(exclude_none=True)
+    if "name" in incoming:
+        incoming["name"] = incoming["name"].strip()
+        if len(incoming["name"]) < 2:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="The company name needs at least two characters.",
+            )
     if not incoming:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
@@ -123,7 +137,7 @@ async def update_settings(
         )
 
     # Record what changed, from what, before writing it.
-    changes: dict[str, dict[str, float | int | None]] = {}
+    changes: dict[str, dict[str, float | int | str | None]] = {}
     for field in EDITABLE:
         if field not in incoming:
             continue
@@ -180,3 +194,85 @@ async def settings_history(
         for change, name in rows
     ]
 
+
+
+# ── outgoing mail ────────────────────────────────────────────────────────────
+
+
+class MailStatusSchema(BaseSchema):
+    """Whether outgoing mail is set up, without revealing the credentials."""
+
+    configured: bool
+    host: str | None = None
+    port: int | None = None
+    sender: str
+    portal_url: str
+    # The latest messages the platform tried to send, for any application.
+    recent: list[EmailLogSchema] = Field(default_factory=list)
+
+
+class MailTestIn(BaseSchema):
+    to: str = Field(..., min_length=3, max_length=255)
+
+
+@router.get("/mail", response_model=MailStatusSchema, summary="Is outgoing mail set up?")
+async def mail_status(
+    db: AsyncSession = Depends(get_db),
+    principal: Principal = Depends(current_principal),
+) -> MailStatusSchema:
+    if principal.role != UserRole.ADMIN.value:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only an administrator manages outgoing mail.",
+        )
+    recent = (
+        await db.execute(
+            select(EmailLog)
+            .where(EmailLog.tenant_id == principal.tenant_id)
+            .order_by(EmailLog.created_at.desc())
+            .limit(20)
+        )
+    ).scalars().all()
+    return MailStatusSchema(
+        configured=mailer.configured(),
+        host=settings.smtp_host or None,
+        port=settings.smtp_port if settings.smtp_host else None,
+        sender=settings.smtp_from,
+        portal_url=settings.portal_url,
+        recent=[
+            EmailLogSchema(
+                kind=e.kind,
+                recipient=e.recipient,
+                subject=e.subject,
+                status=e.status,
+                created_at=e.created_at,
+            )
+            for e in recent
+        ],
+    )
+
+
+@router.post("/mail/test", response_model=MailStatusSchema, summary="Send a test message")
+async def mail_test(
+    payload: MailTestIn,
+    db: AsyncSession = Depends(get_db),
+    principal: Principal = Depends(current_principal),
+) -> MailStatusSchema:
+    if principal.role != UserRole.ADMIN.value:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only an administrator manages outgoing mail.",
+        )
+    to = payload.to.strip()
+    if "@" not in to:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="That does not look like an email address.",
+        )
+    tenant = await _tenant_for(db, principal)
+    ok = await asyncio.to_thread(mailer.send_test, to, tenant.name)
+    outbox.record(
+        db, principal.tenant_id, None, "test", to, "Homelander AI: test message", ok
+    )
+    await db.commit()
+    return await mail_status(db, principal)

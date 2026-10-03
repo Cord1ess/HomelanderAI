@@ -9,11 +9,63 @@ check` stays meaningful for everyone.
 """
 
 import asyncio
+import os
+import shutil
 import uuid
+from pathlib import Path
 
 import pytest
 
-from app.core.security import hash_password
+# The tests use their own database, never the one the app runs on. They clean
+# up their rows, but two things outlive a test in a shared database: the
+# HL- reference sequence (sequences do not roll back, so every test applicant
+# burned a number — the demo reached HL-001760 with 70 real applicants), and
+# the evidence files written to disk. Set before anything imports the settings.
+os.environ["DB_NAME"] = os.environ.get("TEST_DB_NAME", "homelander_test")
+
+from app.core.security import hash_password  # noqa: E402
+
+
+def _prepare_test_database() -> None:
+    """Create the test database if it is missing, and bring it to head.
+
+    Silent if Postgres is not running at all: the database tests then skip,
+    which is the existing behaviour for anyone without Postgres.
+    """
+    try:
+        import psycopg2
+        from psycopg2 import sql
+
+        from app.config import settings
+
+        admin = psycopg2.connect(
+            host=settings.db_host,
+            port=settings.db_port,
+            user=settings.db_user,
+            password=settings.db_password,
+            dbname="postgres",
+            connect_timeout=3,
+        )
+    except Exception:
+        return
+    admin.autocommit = True
+    with admin.cursor() as cursor:
+        cursor.execute("SELECT 1 FROM pg_database WHERE datname = %s", (settings.db_name,))
+        if cursor.fetchone() is None:
+            cursor.execute(sql.SQL("CREATE DATABASE {}").format(sql.Identifier(settings.db_name)))
+    admin.close()
+
+    from alembic.config import Config
+
+    from alembic import command
+
+    api = Path(__file__).resolve().parents[1]
+    config = Config(str(api / "alembic.ini"))
+    config.set_main_option("script_location", str(api / "alembic"))
+    command.upgrade(config, "head")
+
+
+_prepare_test_database()
 
 
 def _database_reachable() -> bool:
@@ -47,7 +99,7 @@ def carrier():
     """
     created: list[uuid.UUID] = []
 
-    async def make(name: str = "Test Carrier") -> dict:
+    async def make(name: str = "Test Carrier", role: str = "admin") -> dict:
         from app.db.session import AsyncSessionLocal
         from app.models import Tenant, User, UserRole
 
@@ -62,9 +114,11 @@ def carrier():
                 full_name="Test Underwriter",
                 email=email,
                 password_hash=hash_password("testpassword123"),
-                # The role that may decide any case, so tests can record any
-                # decision without caring about tier rules.
-                role=UserRole.MEDICAL_PROFESSIONAL,
+                # An administrator by default: it may take applications and
+                # decide any case, so tests do not trip over the tier rules.
+                # (It was a doctor until doctors stopped deciding policies.)
+                # A test about who is refused passes the role it needs.
+                role=UserRole(role),
             )
             db.add(user)
             await db.commit()
@@ -97,5 +151,11 @@ def carrier():
             finally:
                 await db.execute(text("ALTER TABLE audit_log ENABLE TRIGGER audit_log_no_delete"))
                 await db.commit()
+
+        # The rows cascade away with the tenant; its evidence on disk does not.
+        from app.config import settings
+
+        for tenant_id in created:
+            shutil.rmtree(settings.data_dir / str(tenant_id), ignore_errors=True)
 
     asyncio.run(cleanup())

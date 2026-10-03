@@ -9,6 +9,8 @@ land, a thin layer writes `Evaluation` into `model_runs`, `sub_scores`,
 `explanation_artifacts` and `composite_scores` — none of the logic here changes.
 """
 
+import contextlib
+from collections.abc import Callable
 from dataclasses import dataclass, field
 
 from app.arms import ArmResult, arms_for, form_arms, set_arms
@@ -64,6 +66,7 @@ def evaluate(
     kinds: dict[str, EvidenceKind] | None = None,
     sex: str | None = None,
     models_requested: list[str] | None = None,
+    on_progress: Callable[[int, int, str], None] | None = None,
 ) -> Evaluation:
     """Run the pipeline over uploaded evidence.
 
@@ -78,6 +81,9 @@ def evaluate(
     Arms that read the form rather than a file run only when their panel is
     among them, so an application with a chest X-ray alone is not told that
     nine blood values are missing.
+
+    `on_progress(done, total, step)` is told before each reader runs and once
+    at the end, for the progress bar on the applications page.
 
     Never raises. Every failure becomes an `insufficient_evidence` evaluation
     carrying the reason, because an underwriter with an error page is worse off
@@ -100,6 +106,34 @@ def evaluate(
     if not processed and not form_readers:
         errors.append("No readable evidence was provided")
         return _insufficient(errors, t, processed)
+
+    # How many readings this application will take, so progress can be shown
+    # as a fraction rather than a spinner.
+    def _kind(item: ProcessedFile) -> EvidenceKind | None:
+        return kinds.get(item.content_hash) if kinds else None
+
+    total_steps = (
+        sum(
+            1
+            for item in processed
+            if _kind(item) is not None
+            for arm in arms_for(_kind(item))
+            if arm.run_set is None
+        )
+        + sum(
+            1
+            for arm in set_arms()
+            if any(_kind(item) in arm.accepts for item in processed)
+        )
+        + len(form_readers)
+    )
+    done_steps = 0
+
+    def _tick(step: str) -> None:
+        if on_progress is not None:
+            # Progress is a courtesy; it never stops scoring.
+            with contextlib.suppress(Exception):
+                on_progress(done_steps, total_steps, step)
 
     # 2. Run each arm over the evidence it can actually read.
     #
@@ -133,8 +167,11 @@ def evaluate(
                 continue  # below, once over every file of its kind
             if not arm.available():
                 errors.append(f"{arm.name}: unavailable")
+                done_steps += 1
                 continue
+            _tick(f"Reading the {label(kind).lower()}")
             result = arm.read(item.data, declared_history or {})
+            done_steps += 1
             runs.append(
                 ArmRun(
                     arm_name=arm.name,
@@ -157,8 +194,11 @@ def evaluate(
             continue
         if not arm.available():
             errors.append(f"{arm.name}: unavailable")
+            done_steps += 1
             continue
+        _tick("Reading the mammogram (all four views)")
         result = arm.run_set([item.data for item in members])
+        done_steps += 1
         runs.append(
             ArmRun(
                 arm_name=arm.name,
@@ -175,8 +215,11 @@ def evaluate(
     for arm in form_readers:
         if not arm.available():
             errors.append(f"{arm.name}: unavailable")
+            done_steps += 1
             continue
+        _tick("Reading the blood panel and lifestyle answers")
         result = arm.run_form(declared_history or {}, age, sex)
+        done_steps += 1
         runs.append(
             ArmRun(
                 arm_name=arm.name,
@@ -188,6 +231,7 @@ def evaluate(
         if result.error:
             errors.append(f"{arm.name}: {result.error}")
 
+    _tick("Combining the readings")
     usable = [r for r in runs if r.result.usable]
     if not usable:
         return _insufficient(errors, t, processed, runs)

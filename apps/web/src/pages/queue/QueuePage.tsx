@@ -5,7 +5,7 @@ import {
   Box,
   Button,
   Group,
-  SegmentedControl,
+  Progress,
   SimpleGrid,
   Skeleton,
   Stack,
@@ -18,6 +18,7 @@ import {
   IconArrowRight,
   IconFlame,
   IconInfoCircle,
+  IconKey,
   IconPlus,
   IconRefresh,
   IconSearch,
@@ -27,6 +28,7 @@ import { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 
 import { getQueue, type ApplicationStatus, type QueueItem } from '../../api/client'
+import { DoctorVerdictBadge } from '../../components/DoctorVerdictBadge'
 import { PageHeader } from '../../components/PageHeader'
 import { Stat } from '../../components/Stat'
 import { StatusBadge } from '../../components/StatusBadge'
@@ -118,7 +120,12 @@ export function QueuePage() {
     queryKey: ['applications', status, query],
     queryFn: () => getQueue({ status, q: query }),
     // Scoring finishes in the background, so the row changes under the user.
-    refetchInterval: 30_000,
+    // While a reader is running the progress bar is live, so ask often; the
+    // rest of the time twice a minute is plenty.
+    refetchInterval: (q) =>
+      (q.state.data?.items ?? []).some((r) => r.status === 'processing' || r.status === 'submitted')
+        ? 1_500
+        : 30_000,
     // Without this the table empties on every keystroke while the next search
     // is in flight, which reads as "no results" rather than "loading".
     placeholderData: keepPreviousData,
@@ -156,7 +163,7 @@ export function QueuePage() {
                 variant="light"
                 leftSection={<IconFlame size={14} />}
               >
-                Escalations
+                Doctor reviews
               </Button>
             )}
           </>
@@ -175,19 +182,19 @@ export function QueuePage() {
             label="Elevated risk"
             value={elevatedCount}
             color="red"
-            hint={isMedical ? 'Waiting for your decision' : 'Need a medical professional'}
+            hint={isMedical ? 'Waiting for your decision' : 'Need a doctor'}
           />
           <Stat label="Decided" value={decidedCount} color="teal" />
         </SimpleGrid>
       </PageHeader>
 
-      {/* The medical professional's own work, called out above the list. */}
+      {/* The doctor's own work, called out above the list. */}
       {isMedical && elevatedCount > 0 && (
         <Alert color="grape" variant="light" icon={<IconFlame size={16} />} title="Waiting for a medical decision">
           <Group justify="space-between" align="center" wrap="wrap" gap="xs">
             <Text size="xs">
               <strong>{elevatedCount}</strong> application{elevatedCount > 1 ? 's are' : ' is'} at elevated
-              risk and can only be decided by a medical professional.
+              risk and can only be decided by a doctor.
             </Text>
             <Button
               size="compact-xs"
@@ -201,25 +208,41 @@ export function QueuePage() {
         </Alert>
       )}
 
+      {/* One button per status, wrapping onto a second line rather than
+          squeezing: each says what it is and how many it holds. */}
+      <Group gap={8} wrap="wrap" role="tablist" aria-label="Filter by status">
+        {FILTERS.map((f) => {
+          const active = status === f.value
+          const count = f.value === 'all' ? total : (counts[f.value] ?? 0)
+          return (
+            <Button
+              key={f.value}
+              role="tab"
+              aria-selected={active}
+              size="xs"
+              radius="xl"
+              variant={active ? 'filled' : 'default'}
+              onClick={() => setStatus(f.value)}
+              rightSection={
+                <Badge
+                  size="sm"
+                  radius="xl"
+                  variant={active ? 'white' : 'light'}
+                  color={active ? 'dark' : count > 0 ? 'clinical' : 'gray'}
+                  style={{ minWidth: 24 }}
+                >
+                  {count}
+                </Badge>
+              }
+              styles={{ section: { marginInlineStart: 8 } }}
+            >
+              {f.label}
+            </Button>
+          )
+        })}
+      </Group>
+
       <Group gap="xs" wrap="wrap">
-        <SegmentedControl
-          size="xs"
-          value={status}
-          onChange={(v) => setStatus(v as ApplicationStatus | 'all')}
-          data={FILTERS.map((f) => ({
-            value: f.value,
-            label: (
-              <Group gap={6} wrap="nowrap">
-                <span>{f.label}</span>
-                {f.value !== 'all' && counts[f.value] != null && (
-                  <Badge size="xs" variant="dot" color="gray" circle>
-                    {counts[f.value]}
-                  </Badge>
-                )}
-              </Group>
-            ),
-          }))}
-        />
         <Box style={{ flex: 1 }} />
         <TextInput
           size="xs"
@@ -273,7 +296,7 @@ export function QueuePage() {
                     </Group>
                   </Table.Th>
                   <Table.Th>Tier</Table.Th>
-                  <Table.Th w={56} aria-label="Open" />
+                  <Table.Th w={92} aria-label="Actions" />
                 </Table.Tr>
               </Table.Thead>
               <Table.Tbody>
@@ -366,8 +389,8 @@ function Row({ row, userRole, changed }: { row: QueueItem; userRole?: UserRole; 
             <Tooltip
               label={
                 isUnderwriter
-                  ? 'Elevated risk. You can escalate this, not approve it.'
-                  : 'Elevated risk. Needs a medical professional to decide.'
+                  ? 'Elevated risk. Send this to a doctor before approving it.'
+                  : 'Elevated risk. Needs a doctor to check the results first.'
               }
               withArrow
               multiline
@@ -402,7 +425,24 @@ function Row({ row, userRole, changed }: { row: QueueItem; userRole?: UserRole; 
         )}
       </Table.Td>
       <Table.Td>
-        <StatusBadge status={row.status} />
+        {row.status === 'processing' || row.status === 'submitted' ? (
+          <ReadingProgress row={row} />
+        ) : (
+          <Stack gap={4} align="flex-start">
+            <StatusBadge status={row.status} />
+            <DoctorVerdictBadge verdict={row.doctorVerdict} size="xs" />
+            {row.policyStatus && (
+              <Badge
+                size="xs"
+                variant="light"
+                color={row.policyStatus === 'active' ? 'teal' : 'red'}
+                style={{ minWidth: 'max-content' }}
+              >
+                {row.policyStatus === 'active' ? 'Policy active' : 'Policy cancelled'}
+              </Badge>
+            )}
+          </Stack>
+        )}
       </Table.Td>
       <Table.Td>
         {row.crs != null ? (
@@ -425,6 +465,19 @@ function Row({ row, userRole, changed }: { row: QueueItem; userRole?: UserRole; 
         )}
       </Table.Td>
       <Table.Td onClick={(e) => e.stopPropagation()}>
+        <Group gap={6} wrap="nowrap" justify="flex-end">
+        {!isMedical && (
+          <Tooltip label="The client's portal sign-in: see it, or send it again" withArrow>
+            <ActionIcon
+              variant="default"
+              component={Link}
+              to={`/applications/${row.id}/sign-in`}
+              aria-label={`Client sign-in for ${row.reference}`}
+            >
+              <IconKey size={15} />
+            </ActionIcon>
+          </Tooltip>
+        )}
         {openable ? (
           <Tooltip label={`Open ${row.reference}`} withArrow>
             <ActionIcon
@@ -444,7 +497,38 @@ function Row({ row, userRole, changed }: { row: QueueItem; userRole?: UserRole; 
             </ActionIcon>
           </Tooltip>
         )}
+        </Group>
       </Table.Td>
     </Table.Tr>
+  )
+}
+
+/**
+ * The readers working through an application: which one is running and how
+ * many are done. From the server, so it is the real pipeline, not a timer.
+ */
+function ReadingProgress({ row }: { row: QueueItem }) {
+  const total = row.progressTotal ?? 0
+  const done = row.progressDone ?? 0
+  // Waiting for its turn, or between readers: show movement without a number.
+  const known = total > 0
+  const value = known ? Math.max(4, Math.round((done / total) * 100)) : 100
+  return (
+    <Stack gap={4} miw={170}>
+      <Group justify="space-between" gap={6} wrap="nowrap">
+        <Text size="xs" fw={600}>
+          {row.status === 'submitted' ? 'Queued' : known ? `Reading ${Math.min(done + 1, total)} of ${total}` : 'Starting'}
+        </Text>
+        {known && (
+          <Text size="xs" c="dimmed">
+            {value}%
+          </Text>
+        )}
+      </Group>
+      <Progress value={value} size="sm" radius="xl" animated striped={!known || done < total} />
+      <Text size="xs" c="dimmed" className="hl-ellipsis" maw={200}>
+        {row.progressStep ?? (row.status === 'submitted' ? 'Waiting to start' : 'Preparing the evidence')}
+      </Text>
+    </Stack>
   )
 }

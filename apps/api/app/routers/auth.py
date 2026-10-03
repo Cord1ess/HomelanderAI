@@ -54,10 +54,16 @@ log = logging.getLogger(__name__)
 
 # ── Built-in accounts ────────────────────────────────────────────────────────
 #
-# Three accounts, one per staff role, all with the password in
-# `settings.admin_password`. They work with no database at all, so a demo
-# survives the database machine being unreachable. Development only — see
-# settings.admin_login_enabled.
+# Seven accounts — three underwriters, three doctors and one administrator —
+# all with the password in `settings.admin_password` until someone changes
+# theirs. A company has more than one of each, and the demo has to show that
+# work is shared out and attributed to the right person. They work with no
+# database at all, so a demo survives the database machine being unreachable.
+# Development only — see settings.admin_login_enabled.
+#
+# A password changed from the profile screen is real: it is stored on the
+# account's row, the demo password stops working for that account, and the
+# new one works through the ordinary database sign-in.
 #
 # Fixed IDs so a session is recognisable in logs and can never collide with a
 # real row.
@@ -73,16 +79,42 @@ class BuiltInAccount:
 
 
 BUILT_IN_ACCOUNTS: tuple[BuiltInAccount, ...] = (
+    # Underwriter 1 and Doctor 1 keep the ids the single `underwriter` and
+    # `medical` accounts had, so what those did stays attributed to them.
     BuiltInAccount(
-        "underwriter",
+        "underwriter1",
         UUID("00000000-0000-0000-0000-0000000000b1"),
-        "Underwriter",
+        "Underwriter 1",
         UserRole.UNDERWRITER,
     ),
     BuiltInAccount(
-        "medical",
+        "underwriter2",
+        UUID("00000000-0000-0000-0000-0000000000b3"),
+        "Underwriter 2",
+        UserRole.UNDERWRITER,
+    ),
+    BuiltInAccount(
+        "underwriter3",
+        UUID("00000000-0000-0000-0000-0000000000b4"),
+        "Underwriter 3",
+        UserRole.UNDERWRITER,
+    ),
+    BuiltInAccount(
+        "doctor1",
         UUID("00000000-0000-0000-0000-0000000000b2"),
-        "Medical Professional",
+        "Doctor 1",
+        UserRole.MEDICAL_PROFESSIONAL,
+    ),
+    BuiltInAccount(
+        "doctor2",
+        UUID("00000000-0000-0000-0000-0000000000b5"),
+        "Doctor 2",
+        UserRole.MEDICAL_PROFESSIONAL,
+    ),
+    BuiltInAccount(
+        "doctor3",
+        UUID("00000000-0000-0000-0000-0000000000b6"),
+        "Doctor 3",
         UserRole.MEDICAL_PROFESSIONAL,
     ),
     # Same id as before this rework, so everything the account already did
@@ -97,6 +129,11 @@ BUILT_IN_ACCOUNTS: tuple[BuiltInAccount, ...] = (
 )
 
 
+# The usernames of the single accounts that came before the numbered ones.
+# Still accepted, so anything written down with them keeps working.
+ALIASES = {"underwriter": "underwriter1", "medical": "doctor1", "doctor": "doctor1"}
+
+
 def _built_in(user_id: str | None = None, username: str | None = None) -> BuiltInAccount | None:
     """Find a built-in account by token subject or by what was typed at sign-in.
 
@@ -104,12 +141,30 @@ def _built_in(user_id: str | None = None, username: str | None = None) -> BuiltI
     account, which handed the most powerful identity to any unrecognised token.
     """
     uname = username.strip().lower() if username else None
+    uname = ALIASES.get(uname, uname) if uname else None
     for account in BUILT_IN_ACCOUNTS:
         if user_id is not None and user_id == str(account.user_id):
             return account
         if uname is not None and uname == account.username:
             return account
     return None
+
+
+async def _session_for(db: AsyncSession, account: BuiltInAccount) -> AuthResponseSchema:
+    """The built-in session, with the name and company the database holds when
+    it can be reached: both can be changed, and a change has to show."""
+    session = _demo_session(account)
+    try:
+        user = await db.get(User, account.user_id)
+        tenant = await db.get(Tenant, ADMIN_TENANT_ID)
+    except (SQLAlchemyError, OSError):
+        return session
+    if user is not None:
+        session.user.full_name = user.full_name
+        session.user.license_number = user.license_number
+    if tenant is not None:
+        session.tenant.name = tenant.name
+    return session
 
 
 def _demo_session(account: BuiltInAccount) -> AuthResponseSchema:
@@ -183,17 +238,25 @@ async def _ensure_built_in_rows() -> None:
                 .on_conflict_do_nothing(index_elements=[Tenant.id])
             )
             for account in BUILT_IN_ACCOUNTS:
-                row = {
-                    "full_name": account.full_name,
-                    "email": account.username,
-                    "role": account.role,
-                    "password_hash": unusable,
-                    "is_active": True,
-                }
+                # The name, the password and whether the account is switched on
+                # are the person's and the administrator's to change, so an
+                # existing row keeps them. Only the username and role are put
+                # back to what the account is.
                 await db.execute(
                     pg_insert(User)
-                    .values(id=account.user_id, tenant_id=ADMIN_TENANT_ID, **row)
-                    .on_conflict_do_update(index_elements=[User.id], set_=row)
+                    .values(
+                        id=account.user_id,
+                        tenant_id=ADMIN_TENANT_ID,
+                        full_name=account.full_name,
+                        email=account.username,
+                        role=account.role,
+                        password_hash=unusable,
+                        is_active=True,
+                    )
+                    .on_conflict_do_update(
+                        index_elements=[User.id],
+                        set_={"email": account.username, "role": account.role},
+                    )
                 )
             await db.commit()
     except (SQLAlchemyError, OSError) as exc:
@@ -292,17 +355,44 @@ async def login(
     db: AsyncSession = Depends(get_db),
 ) -> AuthResponseSchema:
     """Authenticate user with email and password, setting an httpOnly session cookie."""
+    # A built-in account whose person chose their own password signs in like
+    # anyone else: the demo password no longer opens it.
+    chosen = _built_in(username=payload.email)
+    own: User | None = None
+    if chosen is not None:
+        try:
+            own = await db.get(User, chosen.user_id)
+        except (SQLAlchemyError, OSError):
+            own = None
+        if own is not None and own.password_changed_at is not None:
+            if not own.is_active or not verify_password(payload.password, own.password_hash):
+                raise HTTPException(
+                    status_code=status.HTTP_401_UNAUTHORIZED,
+                    detail="Invalid email address or password.",
+                )
+            payload = payload.model_copy(update={"email": own.email})
+        elif own is not None and not own.is_active:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="This account has been deactivated. Contact your administrator.",
+            )
+
     # Checked first and without the database, so this still works when the
     # database machine is unreachable — which is the whole point of it.
-    if _is_demo_login(payload.email, payload.password):
+    if (chosen is None or own is None or own.password_changed_at is None) and _is_demo_login(
+        payload.email, payload.password
+    ):
         log.warning(
             "Built-in demo sign-in used. This bypasses the database and is only "
             "available in development."
         )
         account = _built_in(username=payload.email)
         assert account is not None  # _is_demo_login just matched it
-        session = _demo_session(account)
-        background.add_task(_ensure_built_in_rows)
+        # Before answering, not after: the first thing a new session does may
+        # be to submit an application, which needs the company's row to exist.
+        # It never fails the sign-in; with no database it logs and moves on.
+        await _ensure_built_in_rows()
+        session = await _session_for(db, account)
         _set_auth_cookie(
             response,
             create_access_token(
@@ -399,7 +489,7 @@ async def get_me(
     if payload.get("fallback"):
         # 401 when the switch was turned off while a cookie was still live, or
         # when the token names an account that no longer exists (`senior`).
-        return _demo_session(_require_built_in(payload))
+        return await _session_for(db, _require_built_in(payload))
 
     user_id = payload["sub"]
     try:
@@ -469,12 +559,16 @@ async def update_profile(
         )
 
     if token_data.get("fallback"):
-        session = _demo_session(_require_built_in(token_data))
-        if payload.full_name is not None and payload.full_name.strip():
-            session.user.full_name = payload.full_name.strip()
-        if payload.license_number is not None:
-            session.user.license_number = payload.license_number.strip() or None
-        return session.user
+        account = _require_built_in(token_data)
+        row = await _built_in_row(db, token_data["sub"])
+        if row is None:
+            # No database: answer for this session only.
+            session = _demo_session(account)
+            if payload.full_name is not None and payload.full_name.strip():
+                session.user.full_name = payload.full_name.strip()
+            if payload.license_number is not None:
+                session.user.license_number = payload.license_number.strip() or None
+            return session.user
 
     user_id = token_data["sub"]
     result = await db.execute(select(User).where(User.id == user_id))
@@ -520,11 +614,25 @@ async def change_password(
         )
 
     if token_data.get("fallback"):
-        if payload.current_password != settings.admin_password:
+        _require_built_in(token_data)
+        if not secrets.compare_digest(
+            payload.current_password.encode(), settings.admin_password.encode()
+        ):
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Current password is incorrect.",
             )
+        row = await _built_in_row(db, token_data["sub"])
+        if row is None:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="Cannot reach the database, so the new password could not be saved.",
+            )
+        # Stored on the account's own row: from now on this account signs in
+        # with the new password, and the demo one no longer opens it.
+        row.password_hash = hash_password(payload.new_password)
+        row.password_changed_at = datetime.now(UTC)
+        await db.commit()
         return {"status": "ok"}
 
     user_id = token_data["sub"]
@@ -543,11 +651,12 @@ async def change_password(
         )
 
     user.password_hash = hash_password(payload.new_password)
+    user.password_changed_at = datetime.now(UTC)
     await db.commit()
     return {"status": "ok"}
 
 
-# ── Staff Management (Admin Governance) ──────────────────────────────────────
+# ── Team Management (Admin Governance) ──────────────────────────────────────
 
 
 def _demo_staff() -> list[UserSchema]:
@@ -684,7 +793,7 @@ async def list_tenant_staff(
 @router.post(
     "/users",
     response_model=UserSchema,
-    summary="Provision New Staff Operator",
+    summary="Provision New Team Operator",
 )
 async def provision_staff(
     payload: RegisterStaffSchema,
@@ -711,7 +820,7 @@ async def provision_staff(
         if _require_built_in(token_data).role != UserRole.ADMIN:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
-                detail="Only an administrator can add staff.",
+                detail="Only an administrator can add team members.",
             )
         # With the database up, the built-in admin has a real row: fall through
         # and create the account for real, so the new person can sign in. Only
@@ -745,7 +854,7 @@ async def provision_staff(
     if caller.role != UserRole.ADMIN:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Only an administrator can add staff.",
+            detail="Only an administrator can add team members.",
         )
 
     # Check unique email

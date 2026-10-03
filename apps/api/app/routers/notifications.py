@@ -10,7 +10,7 @@ from datetime import UTC, datetime
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.session import get_db
@@ -54,6 +54,26 @@ async def list_notifications(
         )
         for row, reference in rows
     ]
+
+
+@router.post("/notifications/read-all", summary="Mark every unread notification read")
+async def mark_all_read(
+    db: AsyncSession = Depends(get_db),
+    principal: Principal = Depends(current_principal),
+) -> dict[str, int]:
+    """Only the signed-in user's own, in their own company. Already-read ones
+    keep the time they were first read."""
+    result = await db.execute(
+        update(Notification)
+        .where(
+            Notification.tenant_id == principal.tenant_id,
+            Notification.user_id == principal.user_id,
+            Notification.read_at.is_(None),
+        )
+        .values(read_at=datetime.now(UTC), status=NotificationStatus.READ)
+    )
+    await db.commit()
+    return {"updated": result.rowcount or 0}
 
 
 @router.post("/notifications/{notification_id}/read", response_model=NotificationSchema)

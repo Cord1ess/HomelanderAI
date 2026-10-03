@@ -51,7 +51,7 @@ async def current_principal(
     if payload.get("kind") == "portal":
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Sign in with a staff account to continue.",
+            detail="Sign in with a team account to continue.",
         )
 
     if payload.get("fallback") and not settings.admin_login_enabled:

@@ -51,7 +51,7 @@ def no_mail(monkeypatch):
 
 
 def add_admin(tenant_id: uuid.UUID) -> dict:
-    """An administrator in the throwaway tenant (the fixture's user is medical)."""
+    """An administrator in the throwaway tenant, beside the fixture's user."""
 
     async def make() -> dict:
         from app.db.session import AsyncSessionLocal
@@ -105,9 +105,9 @@ def test_defaults_are_the_constants_the_code_used_to_have(carrier):
 
 
 def test_only_an_administrator_can_change_settings(carrier):
-    medical = asyncio.run(carrier())
+    underwriter = asyncio.run(carrier(role="underwriter"))
     with TestClient(app) as client:
-        sign_in(client, medical)
+        sign_in(client, underwriter)
         response = client.patch("/api/tenant/settings", json={"tierLowMax": 25})
         assert response.status_code == 403
         assert client.get("/api/tenant/settings").json()["tierLowMax"] == 30

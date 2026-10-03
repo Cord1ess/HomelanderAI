@@ -26,12 +26,13 @@ import { useState } from 'react'
 import { Link } from 'react-router-dom'
 
 import { getQueue, type QueueItem } from '../../api/client'
+import { DoctorVerdictBadge } from '../../components/DoctorVerdictBadge'
 import { PageHeader } from '../../components/PageHeader'
 import { Stat } from '../../components/Stat'
-import { TierBadge } from '../../components/TierBadge'
+import { TierBadge, type Tier } from '../../components/TierBadge'
 
 /**
- * Medical Professional Escalations Command Center.
+ * Doctor reviews: the applications underwriters have sent to a doctor.
  *
  * Dedicated clinical workbench for managing mandatory Tier 3 (Elevated Risk)
  * escalations, reviewing sub-score breakdowns, and issuing binding decisions.
@@ -62,25 +63,24 @@ export function EscalationsPage() {
   // to add its own rule (score above 45), which put applications here that the
   // system had not escalated and labelled the cut-off with a number that was
   // never the real one.
+  // Everything sent to a doctor: waiting now, or sent back with a verdict. For
+  // a doctor the API returns nothing else; an administrator sees the whole
+  // queue, so it is narrowed here the same way.
   const allItems = data?.items ?? []
-  const escalatedRows = allItems.filter(
-    (item) => item.status === 'escalated' || item.tier === 'elevated',
-  )
+  const escalatedRows = allItems
+    .filter((item) => item.status === 'escalated' || Boolean(item.doctorVerdict))
+    .sort((a, b) => Number(b.status === 'escalated') - Number(a.status === 'escalated'))
 
-  const pendingDecisionCount = escalatedRows.filter((item) => item.status !== 'decided').length
-  const decidedCount = escalatedRows.filter((item) => item.status === 'decided').length
-  const waiting = escalatedRows.filter((item) => item.status !== 'decided')
-  const avgCrs =
-    waiting.length > 0
-      ? (waiting.reduce((acc, curr) => acc + (curr.crs ?? 0), 0) / waiting.length).toFixed(1)
-      : '—'
+  const pendingDecisionCount = escalatedRows.filter((item) => item.status === 'escalated').length
+  const correctCount = escalatedRows.filter((item) => item.doctorVerdict === 'accurate').length
+  const wrongCount = escalatedRows.filter((item) => item.doctorVerdict === 'inaccurate').length
 
   return (
     <Stack gap="md">
       <PageHeader
         screen="escalations"
         actions={
-          <Tooltip label="Check for new escalations" withArrow>
+          <Tooltip label="Check for new cases" withArrow>
             <ActionIcon
               variant="light"
               color="grape"
@@ -95,13 +95,13 @@ export function EscalationsPage() {
       >
         <SimpleGrid cols={{ base: 1, sm: 3 }} spacing="xs">
           <Stat
-            label="Waiting for your decision"
+            label="Waiting for your review"
             value={pendingDecisionCount}
             color="red"
-            hint="Elevated risk. An underwriter cannot decide these."
+            hint="Check the results and send them back to the underwriter."
           />
-          <Stat label="Average score of those waiting" value={avgCrs} color="orange" hint="Out of 100" />
-          <Stat label="Decided" value={decidedCount} color="teal" hint="Escalations already closed" />
+          <Stat label="Sent back as correct" value={correctCount} color="teal" hint="Results verified" />
+          <Stat label="Sent back as wrong" value={wrongCount} color="orange" hint="Results corrected" />
         </SimpleGrid>
       </PageHeader>
 
@@ -116,12 +116,12 @@ export function EscalationsPage() {
           w={280}
         />
         <Text size="xs" style={{ color: 'var(--neo-muted)' }}>
-          {escalatedRows.length} escalated application{escalatedRows.length === 1 ? '' : 's'}
+          {escalatedRows.length} application{escalatedRows.length === 1 ? '' : 's'} sent to a doctor
         </Text>
       </Group>
 
       {error && (
-        <Alert color="red" variant="light" icon={<IconAlertCircle size={16} />} title="Could not load escalations">
+        <Alert color="red" variant="light" icon={<IconAlertCircle size={16} />} title="Could not load doctor reviews">
           {error instanceof Error ? error.message : 'Unknown error'}
         </Alert>
       )}
@@ -141,10 +141,10 @@ export function EscalationsPage() {
                 <Table.Th>Ref ID</Table.Th>
                 <Table.Th>Applicant</Table.Th>
                 <Table.Th>Cover Sum</Table.Th>
-                <Table.Th>Escalated</Table.Th>
+                <Table.Th>Sent</Table.Th>
                 <Table.Th>Risk Tier</Table.Th>
                 <Table.Th>CRS Score</Table.Th>
-                <Table.Th>Clinical Status</Table.Th>
+                <Table.Th>Your review</Table.Th>
                 <Table.Th w={140}>Action</Table.Th>
               </Table.Tr>
             </Table.Thead>
@@ -168,10 +168,10 @@ export function EscalationsPage() {
                   <Table.Td colSpan={8}>
                     <Paper p="xl" style={{ textAlign: 'center', background: 'transparent' }}>
                       <Text fw={600} size="sm" c="teal.4">
-                        Escalation Queue Clear
+                        Nothing waiting for you
                       </Text>
                       <Text size="xs" c="dimmed" mt={4}>
-                        No Tier 3 elevated applications currently require medical review.
+                        Applications an underwriter sends to a doctor appear here.
                       </Text>
                     </Paper>
                   </Table.Td>
@@ -186,10 +186,10 @@ export function EscalationsPage() {
 }
 
 function EscalationRow({ row }: { row: QueueItem }) {
-  const isDecided = row.status === 'decided'
+  const waiting = row.status === 'escalated'
 
   return (
-    <Table.Tr style={{ backgroundColor: isDecided ? undefined : 'var(--neo-danger-soft)' }}>
+    <Table.Tr style={{ backgroundColor: waiting ? 'var(--neo-danger-soft)' : undefined }}>
       <Table.Td>
         <Text fz="sm" ff="monospace" fw={600}>
           {row.reference}
@@ -205,23 +205,19 @@ function EscalationRow({ row }: { row: QueueItem }) {
           <span>{relativeTime(row.submittedAt)}</span>
         </Group>
       </Table.Td>
+      <Table.Td>{row.tier ? <TierBadge tier={row.tier as Tier} /> : '—'}</Table.Td>
       <Table.Td>
-        <TierBadge tier="elevated" />
-      </Table.Td>
-      <Table.Td>
-        <Badge color="red" variant="filled" size="sm" ff="monospace">
+        <Text fz="sm" ff="monospace" fw={600}>
           {row.crs != null ? row.crs.toFixed(1) : '—'}
-        </Badge>
+        </Text>
       </Table.Td>
       <Table.Td>
-        {isDecided ? (
-          <Badge color="teal" variant="light" size="sm">
-            Decided
+        {waiting ? (
+          <Badge color="orange" variant="light" size="sm">
+            Waiting for your review
           </Badge>
         ) : (
-          <Badge color="orange" variant="light" size="sm">
-            Waiting for your decision
-          </Badge>
+          <DoctorVerdictBadge verdict={row.doctorVerdict} />
         )}
       </Table.Td>
       <Table.Td>
@@ -229,11 +225,11 @@ function EscalationRow({ row }: { row: QueueItem }) {
           component={Link}
           to={`/applications/${row.id}`}
           size="compact-xs"
-          variant={isDecided ? 'subtle' : 'filled'}
+          variant={waiting ? 'filled' : 'subtle'}
           color="grape"
           leftSection={<IconEye size={13} />}
         >
-          {isDecided ? 'Open' : 'Decide'}
+          {waiting ? 'Review' : 'Open'}
         </Button>
       </Table.Td>
     </Table.Tr>

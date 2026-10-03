@@ -5,7 +5,7 @@ import uuid
 from datetime import datetime
 from decimal import Decimal
 
-from sqlalchemy import DateTime, ForeignKey, Numeric, String, Text, func
+from sqlalchemy import Boolean, DateTime, ForeignKey, Numeric, String, Text, func
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -33,6 +33,16 @@ class NotificationType(enum.StrEnum):
     DECISION_RECORDED = "decision_recorded"
     EVIDENCE_REQUESTED = "evidence_requested"
     API_KEY_EXPIRING = "api_key_expiring"
+    # A doctor has reviewed the results and returned the application.
+    DOCTOR_REVIEWED = "doctor_reviewed"
+    # Someone asked to see a client's details; an administrator answered.
+    ACCESS_REQUESTED = "access_requested"
+    ACCESS_DECIDED = "access_decided"
+    # The client uploaded a requested document from their portal.
+    DOCUMENTS_UPLOADED = "documents_uploaded"
+    # An approval issued a policy; an administrator cancelled one.
+    POLICY_ISSUED = "policy_issued"
+    POLICY_CANCELLED = "policy_cancelled"
 
 
 class NotificationChannel(enum.StrEnum):
@@ -176,3 +186,89 @@ class Notification(Base):
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )
     read_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class DoctorReview(Base):
+    """A doctor's verdict on the readers' results: accurate or inaccurate.
+
+    Not a decision about the policy — that stays the underwriter's. The latest
+    review is the tag the application carries back to them.
+    """
+
+    __tablename__ = "doctor_reviews"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    tenant_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False
+    )
+    application_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("applications.id", ondelete="CASCADE"), nullable=False
+    )
+    doctor_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="RESTRICT"), nullable=False
+    )
+    verdict: Mapped[str] = mapped_column(String(20), nullable=False)
+    note: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+
+class ClientMessage(Base):
+    """A doctor writing to the client directly, shown on their portal."""
+
+    __tablename__ = "client_messages"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    tenant_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False
+    )
+    application_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("applications.id", ondelete="CASCADE"), nullable=False
+    )
+    sender_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="RESTRICT"), nullable=False
+    )
+    urgency: Mapped[str] = mapped_column(String(20), nullable=False)
+    message: Mapped[str] = mapped_column(Text, nullable=False)
+    emailed: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+
+class ClientAccessRequest(Base):
+    """Someone asking to see one client's personal details, and why.
+
+    Underwriters and doctors see a client's name and reference; the rest is
+    the company owner's to hand out. An approval opens that client to the
+    person who asked for `ACCESS_HOURS` (routers/access.py).
+    """
+
+    __tablename__ = "client_access_requests"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    tenant_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False
+    )
+    applicant_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("applicants.id", ondelete="CASCADE"), nullable=False
+    )
+    requester_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    )
+    reason: Mapped[str] = mapped_column(Text, nullable=False)
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default="pending")
+    decided_by: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    decided_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )

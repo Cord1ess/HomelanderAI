@@ -1,10 +1,10 @@
-"""What each staff role may decide.
+"""What each staff role may do.
 
-An underwriter decides the cases the models call low or moderate. An elevated
-case goes to a medical professional: the underwriter can escalate it but not
-approve it. The review screen has always hidden the approve buttons, but the API
-accepted the request anyway, so the rule only held for people who used the
-screen.
+The underwriter decides the policy. An elevated case goes to a doctor first;
+the doctor checks the readers' results, returns them as accurate or
+inaccurate, and may write to the client directly — but never decides the
+policy. A doctor sees only what was sent to a doctor. Every rule here is the
+API's, not just the screen's: a request sent directly must be refused too.
 """
 
 import asyncio
@@ -34,8 +34,8 @@ def skip_scoring(monkeypatch):
     monkeypatch.setattr(applications, "score_application", not_scored)
 
 
-def add_underwriter(tenant_id: uuid.UUID) -> dict:
-    """A second account in the carrier's tenant, with the underwriter role."""
+def add_user(tenant_id: uuid.UUID, role: str) -> dict:
+    """Another account in the carrier's tenant, with the given role."""
 
     async def make() -> dict:
         from app.db.session import AsyncSessionLocal
@@ -46,16 +46,20 @@ def add_underwriter(tenant_id: uuid.UUID) -> dict:
             db.add(
                 User(
                     tenant_id=tenant_id,
-                    full_name="Test Junior Underwriter",
+                    full_name=f"Test {role}",
                     email=email,
                     password_hash=hash_password("testpassword123"),
-                    role=UserRole.UNDERWRITER,
+                    role=UserRole(role),
                 )
             )
             await db.commit()
         return {"email": email, "password": "testpassword123"}
 
     return asyncio.run(make())
+
+
+def add_underwriter(tenant_id: uuid.UUID) -> dict:
+    return add_user(tenant_id, "underwriter")
 
 
 def set_tier(tenant_id: uuid.UUID, application_id: str, tier: str, crs: str) -> None:
@@ -92,15 +96,16 @@ def submit(client: TestClient) -> dict:
     return response.json()
 
 
-def an_application(carrier, tier: str, crs: str) -> tuple[dict, dict, dict]:
-    """(medical professional, underwriter, application) in one throwaway tenant."""
-    medical = asyncio.run(carrier())
-    underwriter = add_underwriter(medical["tenant_id"])
+def an_application(carrier, tier: str, crs: str) -> tuple[dict, dict, dict, dict]:
+    """(doctor, underwriter, admin, application) in one throwaway tenant."""
+    admin = asyncio.run(carrier())
+    underwriter = add_underwriter(admin["tenant_id"])
+    doctor = add_user(admin["tenant_id"], "medical_professional")
     with TestClient(app) as client:
-        sign_in(client, medical)
+        sign_in(client, underwriter)
         created = submit(client)
-    set_tier(medical["tenant_id"], created["id"], tier, crs)
-    return medical, underwriter, created
+    set_tier(admin["tenant_id"], created["id"], tier, crs)
+    return doctor, underwriter, admin, created
 
 
 @pytest.mark.parametrize(
@@ -110,14 +115,14 @@ def an_application(carrier, tier: str, crs: str) -> tuple[dict, dict, dict]:
         {"decision": "approved_with_adjustment", "finalPremium": 9000},
     ],
 )
-def test_an_underwriter_cannot_approve_an_elevated_case(carrier, body):
-    _, underwriter, created = an_application(carrier, "elevated", "82.00")
+def test_an_underwriter_cannot_approve_an_elevated_case_a_doctor_has_not_seen(carrier, body):
+    _, underwriter, _, created = an_application(carrier, "elevated", "82.00")
 
     with TestClient(app) as client:
         sign_in(client, underwriter)
         refused = client.post(f"/api/applications/{created['id']}/decision", json=body)
         assert refused.status_code == 403, refused.text
-        assert "medical professional" in refused.json()["detail"]
+        assert "doctor" in refused.json()["detail"]
 
         # Refused means nothing was written: the case is still open.
         detail = client.get(f"/api/applications/{created['id']}").json()
@@ -125,72 +130,236 @@ def test_an_underwriter_cannot_approve_an_elevated_case(carrier, body):
         assert detail["status"] != "decided"
 
 
-def test_an_underwriter_escalates_and_a_medical_professional_decides(carrier):
-    """The hand-over. Escalating spends nothing: the decision stays open and
-    becomes the medical professional's. The underwriter cannot take it back."""
-    medical, underwriter, created = an_application(carrier, "elevated", "82.00")
+def test_the_doctor_checks_the_results_and_the_underwriter_decides(carrier):
+    """The whole hand-over: sent to a doctor, checked, returned with a verdict,
+    then decided by the underwriter — who could not approve it before."""
+    doctor, underwriter, _, created = an_application(carrier, "elevated", "82.00")
+    url = f"/api/applications/{created['id']}"
 
     with TestClient(app) as client:
         sign_in(client, underwriter)
-        # Escalating through the decision endpoint is refused: it is not a decision.
-        refused = client.post(
-            f"/api/applications/{created['id']}/decision",
-            json={"decision": "escalated_senior_review"},
+        # Sending through the decision endpoint is refused: it is not a decision.
+        assert (
+            client.post(f"{url}/decision", json={"decision": "escalated_senior_review"}).status_code
+            == 422
         )
-        assert refused.status_code == 422
 
-        handed = client.post(
-            f"/api/applications/{created['id']}/escalate", json={"note": "Please look at the apex."}
-        )
-        assert handed.status_code == 200, handed.text
-        assert handed.json()["status"] == "escalated"
-        assert handed.json()["decision"] is None
+        sent = client.post(f"{url}/escalate", json={"note": "Please look at the apex."})
+        assert sent.status_code == 200, sent.text
+        assert sent.json()["status"] == "escalated"
+        assert sent.json()["sentToDoctorAt"] is not None
+        assert client.post(f"{url}/escalate", json={}).status_code == 409
 
-        # Twice is a mistake, not a second hand-over.
-        again = client.post(f"/api/applications/{created['id']}/escalate", json={})
-        assert again.status_code == 409
-
-        # And the underwriter cannot now decide it, whatever the tier.
-        blocked = client.post(
-            f"/api/applications/{created['id']}/decision",
-            json={"decision": "confirmed_fast_track"},
-        )
-        assert blocked.status_code == 403
-        assert "medical professional" in blocked.json()["detail"]
+        # While a doctor has it, nobody decides.
+        waiting = client.post(f"{url}/decision", json={"decision": "confirmed_fast_track"})
+        assert waiting.status_code == 409
+        assert "doctor" in waiting.json()["detail"]
 
     with TestClient(app) as client:
-        sign_in(client, medical)
-        # The medical professional was told, with the note.
+        sign_in(client, doctor)
         notes = client.get("/api/notifications").json()
         assert any(
-            n["notificationType"] == "tier_escalation" and "apex" in n["message"] for n in notes
+            n["notificationType"] == "tier_escalation"
+            and "apex" in n["message"]
+            and "check the results" in n["message"]
+            for n in notes
         ), notes
 
-        decided = client.post(
-            f"/api/applications/{created['id']}/decision",
-            json={"decision": "approved_with_adjustment", "finalPremium": 12000},
+        # The doctor does not decide the policy, whatever the tier.
+        no = client.post(
+            f"{url}/decision", json={"decision": "approved_with_adjustment", "finalPremium": 12000}
         )
-        assert decided.status_code == 201, decided.text
-        detail = client.get(f"/api/applications/{created['id']}").json()
-        assert detail["status"] == "decided"
-        assert detail["decision"]["decision"] == "approved_with_adjustment"
+        assert no.status_code == 403
+        assert "underwriter" in no.json()["detail"]
 
-
-def test_a_medical_professional_can_approve_an_elevated_case(carrier):
-    medical, _, created = an_application(carrier, "elevated", "82.00")
+        returned = client.post(
+            f"{url}/doctor-review", json={"verdict": "accurate", "note": "Consistent with TB."}
+        )
+        assert returned.status_code == 200, returned.text
+        body = returned.json()
+        assert body["status"] == "scored"
+        assert body["doctorReviews"][0]["verdict"] == "accurate"
+        assert body["doctorReviews"][0]["note"] == "Consistent with TB."
+        # Returned once; a second verdict needs it sent again.
+        assert client.post(f"{url}/doctor-review", json={"verdict": "accurate"}).status_code == 409
 
     with TestClient(app) as client:
-        sign_in(client, medical)
-        response = client.post(
-            f"/api/applications/{created['id']}/decision",
-            json={"decision": "approved_with_adjustment", "finalPremium": 12000},
+        sign_in(client, underwriter)
+        told = client.get("/api/notifications").json()
+        assert any(
+            n["notificationType"] == "doctor_reviewed" and "accurate" in n["message"] for n in told
+        ), told
+
+        queue = client.get("/api/applications").json()["items"]
+        assert next(i for i in queue if i["id"] == created["id"])["doctorVerdict"] == "accurate"
+
+        decided = client.post(
+            f"{url}/decision", json={"decision": "approved_with_adjustment", "finalPremium": 12000}
         )
-        assert response.status_code == 201, response.text
+        assert decided.status_code == 201, decided.text
+        assert client.get(url).json()["status"] == "decided"
+
+
+def test_an_inaccurate_verdict_is_tagged_as_such(carrier):
+    doctor, underwriter, _, created = an_application(carrier, "elevated", "82.00")
+    url = f"/api/applications/{created['id']}"
+    with TestClient(app) as client:
+        sign_in(client, underwriter)
+        client.post(f"{url}/escalate", json={})
+    with TestClient(app) as client:
+        sign_in(client, doctor)
+        r = client.post(
+            f"{url}/doctor-review",
+            json={"verdict": "inaccurate", "note": "Old scarring, not active."},
+        )
+        assert r.status_code == 200, r.text
+    with TestClient(app) as client:
+        sign_in(client, underwriter)
+        assert client.get(url).json()["doctorReviews"][0]["verdict"] == "inaccurate"
+
+
+def test_a_verdict_must_be_one_of_the_two(carrier):
+    doctor, underwriter, _, created = an_application(carrier, "elevated", "82.00")
+    url = f"/api/applications/{created['id']}"
+    with TestClient(app) as client:
+        sign_in(client, underwriter)
+        client.post(f"{url}/escalate", json={})
+    with TestClient(app) as client:
+        sign_in(client, doctor)
+        assert client.post(f"{url}/doctor-review", json={"verdict": "maybe"}).status_code == 422
+
+
+def test_only_a_doctor_returns_a_verdict_or_writes_to_the_client(carrier):
+    _, underwriter, _, created = an_application(carrier, "elevated", "82.00")
+    url = f"/api/applications/{created['id']}"
+    with TestClient(app) as client:
+        sign_in(client, underwriter)
+        client.post(f"{url}/escalate", json={})
+        assert client.post(f"{url}/doctor-review", json={"verdict": "accurate"}).status_code == 403
+        assert (
+            client.post(
+                f"{url}/client-message", json={"urgency": "urgent", "message": "See a doctor."}
+            ).status_code
+            == 403
+        )
+
+
+def test_a_doctor_sees_only_what_was_sent_to_a_doctor(carrier):
+    doctor, underwriter, _, created = an_application(carrier, "moderate", "48.00")
+    url = f"/api/applications/{created['id']}"
+
+    with TestClient(app) as client:
+        sign_in(client, doctor)
+        # Not sent: as if it did not exist.
+        assert client.get(url).status_code == 404
+        assert client.get("/api/applications").json()["items"] == []
+        assert client.get("/api/clients").json() == []
+
+    with TestClient(app) as client:
+        sign_in(client, underwriter)
+        files = client.get(url).json()["files"]
+        client.post(f"{url}/escalate", json={})
+
+    with TestClient(app) as client:
+        sign_in(client, doctor)
+        assert client.get(url).status_code == 200
+        assert [i["id"] for i in client.get("/api/applications").json()["items"]] == [created["id"]]
+        clients = client.get("/api/clients").json()
+        assert len(clients) == 1
+        # The profile needs an administrator's yes first (test_access.py).
+        assert client.get(f"/api/clients/{clients[0]['id']}").status_code == 403
+        assert client.get(f"/api/files/{files[0]['id']}").status_code == 200
+
+
+def test_a_doctor_hears_only_about_what_was_sent_to_a_doctor(carrier):
+    doctor, underwriter, _, created = an_application(carrier, "moderate", "48.00")
+    url = f"/api/applications/{created['id']}"
+
+    with TestClient(app) as client:
+        sign_in(client, underwriter)
+        asked = client.post(f"{url}/evidence-request", json={"items": ["A recent chest film"]})
+        assert asked.status_code in (200, 201), asked.text
+        assert client.get("/api/notifications").json(), "the underwriters are told"
+
+    with TestClient(app) as client:
+        sign_in(client, doctor)
+        assert client.get("/api/notifications").json() == []
+
+    with TestClient(app) as client:
+        sign_in(client, underwriter)
+        assert client.post(f"{url}/escalate", json={}).status_code == 200
+
+    with TestClient(app) as client:
+        sign_in(client, doctor)
+        told = client.get("/api/notifications").json()
+        assert [n["notificationType"] for n in told] == ["tier_escalation"], told
+
+
+def test_a_doctor_cannot_see_an_unsent_file_or_client(carrier):
+    doctor, underwriter, _, created = an_application(carrier, "low", "12.00")
+    with TestClient(app) as client:
+        sign_in(client, underwriter)
+        files = client.get(f"/api/applications/{created['id']}").json()["files"]
+        client_id = client.get("/api/clients").json()[0]["id"]
+    with TestClient(app) as client:
+        sign_in(client, doctor)
+        assert client.get(f"/api/files/{files[0]['id']}").status_code == 404
+        assert client.get(f"/api/clients/{client_id}").status_code == 404
+
+
+def test_a_doctor_does_not_take_applications_or_see_analytics(carrier):
+    doctor, *_ = an_application(carrier, "low", "12.00")
+    with TestClient(app) as client:
+        sign_in(client, doctor)
+        taken = client.post(
+            "/api/applications",
+            data={
+                "payload": json.dumps(json.loads(intake_payload())),
+                "file_kinds": ["chest_xray"],
+            },
+            files={"files": ("xray.png", a_chest_xray(), "image/png")},
+        )
+        assert taken.status_code == 403
+        assert client.get("/api/analytics").status_code == 403
+
+
+def test_a_doctor_writes_to_the_client_and_the_portal_shows_it(carrier):
+    """For what cannot wait for the policy. The client reads the doctor's words
+    and nothing else — never a score."""
+    doctor, underwriter, _, created = an_application(carrier, "elevated", "82.00")
+    url = f"/api/applications/{created['id']}"
+    with TestClient(app) as client:
+        sign_in(client, underwriter)
+        client.post(f"{url}/escalate", json={})
+    with TestClient(app) as client:
+        sign_in(client, doctor)
+        sent = client.post(
+            f"{url}/client-message",
+            json={"urgency": "urgent", "message": "Please see a chest physician this week."},
+        )
+        assert sent.status_code == 200, sent.text
+        assert sent.json()["clientMessages"][0]["urgency"] == "urgent"
+        # Writing to the client does not return the case: the verdict still does that.
+        assert sent.json()["status"] == "escalated"
+
+    with TestClient(app) as portal:
+        login = portal.post(
+            "/api/portal/login",
+            json={
+                "portalId": created["portal"]["portalId"],
+                "password": created["portal"]["password"],
+            },
+        )
+        assert login.status_code == 200, login.text
+        body = login.json()
+        assert body["messages"][0]["message"] == "Please see a chest physician this week."
+        assert body["messages"][0]["urgency"] == "urgent"
+        assert not any(k in body for k in ("crs", "tier", "score", "arms", "findings"))
 
 
 def test_an_underwriter_approves_a_moderate_case_as_before(carrier):
     """The rule is about elevated cases only. Everything else is unchanged."""
-    _, underwriter, created = an_application(carrier, "moderate", "48.00")
+    _, underwriter, _, created = an_application(carrier, "moderate", "48.00")
 
     with TestClient(app) as client:
         sign_in(client, underwriter)

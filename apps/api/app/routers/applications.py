@@ -35,7 +35,17 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app import audit as audit_chain
-from app import catalogue, mailer, persistence, plans, storage, triage, turnaround
+from app import (
+    catalogue,
+    mailer,
+    outbox,
+    persistence,
+    plans,
+    progress,
+    storage,
+    triage,
+    turnaround,
+)
 from app import ecg as ecg_signal
 from app import evidence as evidence_kinds
 from app.arms import arm_for_intake, arms_for, form_arms
@@ -49,10 +59,13 @@ from app.models import (
     Application,
     ApplicationStatus,
     AuditLog,
+    ClientMessage,
     CompositeScore,
+    DoctorReview,
     EvidenceFile,
     EvidenceFileType,
     ExplanationArtifact,
+    InsurancePolicy,
     ModelArm,
     ModelArmType,
     ModelRun,
@@ -79,9 +92,13 @@ from app.schemas.application import (
     AuditTrailSchema,
     ClassifiedFileSchema,
     ClassifyResponseSchema,
+    ClientMessageIn,
+    ClientMessageSchema,
     CoverageIn,
     DecisionIn,
     DecisionSchema,
+    DoctorReviewIn,
+    DoctorReviewSchema,
     EscalateIn,
     EvidenceChoiceSchema,
     FileSchema,
@@ -130,8 +147,14 @@ async def get_pricing(
     """What each tier means for the policy, under this company's settings.
 
     Premiums are worked out here rather than in the dashboard so one change to
-    the company's policy moves every screen at once.
+    the company's policy moves every screen at once. The plans and their prices
+    are the company owner's: an administrator's only.
     """
+    if principal.role != UserRole.ADMIN.value:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Plans and pricing are for the company owner (an administrator).",
+        )
     tenant = await db.get(Tenant, principal.tenant_id)
     thresholds = _thresholds_for(tenant)
     policy = plans.Policy.from_tenant(tenant) if tenant else plans.DEFAULT_POLICY
@@ -162,7 +185,7 @@ def _thresholds_for(tenant: Tenant | None) -> Thresholds:
 )
 async def classify_evidence(
     files: list[UploadFile] = File(default=[]),
-    _: Principal = Depends(current_principal),
+    principal: Principal = Depends(current_principal),
 ) -> ClassifyResponseSchema:
     """Identify dropped files so the operator can confirm where each one goes.
 
@@ -170,6 +193,7 @@ async def classify_evidence(
     still filling in the form, so the review screen is instant when they submit.
     The kinds it proposes are only acted on after the operator confirms them.
     """
+    _not_for_doctors(principal, "identifying evidence for a new application")
     classified: list[ClassifiedFileSchema] = []
 
     for upload in files:
@@ -300,6 +324,8 @@ async def submit_application(
     has a client sitting opposite. They get a reference immediately, and the
     queue shows the result when it lands.
     """
+    _not_for_doctors(principal, "taking an application")
+
     try:
         intake = IntakeIn.model_validate(json.loads(payload))
     except (json.JSONDecodeError, ValidationError) as exc:
@@ -443,6 +469,16 @@ async def submit_application(
             applicant.portal_id,
             portal_password,
         )
+        outbox.record(
+            db,
+            principal.tenant_id,
+            application.id,
+            "portal_sign_in",
+            applicant.email,
+            f"Your application {applicant.external_ref}",
+            emailed,
+        )
+        await db.commit()
 
     return SubmitResponseSchema(
         id=application.id,
@@ -603,6 +639,7 @@ async def score_application(application_id: UUID) -> None:
                 return
 
             application.status = ApplicationStatus.PROCESSING
+            progress.start(application_id)
             started_at = datetime.now(UTC)
             application.processing_started_at = started_at
             await db.commit()
@@ -657,6 +694,7 @@ async def score_application(application_id: UUID) -> None:
                 kinds,
                 applicant.sex if applicant else None,
                 list(application.models_requested or []),
+                lambda done, total, step: progress.update(application_id, done, total, step),
             )
 
             await persistence.save_evaluation(db, application, evaluation, started_at)
@@ -686,6 +724,8 @@ async def score_application(application_id: UUID) -> None:
             log.exception("Scoring failed for application %s", application_id)
             await db.rollback()
             await _mark_failed(db, application_id)
+        finally:
+            progress.finish(application_id)
 
 
 async def _mark_failed(db: AsyncSession, application_id: UUID) -> None:
@@ -730,14 +770,16 @@ async def _notify_tenant(
 ) -> None:
     """One in-app notification per active user in the tenant.
 
-    There is no per-user routing: everyone underwriting for this carrier should
-    see that an application moved. If per-user preferences are ever wanted, this
-    is the one place to filter.
+    Everyone underwriting for this carrier should see that an application
+    moved. A doctor hears only about the applications sent to a doctor: they
+    see nothing else, so a notice about anything else would lead nowhere.
     """
     users = await db.execute(
         select(User).where(User.tenant_id == application.tenant_id, User.is_active.is_(True))
     )
     for user in users.scalars().all():
+        if user.role == UserRole.MEDICAL_PROFESSIONAL and application.sent_to_doctor_at is None:
+            continue
         db.add(
             Notification(
                 tenant_id=application.tenant_id,
@@ -790,6 +832,8 @@ async def list_applications(
         )
         .where(Application.tenant_id == principal.tenant_id)
     )
+    if _is_doctor(principal):
+        base = base.where(Application.sent_to_doctor_at.is_not(None))
 
     if status_filter and status_filter != "all":
         base = base.where(Application.status == status_filter)
@@ -804,8 +848,24 @@ async def list_applications(
         base.order_by(Application.submitted_at.desc()).limit(limit).offset(offset)
     )
 
-    items = [
-        QueueItemSchema(
+    listed = rows.all()
+    verdicts = await _latest_verdicts(db, [a.id for a, _, _ in listed])
+    issued = {
+        application_id: (number, state)
+        for application_id, number, state in (
+            await db.execute(
+                select(
+                    InsurancePolicy.application_id,
+                    InsurancePolicy.policy_number,
+                    InsurancePolicy.status,
+                ).where(InsurancePolicy.application_id.in_([a.id for a, _, _ in listed]))
+            )
+        ).all()
+    } if listed else {}
+    items = []
+    for application, applicant, score in listed:
+        running = progress.get(application.id)
+        items.append(QueueItemSchema(
             id=application.id,
             reference=applicant.external_ref,
             applicant_name=applicant.name,
@@ -817,15 +877,20 @@ async def list_applications(
             models_requested=application.models_requested or [],
             expected_by=application.expected_by,
             overdue=turnaround.is_overdue(application.expected_by, application.status.value),
-        )
-        for application, applicant, score in rows.all()
-    ]
+            doctor_verdict=verdicts.get(application.id),
+            progress_done=running.done if running else None,
+            progress_total=running.total if running else None,
+            progress_step=running.step if running else None,
+            policy_number=issued.get(application.id, (None, None))[0],
+            policy_status=issued.get(application.id, (None, None))[1],
+        ))
 
-    counts_result = await db.execute(
-        select(Application.status, func.count())
-        .where(Application.tenant_id == principal.tenant_id)
-        .group_by(Application.status)
+    counted = select(Application.status, func.count()).where(
+        Application.tenant_id == principal.tenant_id
     )
+    if _is_doctor(principal):
+        counted = counted.where(Application.sent_to_doctor_at.is_not(None))
+    counts_result = await db.execute(counted.group_by(Application.status))
     counts = {row_status.value: count for row_status, count in counts_result.all()}
 
     return QueueSchema(items=items, total=sum(counts.values()), counts=counts)
@@ -1014,8 +1079,55 @@ async def get_application(
         files=files,
         decision=decision,
         requested_documents=requested,
+        sent_to_doctor_at=application.sent_to_doctor_at,
+        doctor_reviews=[
+            DoctorReviewSchema(
+                verdict=review.verdict,
+                note=review.note,
+                doctor_name=name,
+                created_at=review.created_at,
+            )
+            for review, name in (
+                await db.execute(
+                    select(DoctorReview, User.full_name)
+                    .outerjoin(User, User.id == DoctorReview.doctor_id)
+                    .where(DoctorReview.application_id == application.id)
+                    .order_by(DoctorReview.created_at.desc())
+                )
+            ).all()
+        ],
+        client_messages=[
+            ClientMessageSchema(
+                urgency=message.urgency,
+                message=message.message,
+                sender_name=name,
+                emailed=message.emailed,
+                created_at=message.created_at,
+            )
+            for message, name in (
+                await db.execute(
+                    select(ClientMessage, User.full_name)
+                    .outerjoin(User, User.id == ClientMessage.sender_id)
+                    .where(ClientMessage.application_id == application.id)
+                    .order_by(ClientMessage.created_at.desc())
+                )
+            ).all()
+        ],
+        policy=await _policy_of(db, application.id),
         errors=errors,
     )
+
+
+async def _policy_of(db: AsyncSession, application_id: UUID):
+    """The policy an approval issued for this application, if any."""
+    from app.routers.policies import describe
+
+    row = (
+        await db.execute(
+            select(InsurancePolicy).where(InsurancePolicy.application_id == application_id)
+        )
+    ).scalar_one_or_none()
+    return (await describe(db, [row]))[0] if row else None
 
 
 async def _list_files(db: AsyncSession, application: Application) -> list[FileSchema]:
@@ -1028,18 +1140,25 @@ async def _list_files(db: AsyncSession, application: Application) -> list[FileSc
 
     artifacts = (
         await db.execute(
-            select(ExplanationArtifact, ModelRun.model_arm_id)
+            select(ExplanationArtifact, ModelRun.model_arm_id, SubScore.details)
             .join(ModelRun, ModelRun.id == ExplanationArtifact.model_run_id)
+            .outerjoin(SubScore, SubScore.model_run_id == ModelRun.id)
             .where(ModelRun.application_id == application.id)
         )
     ).all()
 
-    # A heatmap belongs to the evidence its reader read. Pair them by the arm
-    # that produced each: one arm reads one kind of evidence (Arm.accepts), so
-    # the arm's own evidence file is the image the overlay goes over.
+    # A heatmap belongs to the evidence its reader read. Each run records the
+    # content hash of that file, which is the exact link. Files dropped into
+    # the drop zone carry no reader, so pairing by arm alone left every heatmap
+    # unpaired; it is kept only as the fallback for older runs without a hash.
+    by_hash: dict[str, UUID] = {row.content_hash: row.id for row in evidence if row.content_hash}
     by_arm: dict[UUID, UUID] = {
         row.model_arm_id: row.id for row in evidence if row.model_arm_id is not None
     }
+
+    def image_for(arm_id: UUID, details: dict | None) -> UUID | None:
+        read = (details or {}).get("evidence_hash")
+        return by_hash.get(read) if read in by_hash else by_arm.get(arm_id)
 
     return [
         FileSchema(
@@ -1058,10 +1177,29 @@ async def _list_files(db: AsyncSession, application: Application) -> list[FileSc
             kind=artifact.artifact_type.value,
             filename=None,
             mime_type="image/png",
-            of_file_id=by_arm.get(arm_id),
+            of_file_id=image_for(arm_id, details),
         )
-        for artifact, arm_id in artifacts
+        for artifact, arm_id, details in artifacts
     ]
+
+
+def _is_doctor(principal: Principal) -> bool:
+    return principal.role == UserRole.MEDICAL_PROFESSIONAL.value
+
+
+def _medical_or_owner(principal: Principal) -> bool:
+    """A doctor's work: a doctor, or the administrator, who owns the company
+    and may do anything in it. Never an underwriter."""
+    return principal.role in (UserRole.MEDICAL_PROFESSIONAL.value, UserRole.ADMIN.value)
+
+
+def _not_for_doctors(principal: Principal, what: str) -> None:
+    """A doctor reviews results; the policy and the paperwork are the underwriter's."""
+    if _is_doctor(principal):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=f"A doctor reviews the results; {what} is for the underwriter.",
+        )
 
 
 async def _load_owned(
@@ -1083,7 +1221,9 @@ async def _load_owned(
         )
     ).first()
 
-    if row is None:
+    # A doctor sees only what was sent to a doctor. 404, not 403, for the
+    # same reason as another company's application: saying it exists is a leak.
+    if row is None or (_is_doctor(principal) and row[0].sent_to_doctor_at is None):
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="No such application.",
@@ -1128,26 +1268,26 @@ async def record_decision(
         )
 
     # Escalating is a hand-over, not an outcome. Recording it here used to
-    # spend the write-once decision, so the medical professional it was handed
+    # spend the write-once decision, so the doctor it was handed
     # to could never decide it. There is a separate endpoint for it.
     if payload.decision == UnderwriterDecisionType.ESCALATED_SENIOR_REVIEW:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail=(
-                "Escalating does not decide the application. Use "
-                "POST /applications/{id}/escalate; a medical professional then decides it."
+                "Sending to a doctor does not decide the application. Use "
+                "POST /applications/{id}/escalate; a doctor then checks the results."
             ),
         )
 
-    # Once escalated, only a medical professional decides. The underwriter who
-    # passed it up cannot take it back by approving it.
-    if (
-        application.status == ApplicationStatus.ESCALATED
-        and principal.role != UserRole.MEDICAL_PROFESSIONAL.value
-    ):
+    _not_for_doctors(principal, "the insurance decision")
+
+    # While a doctor has it, an underwriter does not decide: the doctor's
+    # verdict is what the decision is waiting for. The administrator owns the
+    # company and may override that.
+    if application.status == ApplicationStatus.ESCALATED and principal.role != UserRole.ADMIN.value:
         raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="This application has been escalated. A medical professional decides it.",
+            status_code=status.HTTP_409_CONFLICT,
+            detail="This application is with a doctor. It can be decided once they send it back.",
         )
 
     if payload.decision.value == "approved_with_adjustment" and not payload.final_premium:
@@ -1166,8 +1306,8 @@ async def record_decision(
             ),
         )
 
-    # An underwriter may not approve an elevated case; they escalate it and a
-    # medical professional decides. The review screen hides those buttons, but a
+    # An underwriter may not approve an elevated case until a doctor has checked
+    # its results. The review screen hides those buttons, but a
     # rule that exists only in the browser is not a rule: the same request sent
     # directly would have been accepted.
     if principal.role == UserRole.UNDERWRITER.value and payload.decision in (
@@ -1182,12 +1322,13 @@ async def record_decision(
                 .limit(1)
             )
         ).scalar_one_or_none()
-        if latest_score is not None and latest_score.tier == RiskTier.ELEVATED:
+        reviewed = (await _latest_verdicts(db, [application.id])).get(application.id)
+        if latest_score is not None and latest_score.tier == RiskTier.ELEVATED and not reviewed:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail=(
-                    "This application is elevated risk. An underwriter can escalate it "
-                    "to a medical professional, but cannot approve it."
+                    "This application is elevated risk. Send it to a doctor first; "
+                    "once they have checked the results you can decide it."
                 ),
             )
 
@@ -1200,6 +1341,10 @@ async def record_decision(
     )
     db.add(record)
     application.status = ApplicationStatus.DECIDED
+    # An approval issues the policy the client then sees on their portal.
+    from app.routers.policies import issue_policy
+
+    issued = await issue_policy(db, application, applicant, record)
 
     await persistence.append_audit(
         db,
@@ -1210,6 +1355,7 @@ async def record_decision(
         payload={
             "decision": payload.decision.value,
             "final_premium": float(payload.final_premium) if payload.final_premium else None,
+            "policy_number": issued.policy_number if issued else None,
         },
     )
     await _notify_tenant(
@@ -1236,6 +1382,12 @@ async def record_decision(
     # underwriter.
     if applicant.email:
         background.add_task(
+            outbox.send_logged,
+            application.tenant_id,
+            application.id,
+            "decision_notice",
+            applicant.email,
+            f"An update on your application {applicant.external_ref}",
             mailer.send_decision_notice,
             applicant.email,
             applicant.name or "",
@@ -1270,6 +1422,7 @@ async def revise_turnaround(
     answer will be late, so they should be the one who can say so. The old and
     new dates and the reason go into the audit trail.
     """
+    _not_for_doctors(principal, "the promised date")
     application, _ = await _load_owned(db, application_id, principal)
 
     if application.status == ApplicationStatus.DECIDED:
@@ -1329,6 +1482,7 @@ async def request_evidence(
     this is a pause, not an outcome. The list is what the applicant will see,
     so each item is stored verbatim.
     """
+    _not_for_doctors(principal, "asking the client for documents")
     application, applicant = await _load_owned(db, application_id, principal)
 
     if application.status == ApplicationStatus.DECIDED:
@@ -1392,7 +1546,7 @@ async def request_evidence(
 @router.post(
     "/applications/{application_id}/escalate",
     response_model=ApplicationDetailSchema,
-    summary="Hand the application to a medical professional",
+    summary="Hand the application to a doctor",
 )
 async def escalate_application(
     application_id: UUID,
@@ -1402,10 +1556,12 @@ async def escalate_application(
 ) -> ApplicationDetailSchema:
     """Pass the application up without deciding it.
 
-    The decision stays open and becomes a medical professional's to record.
-    Every medical professional in the company is told. The clock the client
+    The decision stays open: a doctor checks the results and sends it back,
+    and the underwriter decides.
+    Every doctor in the company is told. The clock the client
     was given keeps running: the company still holds the case.
     """
+    _not_for_doctors(principal, "sending to a doctor")
     application, _ = await _load_owned(db, application_id, principal)
 
     if application.status == ApplicationStatus.DECIDED:
@@ -1416,7 +1572,7 @@ async def escalate_application(
     if application.status == ApplicationStatus.ESCALATED:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail="This application is already with a medical professional.",
+            detail="This application is already with a doctor.",
         )
     if application.status == ApplicationStatus.PROCESSING:
         raise HTTPException(
@@ -1425,6 +1581,9 @@ async def escalate_application(
         )
 
     application.status = ApplicationStatus.ESCALATED
+    # Kept once set: an application sent to a doctor stays visible to them
+    # after they return it, so they can see what became of it.
+    application.sent_to_doctor_at = application.sent_to_doctor_at or datetime.now(UTC)
     actor = await _actor_id(db, principal)
     await persistence.append_audit(
         db,
@@ -1435,7 +1594,7 @@ async def escalate_application(
         payload={"note": payload.note, "by_role": principal.role},
     )
 
-    # Told to the medical professionals, who now own the decision, and to no
+    # Told to the doctors, who now own the decision, and to no
     # one else: the rest of the company sees the status change in the queue.
     medics = await db.execute(
         select(User).where(
@@ -1454,12 +1613,199 @@ async def escalate_application(
                 notification_type=NotificationType.TIER_ESCALATION,
                 channel=NotificationChannel.IN_APP,
                 status=NotificationStatus.SENT,
-                message=f"{reference} has been escalated to you for a decision."
+                message=f"{reference} has been sent to you to check the results."
                 + (f" Note: {payload.note}" if payload.note else ""),
             )
         )
     await db.commit()
     return await get_application(application_id, db, principal)
+
+
+async def _latest_verdicts(db: AsyncSession, ids: list[UUID]) -> dict[UUID, str]:
+    """The newest doctor's verdict per application, for those that have one."""
+    if not ids:
+        return {}
+    rows = await db.execute(
+        select(DoctorReview.application_id, DoctorReview.verdict)
+        .where(DoctorReview.application_id.in_(ids))
+        .order_by(DoctorReview.created_at.desc())
+    )
+    out: dict[UUID, str] = {}
+    for application_id, verdict in rows.all():
+        out.setdefault(application_id, verdict)
+    return out
+
+
+@router.post(
+    "/applications/{application_id}/doctor-review",
+    response_model=ApplicationDetailSchema,
+    summary="A doctor returns the application with a verdict on the results",
+)
+async def review_as_doctor(
+    application_id: UUID,
+    payload: DoctorReviewIn,
+    db: AsyncSession = Depends(get_db),
+    principal: Principal = Depends(current_principal),
+) -> ApplicationDetailSchema:
+    """The doctor says whether the readers' results are medically right, and
+    the application goes back to the underwriter carrying that verdict. The
+    doctor decides nothing about the policy."""
+    if not _medical_or_owner(principal):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only a doctor can return a verdict on the results.",
+        )
+    application, applicant = await _load_owned(db, application_id, principal)
+    if application.status != ApplicationStatus.ESCALATED:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="This application is not waiting for a doctor.",
+        )
+
+    doctor = await db.get(User, principal.user_id)
+    if doctor is None:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="This account has no user record, so the review could not be attributed.",
+        )
+    note = (payload.note or "").strip() or None
+    db.add(
+        DoctorReview(
+            tenant_id=principal.tenant_id,
+            application_id=application.id,
+            doctor_id=doctor.id,
+            verdict=payload.verdict,
+            note=note,
+        )
+    )
+    application.status = ApplicationStatus.SCORED
+    await persistence.append_audit(
+        db,
+        tenant_id=principal.tenant_id,
+        application_id=application.id,
+        actor_user_id=doctor.id,
+        event_type="doctor_reviewed",
+        payload={"verdict": payload.verdict, "note": note},
+    )
+
+    found = "accurate" if payload.verdict == "accurate" else "inaccurate"
+    underwriters = await db.execute(
+        select(User).where(
+            User.tenant_id == application.tenant_id,
+            User.is_active.is_(True),
+            User.role == UserRole.UNDERWRITER,
+        )
+    )
+    for user in underwriters.scalars().all():
+        db.add(
+            Notification(
+                tenant_id=application.tenant_id,
+                user_id=user.id,
+                application_id=application.id,
+                notification_type=NotificationType.DOCTOR_REVIEWED,
+                channel=NotificationChannel.IN_APP,
+                status=NotificationStatus.SENT,
+                message=(
+                    f"{applicant.external_ref}: a doctor found the results {found}. "
+                    "It is back with you to decide."
+                    + (f" Note: {note}" if note else "")
+                ),
+            )
+        )
+    await db.commit()
+    return await get_application(application_id, db, principal)
+
+
+@router.post(
+    "/applications/{application_id}/client-message",
+    response_model=ApplicationDetailSchema,
+    summary="A doctor writes to the client directly",
+)
+async def message_client(
+    application_id: UUID,
+    payload: ClientMessageIn,
+    db: AsyncSession = Depends(get_db),
+    principal: Principal = Depends(current_principal),
+) -> ApplicationDetailSchema:
+    """For what cannot wait for the policy: "please see a doctor today". The
+    client sees it on their portal, and by email when mail is set up. It
+    carries the doctor's words only — never a score."""
+    if not _medical_or_owner(principal):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only a doctor can write to the client about their health.",
+        )
+    application, applicant = await _load_owned(db, application_id, principal)
+    doctor = await db.get(User, principal.user_id)
+    if doctor is None:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="This account has no user record, so the message could not be attributed.",
+        )
+
+    text = payload.message.strip()
+    emailed = False
+    if applicant.email:
+        emailed = mailer.send_doctor_message(
+            applicant.email, applicant.name or "", applicant.external_ref, payload.urgency, text
+        )
+        outbox.record(
+            db,
+            principal.tenant_id,
+            application.id,
+            "doctor_message",
+            applicant.email,
+            f"A doctor's note about your application {applicant.external_ref}",
+            emailed,
+        )
+    db.add(
+        ClientMessage(
+            tenant_id=principal.tenant_id,
+            application_id=application.id,
+            sender_id=doctor.id,
+            urgency=payload.urgency,
+            message=text,
+            emailed=emailed,
+        )
+    )
+    await persistence.append_audit(
+        db,
+        tenant_id=principal.tenant_id,
+        application_id=application.id,
+        actor_user_id=doctor.id,
+        event_type="doctor_messaged_client",
+        payload={"urgency": payload.urgency, "emailed": emailed},
+    )
+    await db.commit()
+    return await get_application(application_id, db, principal)
+
+
+async def settle_after_receipt(db: AsyncSession, application: Application) -> None:
+    """Once nothing asked for is outstanding, the application goes back to
+    the underwriter. Shared by the staff tick-off and the client's upload."""
+    # The session does not autoflush, so without this the count below still
+    # sees the row just ticked as outstanding and the application never leaves
+    # awaiting_evidence. The test for this endpoint caught exactly that.
+    await db.flush()
+
+    outstanding = (
+        await db.execute(
+            select(func.count()).where(
+                RequestedDocument.application_id == application.id,
+                RequestedDocument.fulfilled_at.is_(None),
+            )
+        )
+    ).scalar_one()
+
+    if outstanding == 0 and application.status == ApplicationStatus.AWAITING_EVIDENCE:
+        has_score = (
+            await db.execute(
+                select(func.count()).where(CompositeScore.application_id == application.id)
+            )
+        ).scalar_one()
+        application.status = (
+            ApplicationStatus.SCORED if has_score else ApplicationStatus.INSUFFICIENT_EVIDENCE
+        )
 
 
 @router.post(
@@ -1481,6 +1827,7 @@ async def fulfil_evidence_request(
     (`fulfilled_by`), so the record shows which document answered it. It is
     not re-scored: an existing score stands.
     """
+    _not_for_doctors(principal, "marking documents received")
     application, _ = await _load_owned(db, application_id, principal)
 
     row = (
@@ -1518,30 +1865,7 @@ async def fulfil_evidence_request(
             payload={"document_id": str(row.id), "description": row.description},
         )
 
-    # The session does not autoflush, so without this the count below still
-    # sees the row just ticked as outstanding and the application never leaves
-    # awaiting_evidence. The test for this endpoint caught exactly that.
-    await db.flush()
-
-    outstanding = (
-        await db.execute(
-            select(func.count()).where(
-                RequestedDocument.application_id == application.id,
-                RequestedDocument.fulfilled_at.is_(None),
-            )
-        )
-    ).scalar_one()
-
-    if outstanding == 0 and application.status == ApplicationStatus.AWAITING_EVIDENCE:
-        has_score = (
-            await db.execute(
-                select(func.count()).where(CompositeScore.application_id == application.id)
-            )
-        ).scalar_one()
-        application.status = (
-            ApplicationStatus.SCORED if has_score else ApplicationStatus.INSUFFICIENT_EVIDENCE
-        )
-
+    await settle_after_receipt(db, application)
     await db.commit()
     await db.refresh(row)
 
@@ -1646,6 +1970,20 @@ async def get_file(
             )
         ).scalar_one_or_none()
         path = artifact.storage_path if artifact else None
+
+    if path is not None and _is_doctor(principal):
+        owner = evidence.application_id if evidence else (
+            await db.execute(
+                select(ModelRun.application_id)
+                .join(ExplanationArtifact, ExplanationArtifact.model_run_id == ModelRun.id)
+                .where(ExplanationArtifact.id == file_id)
+            )
+        ).scalar_one_or_none()
+        sent = (
+            await db.execute(select(Application.sent_to_doctor_at).where(Application.id == owner))
+        ).scalar_one_or_none()
+        if sent is None:
+            path = None
 
     if path is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No such file.")

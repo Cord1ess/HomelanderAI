@@ -73,6 +73,10 @@ class Application(Base):
     # and a countdown that slips reads as broken.
     expected_by: Mapped[date | None] = mapped_column(Date, nullable=True)
     expected_by_note: Mapped[str | None] = mapped_column(String(300), nullable=True)
+    # When it was first sent to a doctor; a doctor sees only these.
+    sent_to_doctor_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
     evaluated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     processing_started_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True

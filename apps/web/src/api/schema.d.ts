@@ -200,7 +200,7 @@ export interface paths {
         get: operations["list_tenant_staff_api_auth_users_get"];
         put?: never;
         /**
-         * Provision New Staff Operator
+         * Provision New Team Operator
          * @description Add a staff account to the caller's tenant. Administrators only.
          */
         post: operations["provision_staff_api_auth_users_post"];
@@ -222,7 +222,8 @@ export interface paths {
          * @description What each tier means for the policy, under this company's settings.
          *
          *     Premiums are worked out here rather than in the dashboard so one change to
-         *     the company's policy moves every screen at once.
+         *     the company's policy moves every screen at once. The plans and their prices
+         *     are the company owner's: an administrator's only.
          */
         get: operations["get_pricing_api_pricing_get"];
         put?: never;
@@ -406,14 +407,59 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * Hand the application to a medical professional
+         * Hand the application to a doctor
          * @description Pass the application up without deciding it.
          *
-         *     The decision stays open and becomes a medical professional's to record.
-         *     Every medical professional in the company is told. The clock the client
+         *     The decision stays open: a doctor checks the results and sends it back,
+         *     and the underwriter decides.
+         *     Every doctor in the company is told. The clock the client
          *     was given keeps running: the company still holds the case.
          */
         post: operations["escalate_application_api_applications__application_id__escalate_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/applications/{application_id}/doctor-review": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * A doctor returns the application with a verdict on the results
+         * @description The doctor says whether the readers' results are medically right, and
+         *     the application goes back to the underwriter carrying that verdict. The
+         *     doctor decides nothing about the policy.
+         */
+        post: operations["review_as_doctor_api_applications__application_id__doctor_review_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/applications/{application_id}/client-message": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * A doctor writes to the client directly
+         * @description For what cannot wait for the policy: "please see a doctor today". The
+         *     client sees it on their portal, and by email when mail is set up. It
+         *     carries the doctor's words only — never a score.
+         */
+        post: operations["message_client_api_applications__application_id__client_message_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -510,6 +556,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/notifications/read-all": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Mark every unread notification read
+         * @description Only the signed-in user's own, in their own company. Already-read ones
+         *     keep the time they were first read.
+         */
+        post: operations["mark_all_read_api_notifications_read_all_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/notifications/{notification_id}/read": {
         parameters: {
             query?: never;
@@ -571,6 +638,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/tenant/mail": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Is outgoing mail set up? */
+        get: operations["mail_status_api_tenant_mail_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/tenant/mail/test": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Send a test message */
+        post: operations["mail_test_api_tenant_mail_test_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/portal/login": {
         parameters: {
             query?: never;
@@ -599,6 +700,28 @@ export interface paths {
         get: operations["portal_me_api_portal_me_get"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/portal/documents/{document_id}/upload": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * The applicant uploads a document they were asked for
+         * @description Answer one request with a file. It is stored with the application like
+         *     any other evidence, linked to the request, and the staff are told. Once
+         *     nothing is outstanding the application goes back to the underwriter.
+         */
+        post: operations["portal_upload_api_portal_documents__document_id__upload_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -642,6 +765,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/clients/{client_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * One client's profile and every application they made
+         * @description 404, not 403, for another company's client: saying that an id exists
+         *     elsewhere is itself a leak.
+         */
+        get: operations["get_client_api_clients__client_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/analytics": {
         parameters: {
             query?: never;
@@ -659,10 +803,210 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/clients/{client_id}/access-requests": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Ask to see a client's details, with a reason */
+        post: operations["request_access_api_clients__client_id__access_requests_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/access-requests": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Requests to see client details: all of them for an administrator, your own otherwise */
+        get: operations["list_access_requests_api_access_requests_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/access-requests/{request_id}/decision": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Approve or decline a request to see a client's details */
+        post: operations["decide_access_request_api_access_requests__request_id__decision_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/policies": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Every policy (owner only) */
+        get: operations["list_policies_api_policies_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/policies/{policy_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** One policy */
+        get: operations["get_policy_api_policies__policy_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/policies/{policy_id}/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Cancel an approved policy (owner only) */
+        post: operations["cancel_policy_api_policies__policy_id__cancel_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/policies/{policy_id}/payments": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Record a month's premium as paid (owner only) */
+        post: operations["record_payment_api_policies__policy_id__payments_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/applications/{application_id}/client-sign-in": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The client's portal sign-in and every email sent to them */
+        get: operations["get_client_sign_in_api_applications__application_id__client_sign_in_get"];
+        put?: never;
+        /** Make a new portal password, and email it when possible */
+        post: operations["reissue_client_sign_in_api_applications__application_id__client_sign_in_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/models/{model_id}/try": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Run one model on a test, outside any application (owner only) */
+        post: operations["try_model_api_models__model_id__try_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /** AccessDecisionIn */
+        AccessDecisionIn: {
+            /** Approve */
+            approve: boolean;
+        };
+        /** AccessRequestIn */
+        AccessRequestIn: {
+            /** Reason */
+            reason: string;
+        };
+        /** AccessRequestSchema */
+        AccessRequestSchema: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Clientid
+             * Format: uuid
+             */
+            clientId: string;
+            /** Clientreference */
+            clientReference: string;
+            /** Clientname */
+            clientName?: string | null;
+            /** Requestername */
+            requesterName?: string | null;
+            /** Requesterrole */
+            requesterRole?: string | null;
+            /** Reason */
+            reason: string;
+            /** Status */
+            status: string;
+            /**
+             * Createdat
+             * Format: date-time
+             */
+            createdAt: string;
+            /** Decidedat */
+            decidedAt?: string | null;
+            /** Decidedbyname */
+            decidedByName?: string | null;
+            /** Expiresat */
+            expiresAt?: string | null;
+        };
         /** AdjustmentSchema */
         AdjustmentSchema: {
             /** Key */
@@ -713,6 +1057,7 @@ export interface components {
             weeks?: components["schemas"]["WeekSchema"][];
             /** Arms */
             arms?: components["schemas"]["ArmActivitySchema"][];
+            business?: components["schemas"]["BusinessSchema"] | null;
         };
         /** ApplicantIn */
         ApplicantIn: {
@@ -775,6 +1120,13 @@ export interface components {
             decision?: components["schemas"]["DecisionSchema"] | null;
             /** Requesteddocuments */
             requestedDocuments?: components["schemas"]["RequestedDocumentSchema"][];
+            /** Senttodoctorat */
+            sentToDoctorAt?: string | null;
+            /** Doctorreviews */
+            doctorReviews?: components["schemas"]["DoctorReviewSchema"][];
+            /** Clientmessages */
+            clientMessages?: components["schemas"]["ClientMessageSchema"][];
+            policy?: components["schemas"]["PolicySchema"] | null;
             /** Errors */
             errors?: string[];
         };
@@ -856,6 +1208,51 @@ export interface components {
             user: components["schemas"]["UserSchema"];
             tenant: components["schemas"]["TenantSchema"];
         };
+        /** BenchResultSchema */
+        BenchResultSchema: {
+            /** Modelid */
+            modelId: string;
+            /** Modelname */
+            modelName: string;
+            /** Version */
+            version: string;
+            /** Validation */
+            validation: string;
+            /** Runs */
+            runs?: components["schemas"]["BenchRunSchema"][];
+            /** Fusedscore */
+            fusedScore?: number | null;
+            /** Crs */
+            crs?: number | null;
+            /** Tier */
+            tier?: string | null;
+        };
+        /** BenchRunSchema */
+        BenchRunSchema: {
+            /** Filename */
+            fileName?: string | null;
+            /** Identifiedas */
+            identifiedAs?: string | null;
+            /**
+             * Modelreadsit
+             * @default true
+             */
+            modelReadsIt: boolean;
+            /** Score */
+            score?: number | null;
+            /** Rawscore */
+            rawScore?: number | null;
+            /** Error */
+            error?: string | null;
+            /** Details */
+            details?: {
+                [key: string]: unknown;
+            };
+            /** Images */
+            images?: string[];
+            /** Durationms */
+            durationMs: number;
+        };
         /** Body_classify_evidence_api_evidence_classify_post */
         Body_classify_evidence_api_evidence_classify_post: {
             /**
@@ -868,6 +1265,11 @@ export interface components {
         Body_fulfil_evidence_request_api_applications__application_id__evidence_request__document_id__fulfil_post: {
             /** File */
             file?: string | null;
+        };
+        /** Body_portal_upload_api_portal_documents__document_id__upload_post */
+        Body_portal_upload_api_portal_documents__document_id__upload_post: {
+            /** File */
+            file: string;
         };
         /** Body_submit_application_api_applications_post */
         Body_submit_application_api_applications_post: {
@@ -893,6 +1295,64 @@ export interface components {
             file_kinds: string[];
             /** Face Photo */
             face_photo?: string | null;
+        };
+        /** Body_try_model_api_models__model_id__try_post */
+        Body_try_model_api_models__model_id__try_post: {
+            /**
+             * Files
+             * @default []
+             */
+            files: string[];
+            /**
+             * Values
+             * @default {}
+             */
+            values: string;
+            /** Date Of Birth */
+            date_of_birth?: string | null;
+            /** Sex */
+            sex?: string | null;
+        };
+        /**
+         * BusinessSchema
+         * @description The money side of the book, from issued policies and recorded payments.
+         */
+        BusinessSchema: {
+            /** Clients */
+            clients: number;
+            /** Policiesactive */
+            policiesActive: number;
+            /** Policiescancelled */
+            policiesCancelled: number;
+            /** Premiummonthlybdt */
+            premiumMonthlyBdt: string;
+            /** Premiumyearlybdt */
+            premiumYearlyBdt: string;
+            /** Collectedthismonthbdt */
+            collectedThisMonthBdt: string;
+            /** Collectedthisyearbdt */
+            collectedThisYearBdt: string;
+            /** Collectedalltimebdt */
+            collectedAllTimeBdt: string;
+            /** Overduebdt */
+            overdueBdt: string;
+            /** Overduepolicies */
+            overduePolicies: number;
+            /** Sumassuredinforcebdt */
+            sumAssuredInForceBdt: string;
+            /** Largestpayoutbdt */
+            largestPayoutBdt?: string | null;
+            /** Averagepayoutbdt */
+            averagePayoutBdt?: string | null;
+            /** Months */
+            months?: components["schemas"]["MonthMoneySchema"][];
+            /** Policies */
+            policies?: components["schemas"]["PolicySchema"][];
+        };
+        /** CancelIn */
+        CancelIn: {
+            /** Reason */
+            reason: string;
         };
         /**
          * ChangePasswordSchema
@@ -939,6 +1399,118 @@ export interface components {
             choices?: components["schemas"]["EvidenceChoiceSchema"][];
         };
         /**
+         * ClientApplicationSchema
+         * @description One of a client's applications, as their profile lists it.
+         */
+        ClientApplicationSchema: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Reference */
+            reference: string;
+            /**
+             * Submittedat
+             * Format: date-time
+             */
+            submittedAt: string;
+            status: components["schemas"]["ApplicationStatus"];
+            /** Crs */
+            crs?: number | null;
+            /** Tier */
+            tier?: string | null;
+            /** Coveragetype */
+            coverageType?: string | null;
+            /** Coverageamount */
+            coverageAmount?: string | null;
+            /** Policyterm */
+            policyTerm?: string | null;
+            /** Expectedby */
+            expectedBy?: string | null;
+            /**
+             * Overdue
+             * @default false
+             */
+            overdue: boolean;
+            /** Decision */
+            decision?: string | null;
+            /** Decidedat */
+            decidedAt?: string | null;
+            /** Doctorverdict */
+            doctorVerdict?: string | null;
+        };
+        /**
+         * ClientMessageIn
+         * @description A doctor writing to the client directly.
+         */
+        ClientMessageIn: {
+            /**
+             * Urgency
+             * @enum {string}
+             */
+            urgency: "urgent" | "routine";
+            /** Message */
+            message: string;
+        };
+        /** ClientMessageSchema */
+        ClientMessageSchema: {
+            /** Urgency */
+            urgency: string;
+            /** Message */
+            message: string;
+            /** Sendername */
+            senderName?: string | null;
+            /**
+             * Emailed
+             * @default false
+             */
+            emailed: boolean;
+            /**
+             * Createdat
+             * Format: date-time
+             */
+            createdAt: string;
+        };
+        /**
+         * ClientProfileSchema
+         * @description Who the client is, and everything they have applied for.
+         */
+        ClientProfileSchema: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Reference */
+            reference: string;
+            /** Name */
+            name: string | null;
+            /** Phone */
+            phone: string | null;
+            /** Email */
+            email: string | null;
+            /** Portalid */
+            portalId: string | null;
+            /** Dateofbirth */
+            dateOfBirth?: string | null;
+            /** Sex */
+            sex?: string | null;
+            /** Heightcm */
+            heightCm?: string | null;
+            /** Weightkg */
+            weightKg?: string | null;
+            /**
+             * Createdat
+             * Format: date-time
+             */
+            createdAt: string;
+            /** Applications */
+            applications?: components["schemas"]["ClientApplicationSchema"][];
+            /** Policies */
+            policies?: components["schemas"]["PolicySchema"][];
+        };
+        /**
          * ClientSchema
          * @description One applicant and where their latest application stands.
          */
@@ -983,6 +1555,45 @@ export interface components {
              * @default false
              */
             overdue: boolean;
+            /**
+             * Access
+             * @default full
+             */
+            access: string;
+            /** Accessuntil */
+            accessUntil?: string | null;
+        };
+        /** ClientSignInSchema */
+        ClientSignInSchema: {
+            /**
+             * Applicationid
+             * Format: uuid
+             */
+            applicationId: string;
+            /** Reference */
+            reference: string;
+            /** Clientname */
+            clientName?: string | null;
+            /** Portalid */
+            portalId?: string | null;
+            /** Email */
+            email?: string | null;
+            /**
+             * Detailsvisible
+             * @default true
+             */
+            detailsVisible: boolean;
+            /**
+             * Mailconfigured
+             * @default false
+             */
+            mailConfigured: boolean;
+            /** Emails */
+            emails?: components["schemas"]["EmailLogSchema"][];
+            /** Password */
+            password?: string | null;
+            /** Emailed */
+            emailed?: boolean | null;
         };
         /** CountSchema */
         CountSchema: {
@@ -1051,8 +1662,51 @@ export interface components {
             underwriterName?: string | null;
         };
         /**
+         * DoctorReviewIn
+         * @description A doctor's verdict on the readers' results, sent back to the underwriter.
+         */
+        DoctorReviewIn: {
+            /**
+             * Verdict
+             * @enum {string}
+             */
+            verdict: "accurate" | "inaccurate";
+            /** Note */
+            note?: string | null;
+        };
+        /** DoctorReviewSchema */
+        DoctorReviewSchema: {
+            /** Verdict */
+            verdict: string;
+            /** Note */
+            note?: string | null;
+            /** Doctorname */
+            doctorName?: string | null;
+            /**
+             * Createdat
+             * Format: date-time
+             */
+            createdAt: string;
+        };
+        /** EmailLogSchema */
+        EmailLogSchema: {
+            /** Kind */
+            kind: string;
+            /** Recipient */
+            recipient: string;
+            /** Subject */
+            subject: string;
+            /** Status */
+            status: string;
+            /**
+             * Createdat
+             * Format: date-time
+             */
+            createdAt: string;
+        };
+        /**
          * EscalateIn
-         * @description Handing an application to a medical professional, with an optional word on why.
+         * @description Sending an application to a doctor to check the results, with an optional word on why.
          */
         EscalateIn: {
             /** Note */
@@ -1151,6 +1805,47 @@ export interface components {
              */
             uptime_seconds: number;
         };
+        /** InstallmentSchema */
+        InstallmentSchema: {
+            /** Number */
+            number: number;
+            /**
+             * Duedate
+             * Format: date
+             */
+            dueDate: string;
+            /** Amountbdt */
+            amountBdt: string;
+            /** Status */
+            status: string;
+            /** Paidon */
+            paidOn?: string | null;
+            /** Method */
+            method?: string | null;
+        };
+        /**
+         * MailStatusSchema
+         * @description Whether outgoing mail is set up, without revealing the credentials.
+         */
+        MailStatusSchema: {
+            /** Configured */
+            configured: boolean;
+            /** Host */
+            host?: string | null;
+            /** Port */
+            port?: number | null;
+            /** Sender */
+            sender: string;
+            /** Portalurl */
+            portalUrl: string;
+            /** Recent */
+            recent?: components["schemas"]["EmailLogSchema"][];
+        };
+        /** MailTestIn */
+        MailTestIn: {
+            /** To */
+            to: string;
+        };
         /**
          * ModelInfoSchema
          * @description Provenance that has to travel with the score rather than sit in a doc —
@@ -1191,6 +1886,22 @@ export interface components {
             /** Validation */
             validation?: string | null;
         };
+        /**
+         * MonthMoneySchema
+         * @description One calendar month: what policies in force were due to pay, and what
+         *     was actually recorded as paid.
+         */
+        MonthMoneySchema: {
+            /**
+             * Month
+             * Format: date
+             */
+            month: string;
+            /** Expectedbdt */
+            expectedBdt: string;
+            /** Collectedbdt */
+            collectedBdt: string;
+        };
         /** NotificationSchema */
         NotificationSchema: {
             /**
@@ -1213,6 +1924,19 @@ export interface components {
             createdAt: string;
             /** Readat */
             readAt?: string | null;
+        };
+        /** PaymentIn */
+        PaymentIn: {
+            /** Duedate */
+            dueDate?: string | null;
+            /**
+             * Method
+             * @default cash
+             * @enum {string}
+             */
+            method: "bkash" | "nagad" | "rocket" | "bank" | "card" | "cash";
+            /** Reference */
+            reference?: string | null;
         };
         /**
          * PlanSchema
@@ -1244,6 +1968,98 @@ export interface components {
              */
             wellnessDiscountEligible: boolean;
         };
+        /** PolicySchema */
+        PolicySchema: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Policynumber */
+            policyNumber: string;
+            /**
+             * Applicationid
+             * Format: uuid
+             */
+            applicationId: string;
+            /**
+             * Clientid
+             * Format: uuid
+             */
+            clientId: string;
+            /** Clientreference */
+            clientReference?: string | null;
+            /** Clientname */
+            clientName?: string | null;
+            /** Planname */
+            planName: string;
+            /** Coveragetype */
+            coverageType?: string | null;
+            /** Sumassuredbdt */
+            sumAssuredBdt: string;
+            /** Monthlypremiumbdt */
+            monthlyPremiumBdt: string;
+            /** Yearlypremiumbdt */
+            yearlyPremiumBdt: string;
+            /** Totalpremiumbdt */
+            totalPremiumBdt: string;
+            /** Termyears */
+            termYears: number;
+            /**
+             * Startdate
+             * Format: date
+             */
+            startDate: string;
+            /**
+             * Enddate
+             * Format: date
+             */
+            endDate: string;
+            /** Status */
+            status: string;
+            /** Cancelledat */
+            cancelledAt?: string | null;
+            /** Cancelreason */
+            cancelReason?: string | null;
+            /** Cancelledbyname */
+            cancelledByName?: string | null;
+            /**
+             * Paidcount
+             * @default 0
+             */
+            paidCount: number;
+            /**
+             * Paidtotalbdt
+             * @default 0
+             */
+            paidTotalBdt: string;
+            /**
+             * Overduecount
+             * @default 0
+             */
+            overdueCount: number;
+            /**
+             * Overduetotalbdt
+             * @default 0
+             */
+            overdueTotalBdt: string;
+            /** Nextdue */
+            nextDue?: string | null;
+            /** Nextamountbdt */
+            nextAmountBdt?: string | null;
+            /**
+             * Monthstotal
+             * @default 0
+             */
+            monthsTotal: number;
+            /**
+             * Gracedays
+             * @default 30
+             */
+            graceDays: number;
+            /** Installments */
+            installments?: components["schemas"]["InstallmentSchema"][];
+        };
         /**
          * PortalCredentialsSchema
          * @description The applicant's portal sign-in, as created at intake.
@@ -1270,6 +2086,11 @@ export interface components {
          * @description One thing the underwriter has asked for, in their words.
          */
         PortalDocumentSchema: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
             /** Description */
             description: string;
             /**
@@ -1279,6 +2100,26 @@ export interface components {
             requestedAt: string;
             /** Received */
             received: boolean;
+            /** Receivedat */
+            receivedAt?: string | null;
+            /** Filename */
+            fileName?: string | null;
+        };
+        /**
+         * PortalFileSchema
+         * @description Something the applicant gave us: what kind of document, and when.
+         *     Never what any model made of it.
+         */
+        PortalFileSchema: {
+            /** Kind */
+            kind: string;
+            /** Filename */
+            fileName?: string | null;
+            /**
+             * Uploadedat
+             * Format: date-time
+             */
+            uploadedAt: string;
         };
         /** PortalLoginIn */
         PortalLoginIn: {
@@ -1286,6 +2127,21 @@ export interface components {
             portalId: string;
             /** Password */
             password: string;
+        };
+        /**
+         * PortalMessageSchema
+         * @description A doctor's message to the applicant, in the doctor's words only.
+         */
+        PortalMessageSchema: {
+            /** Urgency */
+            urgency: string;
+            /** Message */
+            message: string;
+            /**
+             * Sentat
+             * Format: date-time
+             */
+            sentAt: string;
         };
         /**
          * PortalOfferSchema
@@ -1334,9 +2190,16 @@ export interface components {
              * @default false
              */
             overdue: boolean;
+            /** Policyterm */
+            policyTerm?: string | null;
             /** Documents */
             documents?: components["schemas"]["PortalDocumentSchema"][];
+            /** Files */
+            files?: components["schemas"]["PortalFileSchema"][];
+            /** Messages */
+            messages?: components["schemas"]["PortalMessageSchema"][];
             offer?: components["schemas"]["PortalOfferSchema"] | null;
+            policy?: components["schemas"]["PolicySchema"] | null;
         };
         /**
          * PricingSchema
@@ -1388,6 +2251,18 @@ export interface components {
              * @default false
              */
             overdue: boolean;
+            /** Doctorverdict */
+            doctorVerdict?: string | null;
+            /** Progressdone */
+            progressDone?: number | null;
+            /** Progresstotal */
+            progressTotal?: number | null;
+            /** Progressstep */
+            progressStep?: string | null;
+            /** Policynumber */
+            policyNumber?: string | null;
+            /** Policystatus */
+            policyStatus?: string | null;
         };
         /** QueueSchema */
         QueueSchema: {
@@ -1438,6 +2313,16 @@ export interface components {
             licenseNumber?: string | null;
             /** @default admin */
             role: components["schemas"]["UserRole"];
+        };
+        /** ReissueIn */
+        ReissueIn: {
+            /** Email */
+            email?: string | null;
+            /**
+             * Sendemail
+             * @default true
+             */
+            sendEmail: boolean;
         };
         /**
          * RequestEvidenceIn
@@ -1508,7 +2393,7 @@ export interface components {
             /** Changes */
             changes: {
                 [key: string]: {
-                    [key: string]: number | null;
+                    [key: string]: number | string | null;
                 };
             };
         };
@@ -1563,6 +2448,8 @@ export interface components {
          *     be sent without the other.
          */
         TenantSettingsIn: {
+            /** Name */
+            name?: string | null;
             /** Turnaroundbusinessdays */
             turnaroundBusinessDays?: number | null;
             /** Tierlowmax */
@@ -2412,6 +3299,80 @@ export interface operations {
             };
         };
     };
+    review_as_doctor_api_applications__application_id__doctor_review_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                application_id: string;
+            };
+            cookie?: {
+                session_token?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DoctorReviewIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApplicationDetailSchema"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    message_client_api_applications__application_id__client_message_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                application_id: string;
+            };
+            cookie?: {
+                session_token?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ClientMessageIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApplicationDetailSchema"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     fulfil_evidence_request_api_applications__application_id__evidence_request__document_id__fulfil_post: {
         parameters: {
             query?: never;
@@ -2536,6 +3497,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["NotificationSchema"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    mark_all_read_api_notifications_read_all_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: {
+                session_token?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: number;
+                    };
                 };
             };
             /** @description Validation Error */
@@ -2679,6 +3673,72 @@ export interface operations {
             };
         };
     };
+    mail_status_api_tenant_mail_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: {
+                session_token?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MailStatusSchema"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    mail_test_api_tenant_mail_test_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: {
+                session_token?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MailTestIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MailStatusSchema"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     portal_login_api_portal_login_post: {
         parameters: {
             query?: never;
@@ -2722,6 +3782,43 @@ export interface operations {
             };
         };
         requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PortalStatusSchema"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    portal_upload_api_portal_documents__document_id__upload_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                document_id: string;
+            };
+            cookie?: {
+                portal_token?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": components["schemas"]["Body_portal_upload_api_portal_documents__document_id__upload_post"];
+            };
+        };
         responses: {
             /** @description Successful Response */
             200: {
@@ -2798,6 +3895,39 @@ export interface operations {
             };
         };
     };
+    get_client_api_clients__client_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                client_id: string;
+            };
+            cookie?: {
+                session_token?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ClientProfileSchema"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     analytics_api_analytics_get: {
         parameters: {
             query?: never;
@@ -2816,6 +3946,356 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["AnalyticsSchema"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    request_access_api_clients__client_id__access_requests_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                client_id: string;
+            };
+            cookie?: {
+                session_token?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AccessRequestIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AccessRequestSchema"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_access_requests_api_access_requests_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: {
+                session_token?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AccessRequestSchema"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    decide_access_request_api_access_requests__request_id__decision_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                request_id: string;
+            };
+            cookie?: {
+                session_token?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AccessDecisionIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AccessRequestSchema"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_policies_api_policies_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: {
+                session_token?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PolicySchema"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_policy_api_policies__policy_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                policy_id: string;
+            };
+            cookie?: {
+                session_token?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PolicySchema"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    cancel_policy_api_policies__policy_id__cancel_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                policy_id: string;
+            };
+            cookie?: {
+                session_token?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CancelIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PolicySchema"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    record_payment_api_policies__policy_id__payments_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                policy_id: string;
+            };
+            cookie?: {
+                session_token?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PaymentIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PolicySchema"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_client_sign_in_api_applications__application_id__client_sign_in_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                application_id: string;
+            };
+            cookie?: {
+                session_token?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ClientSignInSchema"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    reissue_client_sign_in_api_applications__application_id__client_sign_in_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                application_id: string;
+            };
+            cookie?: {
+                session_token?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReissueIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ClientSignInSchema"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    try_model_api_models__model_id__try_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                model_id: string;
+            };
+            cookie?: {
+                session_token?: string | null;
+            };
+        };
+        requestBody?: {
+            content: {
+                "multipart/form-data": components["schemas"]["Body_try_model_api_models__model_id__try_post"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BenchResultSchema"];
                 };
             };
             /** @description Validation Error */

@@ -36,7 +36,7 @@ const STAGES = [
     n: '3',
     title: 'Insurance is decided',
     lead: 'A plan is suggested. A person decides.',
-    body: 'The score places the application in a tier, and the tier suggests a plan and a premium for the cover requested, under boundaries and rates your company sets. An underwriter or a medical professional records the decision, and the client follows it from their own portal.',
+    body: 'The score places the application in a tier, and the tier suggests a plan and a premium for the cover requested, under boundaries and rates your company sets. An underwriter or a doctor records the decision, and the client follows it from their own portal.',
   },
 ]
 
@@ -64,7 +64,7 @@ const READS = [
 const TIERS = [
   { tier: 'Low', action: 'Cleared at the standard rate', who: 'One-click confirmation by an underwriter' },
   { tier: 'Moderate', action: 'Approved with an adjusted premium', who: 'The underwriter sets the final rate' },
-  { tier: 'Elevated', action: 'Read by a medical professional', who: 'Never decided by the platform' },
+  { tier: 'Elevated', action: 'Read by a doctor', who: 'Never decided by the platform' },
   { tier: 'Not scorable', action: 'More evidence requested', who: 'The client is told what is missing' },
 ]
 
@@ -150,12 +150,12 @@ export function HomePage() {
               <Anchor style={navLinkStyle} href="#limits">Limits</Anchor>
             </Group>
 
-            {/* Two audiences, two buttons. Staff sign in to the console; a
+            {/* Two audiences, two buttons. Team members sign in to the console; a
                 client checks their own application. */}
             <Group gap="sm">
               <ThemeToggle />
               <Box className="neo-press">
-                <Button component={Link} to="/auth?as=client" variant="default" size="sm" radius={4} style={outlineButtonStyle}>
+                <Button component={Link} to="/portal" variant="default" size="sm" radius={4} style={outlineButtonStyle}>
                   Check status
                 </Button>
               </Box>
@@ -202,14 +202,14 @@ export function HomePage() {
                   </Button>
                 </Box>
                 <Box className="neo-press">
-                  <Button component={Link} to="/auth?as=client" variant="default" size="md" radius={4} style={outlineButtonStyle}>
+                  <Button component={Link} to="/portal" variant="default" size="md" radius={4} style={outlineButtonStyle}>
                     Check status
                   </Button>
                 </Box>
               </Group>
 
               <Text size="sm" className="home-rise home-rise-3" style={{ color: 'var(--neo-muted)', fontFamily: GROTESK, maxWidth: 460 }}>
-                Staff sign in to the console. Clients check their application with the portal ID they were given.
+                Team members sign in to the console. Clients check their application with the portal ID they were given.
               </Text>
 
               <Anchor

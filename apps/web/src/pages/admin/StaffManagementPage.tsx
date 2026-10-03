@@ -42,7 +42,7 @@ import { ROLE_LABEL } from '../../types/auth'
 import type { UserRole } from '../../types/auth'
 
 /**
- * Administrator — Staff Governance & Access Control.
+ * Administrator — Team Governance & Access Control.
  *
  * Dedicated admin workbench to provision underwriters, manage operator seats,
  * monitor account status, and enforce carrier underwriting compliance.
@@ -155,13 +155,13 @@ export function StaffManagementPage() {
       >
         <SimpleGrid cols={{ base: 1, sm: 3 }} spacing="xs">
           <Stat label="Underwriters" value={underwriterCount} color="clinical" hint="Take applications in and decide low and moderate cases" />
-          <Stat label="Medical professionals" value={medicalCount} color="grape" hint="Decide the escalated cases" />
-          <Stat label="Administrators" value={adminCount} color="orange" hint="Manage staff and company settings" />
+          <Stat label="Doctors" value={medicalCount} color="grape" hint="Check the results sent to them" />
+          <Stat label="Administrators" value={adminCount} color="orange" hint="Manage the team and company settings" />
         </SimpleGrid>
       </PageHeader>
 
       {error && (
-        <Alert color="red" variant="light" icon={<IconAlertCircle size={16} />} title="Could not load staff directory">
+        <Alert color="red" variant="light" icon={<IconAlertCircle size={16} />} title="Could not load the team">
           {error instanceof Error ? error.message : 'Unknown error'}
         </Alert>
       )}
@@ -295,8 +295,8 @@ export function StaffManagementPage() {
               onChange={(v) => setRole((v as UserRole) || 'underwriter')}
               data={[
                 { value: 'underwriter', label: 'Underwriter: takes applications, decides low and moderate cases' },
-                { value: 'medical_professional', label: 'Medical Professional: decides escalated cases' },
-                { value: 'admin', label: 'Administrator: staff accounts and company settings' },
+                { value: 'medical_professional', label: 'Doctor: checks the results underwriters send' },
+                { value: 'admin', label: 'Administrator: team accounts and company settings' },
               ]}
               leftSection={<IconUserCheck size={14} />}
             />

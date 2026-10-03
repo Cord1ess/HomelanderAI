@@ -84,3 +84,46 @@ def send_decision_notice(to: str, name: str, reference: str) -> bool:
         f"Sign in to see it: {settings.portal_url}\n"
     )
     return send(to, f"An update on your application {reference}", body)
+
+
+def send_doctor_message(to: str, name: str, reference: str, urgency: str, message: str) -> bool:
+    """A doctor's words to the client, about their health rather than the policy.
+
+    The doctor wrote it; nothing is added but a greeting and a way back to the
+    portal. An urgent one says so in the subject, because that is the line a
+    person reads before deciding whether to open it today.
+    """
+    subject = (
+        f"Urgent: a doctor's advice about your application {reference}"
+        if urgency == "urgent"
+        else f"A doctor's note about your application {reference}"
+    )
+    body = (
+        f"Dear {name or 'applicant'},\n\n"
+        "A doctor reviewing your application has written to you:\n\n"
+        f"{message}\n\n"
+        f"You can also read this on your client portal: {settings.portal_url}\n"
+        "This message is about your health; it is not a decision on your policy.\n"
+    )
+    return send(to, subject, body)
+
+
+def send_policy_notice(to: str, name: str, reference: str) -> bool:
+    """A change to their policy: issued, cancelled. Like the decision notice it
+    says only that there is something to see; the portal says what."""
+    body = (
+        f"Hello {name or 'there'},\n\n"
+        f"There is an update about your policy for application {reference}.\n\n"
+        f"Sign in to see it: {settings.portal_url}\n"
+    )
+    return send(to, f"An update about your policy ({reference})", body)
+
+
+def send_test(to: str, company: str) -> bool:
+    """The administrator checking that mail works, from the settings screen."""
+    body = (
+        f"This is a test message from {company} on Homelander AI.\n\n"
+        "If you are reading it, outgoing mail is set up correctly: clients will "
+        "receive their portal sign-in and updates by email.\n"
+    )
+    return send(to, "Homelander AI: test message", body)

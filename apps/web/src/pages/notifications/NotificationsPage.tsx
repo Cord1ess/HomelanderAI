@@ -1,10 +1,10 @@
-import { Alert, Badge, Group, Paper, SegmentedControl, Stack, Text } from '@mantine/core'
-import { IconAlertTriangle, IconAt } from '@tabler/icons-react'
+import { Alert, Badge, Button, Group, Paper, SegmentedControl, Stack, Text } from '@mantine/core'
+import { IconAlertTriangle, IconAt, IconChecks } from '@tabler/icons-react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 
-import { getNotifications, markNotificationRead } from '../../api/client'
+import { getNotifications, markAllNotificationsRead, markNotificationRead } from '../../api/client'
 import { PageHeader } from '../../components/PageHeader'
 import { EmptyState, LoadingState } from '../../components/states'
 
@@ -26,7 +26,22 @@ function relativeTime(iso: string): string {
 }
 
 /** Anything that puts an application in front of an underwriter. */
-const REVIEW_KINDS = new Set(['processing_complete', 'tier_escalation', 'evidence_requested'])
+const REVIEW_KINDS = new Set([
+  'processing_complete',
+  'tier_escalation',
+  'evidence_requested',
+  'documents_uploaded',
+  'doctor_reviewed',
+])
+
+/** Where a notification leads: its application, or for a request to see a
+ * client's details, the place it is answered. */
+function linkFor(n: { applicationId?: string | null; notificationType: string }): string | null {
+  if (n.applicationId) return `/applications/${n.applicationId}`
+  if (n.notificationType === 'access_requested') return '/access-requests'
+  if (n.notificationType === 'access_decided') return '/clients'
+  return null
+}
 
 export function NotificationsPage() {
   const [filter, setFilter] = useState<'all' | 'unread'>('all')
@@ -43,6 +58,11 @@ export function NotificationsPage() {
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['notifications'] }),
   })
 
+  const markAllRead = useMutation({
+    mutationFn: markAllNotificationsRead,
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['notifications'] }),
+  })
+
   const items = useMemo(() => data ?? [], [data])
   const unreadCount = items.filter((n) => !n.readAt).length
   const visible = filter === 'unread' ? items.filter((n) => !n.readAt) : items
@@ -53,15 +73,27 @@ export function NotificationsPage() {
         screen="notifications"
         description={unreadCount > 0 ? `${unreadCount} unread.` : 'You are all caught up.'}
         actions={
-        <SegmentedControl
-          size="xs"
-          value={filter}
-          onChange={(v) => setFilter(v as 'all' | 'unread')}
-          data={[
-            { value: 'all', label: `All (${items.length})` },
-            { value: 'unread', label: `Unread (${unreadCount})` },
-          ]}
-        />
+          <Group gap="xs">
+            <Button
+              size="xs"
+              variant="light"
+              leftSection={<IconChecks size={14} />}
+              onClick={() => markAllRead.mutate()}
+              loading={markAllRead.isPending}
+              disabled={unreadCount === 0}
+            >
+              Mark all as read
+            </Button>
+            <SegmentedControl
+              size="xs"
+              value={filter}
+              onChange={(v) => setFilter(v as 'all' | 'unread')}
+              data={[
+                { value: 'all', label: `All (${items.length})` },
+                { value: 'unread', label: `Unread (${unreadCount})` },
+              ]}
+            />
+          </Group>
         }
       />
 
@@ -95,7 +127,17 @@ export function NotificationsPage() {
                     </Text>
                     {isEscalation && (
                       <Badge size="xs" variant="light" color="orange">
-                        Senior Escalation
+                        Sent to a doctor
+                      </Badge>
+                    )}
+                    {n.notificationType === 'access_requested' && (
+                      <Badge size="xs" variant="light" color="grape">
+                        Access request
+                      </Badge>
+                    )}
+                    {n.notificationType === 'documents_uploaded' && (
+                      <Badge size="xs" variant="light" color="teal">
+                        From the client
                       </Badge>
                     )}
                   </Group>
@@ -131,9 +173,9 @@ export function NotificationsPage() {
                     circle
                   />
                   <Stack gap={1} style={{ flex: 1 }}>
-                    {n.applicationId ? (
+                    {linkFor(n) ? (
                       <Link
-                        to={`/applications/${n.applicationId}`}
+                        to={linkFor(n)!}
                         onClick={() => {
                           if (unread) markRead.mutate(n.id)
                         }}
@@ -145,6 +187,11 @@ export function NotificationsPage() {
                       body
                     )}
                   </Stack>
+                  {n.notificationType === 'access_requested' && (
+                    <Badge size="xs" variant="outline" color="grape">
+                      Answer
+                    </Badge>
+                  )}
                   {REVIEW_KINDS.has(n.notificationType) && (
                     <Badge size="xs" variant="outline" color={isEscalation ? 'orange' : 'gray'}>
                       Review

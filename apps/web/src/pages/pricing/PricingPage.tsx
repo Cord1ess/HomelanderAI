@@ -15,6 +15,7 @@ import { useQuery } from '@tanstack/react-query'
 import { useState } from 'react'
 
 import { getPricing } from '../../api/client'
+import { PricingPolicyCard } from '../admin/PricingPolicyCard'
 import { PageHeader } from '../../components/PageHeader'
 import { ErrorState, LoadingState } from '../../components/states'
 import { TierBadge, type Tier } from '../../components/TierBadge'
@@ -69,6 +70,9 @@ export function PricingPage() {
   return (
     <Stack gap="lg" maw={980}>
       <PageHeader screen="pricing" />
+
+      {/* The owner changes the rates here; the tiers below follow at once. */}
+      <PricingPolicyCard />
 
       <Paper p="md" bd="1px solid var(--mantine-color-default-border)">
         <Group align="flex-end" gap="md" wrap="wrap">

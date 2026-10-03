@@ -40,8 +40,8 @@ export const STATUS_META: Record<
     color: 'orange',
   },
   escalated: {
-    label: 'With a medical professional',
-    meaning: 'An underwriter passed this up. Only a medical professional can decide it now.',
+    label: 'With a doctor',
+    meaning: 'An underwriter sent this to a doctor to check the results. It is decided once they send it back.',
     color: 'grape',
   },
   decided: {

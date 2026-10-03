@@ -72,7 +72,7 @@ export function ThresholdsCard() {
       <Text size="sm" mt={4} mb="xs">
         A score from 0 to 100 becomes a tier: <strong>low</strong> up to the first boundary,{' '}
         <strong>moderate</strong> up to the second, <strong>elevated</strong> above that. Elevated
-        applications can only be decided by a medical professional.
+        applications can only be decided by a doctor.
       </Text>
 
       {value && (

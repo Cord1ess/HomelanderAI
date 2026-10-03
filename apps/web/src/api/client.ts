@@ -34,9 +34,20 @@ export type TenantSettings = Schemas['TenantSettingsSchema']
 export type SubmitResponse = Schemas['SubmitResponseSchema']
 export type PortalStatus = Schemas['PortalStatusSchema']
 export type Client = Schemas['ClientSchema']
+export type ClientProfile = Schemas['ClientProfileSchema']
 export type Analytics = Schemas['AnalyticsSchema']
 export type PortalCredentials = Schemas['PortalCredentialsSchema']
 export type ArmRun = Schemas['ArmRunSchema']
+export type AccessRequest = Schemas['AccessRequestSchema']
+export type Policy = Schemas['PolicySchema']
+export type Installment = Schemas['InstallmentSchema']
+export type ClientSignIn = Schemas['ClientSignInSchema']
+export type EmailLogEntry = Schemas['EmailLogSchema']
+export type MailStatus = Schemas['MailStatusSchema']
+export type BenchResult = Schemas['BenchResultSchema']
+export type BenchRun = Schemas['BenchRunSchema']
+export type Business = Schemas['BusinessSchema']
+export type PaymentMethod = NonNullable<Schemas['PaymentIn']['method']>
 
 // Relative, so the Vite dev proxy handles it and the production build works
 // from whatever origin serves the bundle.
@@ -316,9 +327,31 @@ export const updateTenantSettings = (body: TenantSettingsUpdate) =>
 export const getTenantSettingsHistory = () => request<SettingsChange[]>('/tenant/settings/history')
 
 /**
- * Hand the application to a medical professional. Not a decision: the decision
- * stays open and becomes theirs. Every medical professional is told.
+ * Hand the application to a doctor. Not a decision: the decision
+ * stays open and becomes theirs. Every doctor is told.
  */
+/** A doctor returns the application to the underwriter with a verdict on the results. */
+export const reviewAsDoctor = (
+  id: string,
+  body: { verdict: 'accurate' | 'inaccurate'; note?: string | null },
+) =>
+  request<ApplicationDetail>(`/applications/${id}/doctor-review`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  })
+
+/** A doctor writes to the client directly; it appears on their portal. */
+export const messageClient = (
+  id: string,
+  body: { urgency: 'urgent' | 'routine'; message: string },
+) =>
+  request<ApplicationDetail>(`/applications/${id}/client-message`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  })
+
 export const escalateApplication = (id: string, body: { note?: string | null } = {}) =>
   request<ApplicationDetail>(`/applications/${id}/escalate`, {
     method: 'POST',
@@ -350,13 +383,36 @@ export const getNotifications = () => request<AppNotification[]>('/notifications
 
 export const markNotificationRead = (id: string) =>
   request<AppNotification>(`/notifications/${id}/read`, { method: 'POST' })
+export const markAllNotificationsRead = () =>
+  request<{ updated: number }>('/notifications/read-all', { method: 'POST' })
 
 // ── clients and analytics ────────────────────────────────────────────────────
 
 export const getClients = (q?: string) =>
   request<Client[]>(`/clients${q ? `?q=${encodeURIComponent(q)}` : ''}`)
+export const getClient = (id: string) => request<ClientProfile>(`/clients/${id}`)
 
 export const getAnalytics = () => request<Analytics>('/analytics')
+
+// ── asking to see a client's details ─────────────────────────────────────────
+
+/** An underwriter or a doctor asks the owner to see one client's details. */
+export const requestClientAccess = (clientId: string, reason: string) =>
+  request<AccessRequest>(`/clients/${clientId}/access-requests`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ reason }),
+  })
+
+/** Every request for an administrator; your own for anyone else. */
+export const getAccessRequests = () => request<AccessRequest[]>('/access-requests')
+
+export const decideAccessRequest = (id: string, approve: boolean) =>
+  request<AccessRequest>(`/access-requests/${id}/decision`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ approve }),
+  })
 
 // ── client portal ────────────────────────────────────────────────────────────
 //
@@ -374,3 +430,72 @@ export const portalLogin = (body: { portalId: string; password: string }) =>
 export const getPortalStatus = () => request<PortalStatus>('/portal/me')
 
 export const portalLogout = () => request<{ status: 'ok' }>('/portal/logout', { method: 'POST' })
+
+/** The client uploads a document they were asked for. */
+export const portalUpload = (documentId: string, file: File) => {
+  const body = new FormData()
+  body.append('file', file)
+  return request<PortalStatus>(`/portal/documents/${documentId}/upload`, { method: 'POST', body })
+}
+
+// ── policies ─────────────────────────────────────────────────────────────────
+
+export const getPolicies = () => request<Policy[]>('/policies')
+
+export const cancelPolicy = (id: string, reason: string) =>
+  request<Policy>(`/policies/${id}/cancel`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ reason }),
+  })
+
+export const recordPayment = (
+  id: string,
+  body: { dueDate?: string | null; method: PaymentMethod; reference?: string | null },
+) =>
+  request<Policy>(`/policies/${id}/payments`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  })
+
+// ── a client's portal sign-in, after intake ──────────────────────────────────
+
+export const getClientSignIn = (applicationId: string) =>
+  request<ClientSignIn>(`/applications/${applicationId}/client-sign-in`)
+
+/** A new password; emailed when it can be, otherwise returned once. */
+export const reissueClientSignIn = (
+  applicationId: string,
+  body: { email?: string | null; sendEmail: boolean },
+) =>
+  request<ClientSignIn>(`/applications/${applicationId}/client-sign-in`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  })
+
+// ── outgoing mail ────────────────────────────────────────────────────────────
+
+export const getMailStatus = () => request<MailStatus>('/tenant/mail')
+
+export const sendTestMail = (to: string) =>
+  request<MailStatus>('/tenant/mail/test', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ to }),
+  })
+
+// ── the model test bench ─────────────────────────────────────────────────────
+
+export const tryModel = (
+  modelId: string,
+  input: { files: File[]; values: Record<string, unknown>; dateOfBirth?: string; sex?: string | null },
+) => {
+  const body = new FormData()
+  for (const f of input.files) body.append('files', f)
+  body.append('values', JSON.stringify(input.values))
+  if (input.dateOfBirth) body.append('date_of_birth', input.dateOfBirth)
+  if (input.sex) body.append('sex', input.sex)
+  return request<BenchResult>(`/models/${modelId}/try`, { method: 'POST', body })
+}

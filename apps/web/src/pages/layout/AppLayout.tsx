@@ -16,10 +16,13 @@ import { useQuery } from '@tanstack/react-query'
 import {
   IconBell,
   IconChartBar,
+  IconFlask,
+  IconKey,
+  IconLock,
   IconChevronsLeft,
   IconChevronsRight,
   IconFilePlus,
-  IconFlame,
+  IconStethoscope,
   IconLayoutList,
   IconLogout,
   IconReceipt,
@@ -32,12 +35,12 @@ import {
 import type { JSX } from 'react'
 import { NavLink as RouterLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
 
-import { getNotifications } from '../../api/client'
+import { getAccessRequests, getNotifications } from '../../api/client'
 import { BrandIcon } from '../../components/BrandIcon'
 import { PageTransition } from '../../components/PageTransition'
 import { ThemeToggle } from '../../components/ThemeToggle'
 import { useAuth } from '../../context/AuthContext'
-import { navFor, type Screen, type ScreenId } from '../../screens'
+import { isLocked, navFor, type Screen, type ScreenId } from '../../screens'
 import { ROLE_LABEL } from '../../types/auth'
 import type { UserRole } from '../../types/auth'
 
@@ -67,6 +70,15 @@ export function AppLayout() {
     refetchInterval: 30_000,
   })
   const unread = (notifications ?? []).filter((n) => !n.readAt).length
+
+  // The owner's count of requests to see client details still unanswered.
+  const { data: accessRequests } = useQuery({
+    queryKey: ['access-requests'],
+    queryFn: getAccessRequests,
+    enabled: role === 'admin',
+    refetchInterval: 30_000,
+  })
+  const waitingRequests = (accessRequests ?? []).filter((r) => r.status === 'pending').length
 
   return (
     <AppShell
@@ -156,6 +168,8 @@ export function AppLayout() {
             <NavItem
               key={screen.id}
               screen={screen}
+              locked={isLocked(screen, role)}
+              count={screen.id === 'access' ? waitingRequests : 0}
               collapsed={!navOpened}
               active={isActive(screen, location.pathname)}
               onNavigate={closeMobile}
@@ -205,8 +219,9 @@ const ROLE_COLOR: Record<UserRole, string> = {
 const ICONS: Record<ScreenId, () => JSX.Element> = {
   queue: () => <IconLayoutList size={18} />,
   clients: () => <IconAddressBook size={18} />,
+  client: () => <IconAddressBook size={18} />,
   analytics: () => <IconChartBar size={18} />,
-  escalations: () => <IconFlame size={18} />,
+  escalations: () => <IconStethoscope size={18} />,
   intake: () => <IconFilePlus size={18} />,
   review: () => <IconLayoutList size={18} />,
   pricing: () => <IconReceipt size={18} />,
@@ -214,6 +229,8 @@ const ICONS: Record<ScreenId, () => JSX.Element> = {
   settings: () => <IconSettings size={18} />,
   notifications: () => <IconBell size={18} />,
   profile: () => <IconUserCircle size={18} />,
+  access: () => <IconKey size={18} />,
+  bench: () => <IconFlask size={18} />,
 }
 
 /** An open application belongs to "Applications"; the intake form does not. */
@@ -225,11 +242,15 @@ function isActive(screen: Screen, pathname: string): boolean {
 
 function NavItem({
   screen,
+  locked = false,
+  count = 0,
   collapsed,
   active,
   onNavigate,
 }: {
   screen: Screen
+  locked?: boolean
+  count?: number
   collapsed: boolean
   active: boolean
   onNavigate: () => void
@@ -252,7 +273,24 @@ function NavItem({
         {ICONS[screen.id]()}
       </ThemeIcon>
       {!collapsed && (
-        <span style={{ fontWeight: active ? 700 : 500, fontSize: '0.825rem' }}>{screen.label}</span>
+        <span
+          style={{
+            fontWeight: active ? 700 : 500,
+            fontSize: '0.825rem',
+            flex: 1,
+            opacity: locked ? 0.6 : 1,
+          }}
+        >
+          {screen.label}
+        </span>
+      )}
+      {!collapsed && locked && (
+        <IconLock size={14} aria-label="Company owner only" style={{ color: 'var(--neo-muted)' }} />
+      )}
+      {!collapsed && count > 0 && (
+        <Badge size="xs" color="red" variant="filled" circle>
+          {count}
+        </Badge>
       )}
     </RouterLink>
   )
@@ -260,7 +298,12 @@ function NavItem({
   if (!collapsed) return link
 
   return (
-    <Tooltip label={screen.label} position="right" withinPortal withArrow>
+    <Tooltip
+      label={locked ? `${screen.label} (company owner only)` : screen.label}
+      position="right"
+      withinPortal
+      withArrow
+    >
       {link}
     </Tooltip>
   )

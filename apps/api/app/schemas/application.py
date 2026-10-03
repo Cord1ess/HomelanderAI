@@ -6,6 +6,7 @@ side reads `submittedAt` while Python keeps `submitted_at`.
 
 from datetime import date, datetime
 from decimal import Decimal
+from typing import Literal
 from uuid import UUID
 
 from pydantic import Field
@@ -13,6 +14,7 @@ from pydantic import Field
 from app.models.application import ApplicationStatus
 from app.models.decision import UnderwriterDecisionType
 from app.schemas.auth import BaseSchema
+from app.schemas.policy import PolicySchema
 
 # ── intake ───────────────────────────────────────────────────────────────────
 
@@ -66,6 +68,16 @@ class QueueItemSchema(BaseSchema):
     # passed while the carrier still holds the case.
     expected_by: date | None = None
     overdue: bool = False
+    # The latest doctor's verdict on the results, if a doctor has seen them.
+    doctor_verdict: str | None = None
+    # While the readers run: how many are done, of how many, and which is
+    # running now. Empty once scoring has finished.
+    progress_done: int | None = None
+    progress_total: int | None = None
+    progress_step: str | None = None
+    # The policy an approval issued, and whether it is still in force.
+    policy_number: str | None = None
+    policy_status: str | None = None
 
 
 class QueueSchema(BaseSchema):
@@ -112,6 +124,8 @@ class TenantSettingsIn(BaseSchema):
     be sent without the other.
     """
 
+    # The company's name, as staff and clients see it.
+    name: str | None = Field(default=None, min_length=2, max_length=120)
     turnaround_business_days: int | None = Field(default=None, ge=1, le=30)
     tier_low_max: float | None = Field(default=None, gt=0, lt=100)
     tier_moderate_max: float | None = Field(default=None, gt=0, lt=100)
@@ -126,7 +140,7 @@ class SettingsChangeSchema(BaseSchema):
     changed_at: datetime
     actor_name: str | None
     # {field: {"from": x, "to": y}}
-    changes: dict[str, dict[str, float | int | None]]
+    changes: dict[str, dict[str, float | int | str | None]]
 
 
 # ── requested documents ──────────────────────────────────────────────────────
@@ -323,6 +337,35 @@ class DecisionSchema(BaseSchema):
     underwriter_name: str | None = None
 
 
+class DoctorReviewIn(BaseSchema):
+    """A doctor's verdict on the readers' results, sent back to the underwriter."""
+
+    verdict: Literal["accurate", "inaccurate"]
+    note: str | None = Field(default=None, max_length=2000)
+
+
+class DoctorReviewSchema(BaseSchema):
+    verdict: str
+    note: str | None = None
+    doctor_name: str | None = None
+    created_at: datetime
+
+
+class ClientMessageIn(BaseSchema):
+    """A doctor writing to the client directly."""
+
+    urgency: Literal["urgent", "routine"]
+    message: str = Field(..., min_length=3, max_length=2000)
+
+
+class ClientMessageSchema(BaseSchema):
+    urgency: str
+    message: str
+    sender_name: str | None = None
+    emailed: bool = False
+    created_at: datetime
+
+
 class ApplicationDetailSchema(BaseSchema):
     id: UUID
     reference: str
@@ -355,6 +398,13 @@ class ApplicationDetailSchema(BaseSchema):
     # review screen shows the outstanding ones; the portal will show the same
     # list to the applicant.
     requested_documents: list[RequestedDocumentSchema] = Field(default_factory=list)
+    # When it was first sent to a doctor, every verdict a doctor has returned
+    # (newest first), and what a doctor has written to the client.
+    sent_to_doctor_at: datetime | None = None
+    doctor_reviews: list[DoctorReviewSchema] = Field(default_factory=list)
+    client_messages: list[ClientMessageSchema] = Field(default_factory=list)
+    # The policy an approval issued, with its payments.
+    policy: PolicySchema | None = None
     # Why an arm produced nothing. The review screen must never show a blank
     # panel with no explanation.
     errors: list[str] = Field(default_factory=list)
@@ -385,7 +435,7 @@ class SubmitResponseSchema(BaseSchema):
 
 
 class EscalateIn(BaseSchema):
-    """Handing an application to a medical professional, with an optional word on why."""
+    """Sending an application to a doctor to check the results, with an optional word on why."""
 
     note: str | None = Field(default=None, max_length=500)
 
