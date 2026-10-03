@@ -2,8 +2,18 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 
-import { ApiError, getPortalStatus, portalLogin, portalLogout, portalUpload } from '../../api/client'
-import type { Installment, Policy, PortalStatus } from '../../api/client'
+import {
+  ApiError,
+  getPortalStatus,
+  portalClaimDocuments,
+  portalFileClaim,
+  portalLogin,
+  portalLogout,
+  portalRequestDeletion,
+  portalUpload,
+  portalWithdrawDeletion,
+} from '../../api/client'
+import type { Policy, PortalClaim, PortalStatus } from '../../api/client'
 import { BrandIcon } from '../../components/BrandIcon'
 import { ThemeToggle } from '../../components/ThemeToggle'
 
@@ -56,10 +66,6 @@ function formatDate(iso: string): string {
   })
 }
 
-function formatMonth(isoDate: string): string {
-  return new Date(`${isoDate}T00:00:00`).toLocaleDateString(undefined, { month: 'long', year: 'numeric' })
-}
-
 function formatTaka(value: string | number): string {
   return `৳${Number(value).toLocaleString('en-IN', { maximumFractionDigits: 0 })}`
 }
@@ -70,14 +76,6 @@ function readable(value: string): string {
   return words.charAt(0).toUpperCase() + words.slice(1)
 }
 
-const METHOD: Record<string, string> = {
-  bkash: 'bKash',
-  nagad: 'Nagad',
-  rocket: 'Rocket',
-  bank: 'Bank transfer',
-  card: 'Card',
-  cash: 'Cash',
-}
 
 export function PortalPage() {
   const queryClient = useQueryClient()
@@ -237,8 +235,10 @@ function Status({ status }: { status: PortalStatus }) {
         </section>
       )}
 
-      {/* Once approved, the policy is what matters most. */}
+      {/* Once decided, the outcome is what matters most. */}
       {policy && <PolicyCard policy={policy} />}
+      {status.declined && <DeclineCard declined={status.declined} />}
+      {policy && <ClaimsSection status={status} />}
 
       <section className="portal-card" aria-labelledby="portal-where">
         <p className="portal-card__label" id="portal-where">
@@ -328,7 +328,13 @@ function Status({ status }: { status: PortalStatus }) {
         <dl className="portal-offer" style={{ marginTop: 0 }}>
           <div>
             <dt>Type of cover</dt>
-            <dd>{status.coverageType ? `${readable(status.coverageType)} cover` : '—'}</dd>
+            <dd>
+              {status.coverageType === 'Health'
+                ? 'Hospital cover'
+                : status.coverageType
+                  ? `${readable(status.coverageType)} cover`
+                  : '—'}
+            </dd>
           </div>
           <div>
             <dt>Amount</dt>
@@ -337,7 +343,13 @@ function Status({ status }: { status: PortalStatus }) {
           {status.policyTerm && (
             <div>
               <dt>For</dt>
-              <dd>{/^\d+$/.test(status.policyTerm) ? `${status.policyTerm} years` : status.policyTerm}</dd>
+              <dd>
+                {status.coverageType === 'Health'
+                  ? 'One year, renewed yearly'
+                  : /^\d+$/.test(status.policyTerm)
+                    ? `${status.policyTerm} year${status.policyTerm === '1' ? '' : 's'}`
+                    : status.policyTerm}
+              </dd>
             </div>
           )}
           <div>
@@ -377,6 +389,8 @@ function Status({ status }: { status: PortalStatus }) {
         </section>
       )}
 
+      <DeletionSection status={status} />
+
       <p className="portal-foot">
         Questions? Contact the office where you applied and give them your reference, {status.reference}
         {policy ? `, or your policy number, ${policy.policyNumber}` : ''}. We never show test scores on this page: your
@@ -386,50 +400,44 @@ function Status({ status }: { status: PortalStatus }) {
   )
 }
 
-/** The policy: what it pays out, what they pay, what has been paid and what is next. */
+/** The policy: what it covers, what it costs and when, what it does not cover. */
 function PolicyCard({ policy }: { policy: Policy }) {
-  const active = policy.status === 'active'
-  const installments = policy.installments ?? []
-  const overdue = (policy.overdueCount ?? 0) > 0
-  const paidCount = policy.paidCount ?? 0
-  const monthsTotal = policy.monthsTotal ?? policy.termYears * 12
-  const progress = Math.min(100, Math.round((paidCount / Math.max(1, monthsTotal)) * 100))
+  const state = policy.effectiveStatus
+  const active = state === 'active'
+  const health = policy.product === 'health'
   const until = formatDate(policy.endDate)
   const payout = formatTaka(policy.sumAssuredBdt)
+  const exclusions = policy.exclusions ?? []
 
   return (
-    <section
-      className="portal-card portal-policy"
-      data-state={active ? (overdue ? 'overdue' : 'active') : 'cancelled'}
-      aria-labelledby="portal-policy"
-    >
+    <section className="portal-card portal-policy" data-state={active ? 'active' : 'cancelled'} aria-labelledby="portal-policy">
       <p className="portal-card__label" id="portal-policy">
         Your policy · {policy.policyNumber}
       </p>
       <p className="portal-card__headline">
         {active
-          ? `You are covered. ${policy.planName} plan.`
-          : `This policy was cancelled${policy.cancelledAt ? ` on ${formatDate(policy.cancelledAt)}` : ''}.`}
+          ? `You are covered. ${policy.productName}.`
+          : state === 'expired'
+            ? `This policy ended on ${until}.`
+            : `This policy was cancelled${policy.cancelledAt ? ` on ${formatDate(policy.cancelledAt)}` : ''}.`}
       </p>
-      {!active && (
+      {state === 'cancelled' && (
         <p className="portal-card__body">
-          {policy.cancelReason ? `Reason: ${policy.cancelReason} ` : ''}No more payments are due. If you think this is a
+          {policy.cancelReason ? `Reason: ${policy.cancelReason} ` : ''}No more premiums are due. If you think this is a
           mistake, contact the office where you applied.
         </p>
       )}
 
       <dl className="portal-offer">
         <div>
-          <dt>We pay out</dt>
+          <dt>{health ? 'We pay each year, up to' : 'We pay out'}</dt>
           <dd>{payout}</dd>
         </div>
         <div>
           <dt>You pay</dt>
-          <dd>{formatTaka(policy.monthlyPremiumBdt)} a month</dd>
-        </div>
-        <div>
-          <dt>That is</dt>
-          <dd>{formatTaka(policy.yearlyPremiumBdt)} a year</dd>
+          <dd>
+            {formatTaka(policy.premiumAmountBdt)} {policy.premiumMode === 'yearly' ? 'a year' : 'a month'}
+          </dd>
         </div>
         <div>
           <dt>Covered</dt>
@@ -437,85 +445,303 @@ function PolicyCard({ policy }: { policy: Policy }) {
             {formatDate(policy.startDate)} to {until}
           </dd>
         </div>
+        {active && policy.nextPremiumDue && (
+          <div>
+            <dt>Next premium due</dt>
+            <dd>{formatDate(policy.nextPremiumDue)}</dd>
+          </div>
+        )}
       </dl>
       <p className="portal-card__body">
-        {policy.coverageType === 'Life'
-          ? `If you die before ${until}, your family is paid ${payout}.`
-          : policy.coverageType === 'Health'
-            ? `Each year until ${until}, your hospital and treatment bills are paid up to ${payout}.`
-            : `If you are diagnosed with a covered serious illness before ${until}, you are paid ${payout}.`}{' '}
-        Over {policy.termYears} years you pay {formatTaka(policy.totalPremiumBdt)} in all, if every month is paid.
+        {health
+          ? `Until ${until}, your hospital and treatment bills are paid up to ${payout}. ${policy.remainingLimitBdt != null ? `${formatTaka(policy.remainingLimitBdt)} of that is left this year.` : ''}`
+          : `If you die before ${until}, your nominee is paid ${payout}.`}{' '}
+        Pay your premium to the bank and quote your policy number, {policy.policyNumber}.
       </p>
 
-      {active && (
-        <div className="portal-pay">
-          <div className="portal-pay__next" data-overdue={overdue}>
-            {overdue ? (
-              <>
-                <strong>
-                  {policy.overdueCount === 1 ? 'One payment is' : `${policy.overdueCount} payments are`} overdue:{' '}
-                  {formatTaka(policy.overdueTotalBdt ?? 0)}.
-                </strong>{' '}
-                Please pay as soon as you can. A policy left unpaid may be cancelled.
-              </>
-            ) : policy.nextDue ? (
-              <>
-                Next payment: <strong>{formatTaka(policy.nextAmountBdt ?? policy.monthlyPremiumBdt)}</strong>, due on{' '}
-                <strong>{formatDate(policy.nextDue)}</strong>.
-              </>
-            ) : (
-              'Nothing is due right now.'
-            )}
-          </div>
-          <div className="portal-pay__bar" aria-label={`${paidCount} of ${monthsTotal} months paid`}>
-            <span style={{ width: `${progress}%` }} />
-          </div>
-          <p className="portal-message__when">
-            {paidCount} of {monthsTotal} monthly payments made · {formatTaka(policy.paidTotalBdt ?? 0)} paid so far
-          </p>
-        </div>
-      )}
-
-      {installments.length > 0 && (
-        <div className="portal-payments-wrap">
-          <table className="portal-payments">
-            <thead>
-              <tr>
-                <th>Month</th>
-                <th>Due</th>
-                <th>Amount</th>
-                <th>Status</th>
-              </tr>
-            </thead>
-            <tbody>
-              {[...installments].reverse().map((i: Installment) => (
-                <tr key={i.dueDate}>
-                  <td>{formatMonth(i.dueDate)}</td>
-                  <td>{formatDate(i.dueDate)}</td>
-                  <td>{formatTaka(i.amountBdt)}</td>
-                  <td>
-                    <span className="portal-chip" data-status={i.status}>
-                      {i.status === 'paid'
-                        ? `Paid${i.paidOn ? ` ${formatDate(i.paidOn)}` : ''}${i.method ? ` · ${METHOD[i.method] ?? i.method}` : ''}`
-                        : i.status === 'overdue'
-                          ? 'Overdue'
-                          : i.status === 'due'
-                            ? 'Due now'
-                            : 'Coming up'}
-                    </span>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
-      {active && (
+      {active && policy.inFreeLook && policy.freeLookUntil && (
         <p className="portal-card__note">
-          Pay by bKash, Nagad, bank transfer or at the office where you applied, and quote your policy number,{' '}
-          {policy.policyNumber}. A payment shows here once it has been recorded. You have {policy.graceDays} days after each
-          due date to pay.
+          You can change your mind until {formatDate(policy.freeLookUntil)} and get back everything you have paid. Contact
+          the office where you applied.
         </p>
+      )}
+      {health && active && (
+        <p className="portal-card__note">
+          Illness is covered from {policy.waitingUntil ? formatDate(policy.waitingUntil) : 'the start'}; accidents from the
+          first day. Conditions you had before the policy are covered from{' '}
+          {policy.preexistingUntil ? formatDate(policy.preexistingUntil) : '—'}.
+          {policy.renewalDue && ` Your cover renews on ${until}: we will be in touch.`}
+        </p>
+      )}
+      {exclusions.length > 0 && (
+        <div className="portal-card__note">
+          <strong>Not covered by this policy:</strong>
+          <ul className="portal-list">
+            {exclusions.map((e) => (
+              <li key={e}>{e}</li>
+            ))}
+          </ul>
+        </div>
+      )}
+    </section>
+  )
+}
+
+/** A decline: why, in plain words, and when they may apply again. */
+function DeclineCard({ declined }: { declined: NonNullable<PortalStatus['declined']> }) {
+  return (
+    <section className="portal-card" data-attention="true" aria-labelledby="portal-declined">
+      <p className="portal-card__label" id="portal-declined">
+        Our decision
+      </p>
+      <p className="portal-card__headline">We are not able to offer you cover</p>
+      <p className="portal-card__body">{declined.reason}</p>
+      {declined.note && <p className="portal-card__body">{declined.note}</p>}
+      {declined.reapplyAfter && (
+        <p className="portal-card__body">
+          You are welcome to apply again from <strong>{formatDate(declined.reapplyAfter)}</strong>.
+        </p>
+      )}
+      <p className="portal-card__note">
+        This decision was made by a person at our company, not by a computer. If you have questions, contact the office
+        where you applied.
+      </p>
+    </section>
+  )
+}
+
+const CLAIM_WORDS: Record<string, string> = {
+  submitted: 'We have it',
+  documents_requested: 'We need more documents',
+  under_review: 'Being reviewed',
+  approved: 'Approved: being paid',
+  rejected: 'Not paid',
+  settled: 'Paid',
+}
+
+/** Claims: file one for hospital bills, see each one's progress, add documents. */
+function ClaimsSection({ status }: { status: PortalStatus }) {
+  const queryClient = useQueryClient()
+  const policy = status.policy!
+  const claims = status.claims ?? []
+  const [open, setOpen] = useState(false)
+  const [eventDate, setEventDate] = useState('')
+  const [amount, setAmount] = useState('')
+  const [hospital, setHospital] = useState('')
+  const [description, setDescription] = useState('')
+  const [accident, setAccident] = useState(false)
+  const [files, setFiles] = useState<File[]>([])
+  const file = useMutation({
+    mutationFn: () =>
+      portalFileClaim(
+        { eventDate, claimedAmountBdt: Number(amount), description: description.trim(), hospital: hospital.trim() || null, accident },
+        files,
+      ),
+    onSuccess: (updated) => {
+      queryClient.setQueryData(['portal', 'me'], updated)
+      setOpen(false)
+      setFiles([])
+      setDescription('')
+      setAmount('')
+    },
+  })
+  const health = policy.product === 'health'
+  const canFile = health && policy.effectiveStatus !== 'cancelled'
+
+  return (
+    <section className="portal-card" aria-labelledby="portal-claims">
+      <p className="portal-card__label" id="portal-claims">
+        Claims
+      </p>
+      {claims.length === 0 && (
+        <p className="portal-card__body" style={{ marginTop: 0 }}>
+          {health
+            ? 'No claims yet. If you are treated in hospital, send us the bills here.'
+            : `A claim on life cover is made by your nominee, ${status.nomineeName ?? 'the person you named'}, at the office where you applied, with the death certificate.`}
+        </p>
+      )}
+      <ul className="portal-docs">
+        {claims.map((c) => (
+          <ClaimRow key={c.id} claim={c} />
+        ))}
+      </ul>
+      {canFile && !open && (
+        <button type="button" className="portal-upload" style={{ marginTop: '0.8rem' }} onClick={() => setOpen(true)}>
+          Make a claim
+        </button>
+      )}
+      {canFile && open && (
+        <form
+          className="portal-claim-form"
+          onSubmit={(e) => {
+            e.preventDefault()
+            file.mutate()
+          }}
+        >
+          {file.error && (
+            <p className="portal-error" role="alert">
+              {file.error.message}
+            </p>
+          )}
+          <label className="portal-field">
+            <span>Date you went into hospital</span>
+            <input type="date" value={eventDate} max={new Date().toISOString().slice(0, 10)} onChange={(e) => setEventDate(e.currentTarget.value)} required />
+          </label>
+          <label className="portal-field">
+            <span>Total of the bills (taka)</span>
+            <input type="number" min={1} value={amount} onChange={(e) => setAmount(e.currentTarget.value)} required />
+          </label>
+          <label className="portal-field">
+            <span>Hospital</span>
+            <input value={hospital} onChange={(e) => setHospital(e.currentTarget.value)} />
+          </label>
+          <label className="portal-field">
+            <span>What happened</span>
+            <input value={description} onChange={(e) => setDescription(e.currentTarget.value)} placeholder="For example: three nights for dengue fever" required minLength={5} />
+          </label>
+          <label className="portal-check">
+            <input type="checkbox" checked={accident} onChange={(e) => setAccident(e.currentTarget.checked)} /> It was an accident
+          </label>
+          <label className="portal-field">
+            <span>The bills and the discharge summary (photos or PDF)</span>
+            <input type="file" multiple accept="image/*,.pdf" onChange={(e) => setFiles(Array.from(e.currentTarget.files ?? []))} required />
+          </label>
+          <div style={{ display: 'flex', gap: '0.5rem' }}>
+            <button type="submit" className="portal-upload" disabled={file.isPending}>
+              {file.isPending ? 'Sending…' : 'Send the claim'}
+            </button>
+            <button type="button" className="portal-field__toggle" onClick={() => setOpen(false)}>
+              Cancel
+            </button>
+          </div>
+          <p className="portal-card__note">
+            We decide within 90 days of having all the documents we need, and usually much sooner. Payment comes from the
+            bank.
+          </p>
+        </form>
+      )}
+    </section>
+  )
+}
+
+function ClaimRow({ claim }: { claim: PortalClaim }) {
+  const queryClient = useQueryClient()
+  const input = useRef<HTMLInputElement>(null)
+  const add = useMutation({
+    mutationFn: (files: File[]) => portalClaimDocuments(claim.id, files),
+    onSuccess: (updated) => queryClient.setQueryData(['portal', 'me'], updated),
+  })
+  const open = ['submitted', 'documents_requested', 'under_review'].includes(claim.status)
+  return (
+    <li className="portal-docs__item" data-received={claim.status === 'settled'}>
+      <span className="portal-docs__text">
+        {claim.claimNumber} · {formatTaka(claim.claimedAmountBdt)} · {formatDate(claim.eventDate)}
+        <span className="portal-docs__file">
+          {claim.hospital ? `${claim.hospital} · ` : ''}
+          {claim.documents} document{claim.documents === 1 ? '' : 's'} sent
+          {claim.settleBy && open ? ` · decided by ${formatDate(claim.settleBy)}` : ''}
+        </span>
+        {claim.status === 'documents_requested' && claim.documentsNote && (
+          <span className="portal-docs__error">We need: {claim.documentsNote}</span>
+        )}
+        {claim.status === 'approved' && claim.approvedAmountBdt && (
+          <span className="portal-docs__file">Approved for {formatTaka(claim.approvedAmountBdt)}. The bank will pay it.</span>
+        )}
+        {claim.status === 'settled' && claim.approvedAmountBdt && (
+          <span className="portal-docs__file">
+            Paid {formatTaka(claim.approvedAmountBdt)}
+            {claim.settledAt ? ` on ${formatDate(claim.settledAt)}` : ''}.
+          </span>
+        )}
+        {claim.status === 'rejected' && claim.decisionNote && <span className="portal-docs__error">{claim.decisionNote}</span>}
+        {add.error && <span className="portal-docs__error">{add.error.message}</span>}
+      </span>
+      <span style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 6 }}>
+        <span className="portal-chip" data-status={claim.status === 'settled' ? 'paid' : claim.status === 'rejected' ? 'overdue' : 'due'}>
+          {CLAIM_WORDS[claim.status] ?? claim.status}
+        </span>
+        {open && (
+          <>
+            <input ref={input} type="file" multiple accept="image/*,.pdf" hidden onChange={(e) => { const f = Array.from(e.currentTarget.files ?? []); if (f.length) add.mutate(f); e.currentTarget.value = '' }} />
+            <button type="button" className="portal-field__toggle" onClick={() => input.current?.click()} disabled={add.isPending}>
+              {add.isPending ? 'Sending…' : 'Add documents'}
+            </button>
+          </>
+        )}
+      </span>
+    </li>
+  )
+}
+
+/** Asking for their data to be deleted, and where that stands. */
+function DeletionSection({ status }: { status: PortalStatus }) {
+  const queryClient = useQueryClient()
+  const [asking, setAsking] = useState(false)
+  const [reason, setReason] = useState('')
+  const ask = useMutation({
+    mutationFn: () => portalRequestDeletion(reason.trim() || null),
+    onSuccess: (updated) => {
+      queryClient.setQueryData(['portal', 'me'], updated)
+      setAsking(false)
+    },
+  })
+  const withdraw = useMutation({
+    mutationFn: portalWithdrawDeletion,
+    onSuccess: (updated) => queryClient.setQueryData(['portal', 'me'], updated),
+  })
+  const d = status.deletion
+  const live = d && (d.status === 'pending' || d.status === 'approved')
+  return (
+    <section className="portal-card" aria-labelledby="portal-delete">
+      <p className="portal-card__label" id="portal-delete">
+        Your data
+      </p>
+      {live ? (
+        <>
+          <p className="portal-card__body" style={{ marginTop: 0 }}>
+            You asked on {formatDate(d!.requestedAt)} for your data to be deleted.{' '}
+            {d!.status === 'approved'
+              ? `It has been approved and will be deleted on ${formatDate(d!.deleteOn)}. After that you will not be able to sign in.`
+              : `We will deal with it by ${formatDate(d!.deleteOn)}.`}
+          </p>
+          <button type="button" className="portal-field__toggle" onClick={() => withdraw.mutate()} disabled={withdraw.isPending}>
+            I have changed my mind
+          </button>
+        </>
+      ) : (
+        <>
+          {d?.status === 'declined' && (
+            <p className="portal-card__body" style={{ marginTop: 0 }}>
+              Your last request to delete your data was not approved: {d.declineReason}
+            </p>
+          )}
+          <p className="portal-card__body" style={{ marginTop: 0 }}>
+            You can ask us to delete your personal and health information. It is deleted within 30 days of your request.
+            Records the law requires us to keep (that a policy or a claim existed, and its amounts) are kept without your
+            name.
+          </p>
+          {!asking ? (
+            <button type="button" className="portal-field__toggle" style={{ marginTop: '0.6rem' }} onClick={() => setAsking(true)}>
+              Ask to delete my data
+            </button>
+          ) : (
+            <div style={{ marginTop: '0.6rem' }}>
+              {ask.error && <p className="portal-error">{ask.error.message}</p>}
+              <label className="portal-field">
+                <span>Why (optional)</span>
+                <input value={reason} onChange={(e) => setReason(e.currentTarget.value)} />
+              </label>
+              <div style={{ display: 'flex', gap: '0.5rem' }}>
+                <button type="button" className="portal-upload" onClick={() => ask.mutate()} disabled={ask.isPending}>
+                  Ask to delete my data
+                </button>
+                <button type="button" className="portal-field__toggle" onClick={() => setAsking(false)}>
+                  Cancel
+                </button>
+              </div>
+            </div>
+          )}
+        </>
       )}
     </section>
   )

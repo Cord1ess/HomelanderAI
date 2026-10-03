@@ -117,7 +117,7 @@ export function AnalyticsPage() {
           <Stat label="Decided" value={data.decided} color="teal" hint={approvalRate != null ? `${approvalRate}% approved` : undefined} />
           <Stat label="Average score" value={data.averageCrs ?? '—'} hint="Across scored applications" />
           <Stat label="Cover requested" value={taka(data.coverRequestedBdt)} hint={`${taka(data.coverApprovedBdt)} approved`} />
-          <Stat label="Monthly premium book" value={taka(data.monthlyPremiumBookBdt)} color="clinical" hint="Sum of approved premiums" />
+          <Stat label="Monthly premium book" value={taka(data.monthlyPremiumBookBdt)} color="clinical" hint="Approved premiums, per month" />
         </SimpleGrid>
       </PageHeader>
 
@@ -215,14 +215,15 @@ export function AnalyticsPage() {
 }
 
 /**
- * The money: what comes in each month and year, what was actually paid, what
- * is late, and what the company would pay out if every policy were claimed.
+ * The money: what active policies bring in, what they are expected to cost in
+ * claims, what was paid, and what the company would owe if every policy were
+ * claimed. Premiums are collected by the bank: these are what falls due.
  */
 function BusinessPanel({ money }: { money: Business }) {
   const months = (money.months ?? []).map((m) => ({
     month: new Date(`${m.month}T00:00:00`).toLocaleDateString(undefined, { month: 'short', year: '2-digit' }),
-    Due: Number(m.expectedBdt),
-    Collected: Number(m.collectedBdt),
+    'Premiums due': Number(m.premiumsDueBdt),
+    'Claims paid': Number(m.claimsPaidBdt),
   }))
   const policies = money.policies ?? []
   return (
@@ -231,44 +232,46 @@ function BusinessPanel({ money }: { money: Business }) {
         The business
       </Text>
       <SimpleGrid cols={{ base: 2, md: 4 }} spacing="xs">
-        <Stat label="Clients" value={money.clients} hint={`${money.policiesActive} with a policy in force`} />
         <Stat
-          label="Premiums due each month"
-          value={taka(money.premiumMonthlyBdt)}
-          color="clinical"
-          hint="From every active policy, if all pay"
+          label="Clients"
+          value={money.clients}
+          hint={`${money.policiesActive} ${money.policiesActive === 1 ? 'policy' : 'policies'} in force: ${money.lifePolicies} life, ${money.healthPolicies} hospital`}
         />
-        <Stat label="Premiums due each year" value={taka(money.premiumYearlyBdt)} color="clinical" hint="Twelve months of the above" />
+        <Stat label="Premiums a year" value={taka(money.premiumYearlyBdt)} color="clinical" hint={`About ${taka(money.premiumMonthlyBdt)} a month, collected by the bank`} />
         <Stat
-          label="Paid out on claims, at most"
-          value={taka(money.sumAssuredInForceBdt)}
-          color="red"
-          hint="If every active policy were claimed today"
+          label="Expected claims a year"
+          value={taka(money.expectedClaimsYearlyBdt)}
+          hint={`Leaves ${taka(money.expectedMarginYearlyBdt)} for costs and profit`}
         />
-        <Stat label="Collected this month" value={taka(money.collectedThisMonthBdt)} color="teal" />
-        <Stat label="Collected this year" value={taka(money.collectedThisYearBdt)} color="teal" hint={`${taka(money.collectedAllTimeBdt)} in all`} />
+        <Stat label="Paid out on claims, at most" value={taka(money.sumAssuredInForceBdt)} color="red" hint="If every active policy were claimed today, up to what is left of each hospital limit" />
         <Stat
-          label="Overdue"
-          value={taka(money.overdueBdt)}
-          color={Number(money.overdueBdt) > 0 ? 'red' : undefined}
-          hint={`${money.overduePolicies} polic${money.overduePolicies === 1 ? 'y' : 'ies'} behind on payments`}
+          label="Open claims"
+          value={money.claimsOpen ?? 0}
+          color={(money.claimsOverdue ?? 0) > 0 ? 'red' : undefined}
+          hint={(money.claimsOverdue ?? 0) > 0 ? `${money.claimsOverdue} past the 90-day settlement date` : 'None past the 90-day date'}
+        />
+        <Stat label="Claims approved, to be paid" value={taka(money.claimsOwedBdt ?? 0)} color="orange" />
+        <Stat
+          label="Claims paid"
+          value={taka(money.claimsPaidBdt ?? 0)}
+          hint={money.lossRatioPct != null ? `${money.lossRatioPct}% of a year's premiums (loss ratio)` : undefined}
         />
         <Stat
           label="Largest single payout"
           value={money.largestPayoutBdt != null ? taka(money.largestPayoutBdt) : '—'}
-          hint={money.averagePayoutBdt != null ? `${taka(money.averagePayoutBdt)} on average` : undefined}
+          hint={`${money.renewalsDue ?? 0} hospital polic${money.renewalsDue === 1 ? 'y' : 'ies'} due for renewal`}
         />
       </SimpleGrid>
 
-      <Panel title="Premiums, month by month" hint="What active policies were due to pay each month, and what was recorded as paid.">
-        {months.some((m) => m.Due > 0 || m.Collected > 0) ? (
+      <Panel title="Premiums and claims, month by month" hint="What active policies were due to pay each month, and what was paid out on claims.">
+        {months.some((m) => m['Premiums due'] > 0 || m['Claims paid'] > 0) ? (
           <BarChart
             h={220}
             data={months}
             dataKey="month"
             series={[
-              { name: 'Due', color: 'gray.5' },
-              { name: 'Collected', color: 'teal.6' },
+              { name: 'Premiums due', color: 'teal.6' },
+              { name: 'Claims paid', color: 'red.5' },
             ]}
             valueFormatter={(v) => taka(v)}
           />
@@ -279,26 +282,22 @@ function BusinessPanel({ money }: { money: Business }) {
         )}
       </Panel>
 
-      <Panel
-        title="Policies, and what each pays out"
-        hint="The sum assured is what the company pays the client, or their family, when the policy is claimed."
-      >
+      <Panel title="Policies, and what each pays out" hint="Life cover pays the sum assured once; hospital cover pays bills up to its yearly limit.">
         {policies.length === 0 ? (
           <Text size="sm" c="dimmed">
             No policies yet.
           </Text>
         ) : (
-          <Table.ScrollContainer minWidth={760}>
+          <Table.ScrollContainer minWidth={820}>
             <Table verticalSpacing={6} highlightOnHover>
               <Table.Thead>
                 <Table.Tr>
                   <Table.Th>Client</Table.Th>
                   <Table.Th>Policy</Table.Th>
-                  <Table.Th ta="right">Pays monthly</Table.Th>
-                  <Table.Th ta="right">Pays yearly</Table.Th>
-                  <Table.Th ta="right">Pays out on a claim</Table.Th>
+                  <Table.Th ta="right">Premium a year</Table.Th>
+                  <Table.Th ta="right">Pays out</Table.Th>
                   <Table.Th>Runs</Table.Th>
-                  <Table.Th>Payments</Table.Th>
+                  <Table.Th>Claims</Table.Th>
                 </Table.Tr>
               </Table.Thead>
               <Table.Tbody>
@@ -319,36 +318,27 @@ function BusinessPanel({ money }: { money: Business }) {
                       <Group gap={4}>
                         <Text size="xs" c="dimmed">
                           {p.planName}
-                          {p.coverageType ? ` · ${p.coverageType}` : ''}
                         </Text>
-                        {p.status !== 'active' && (
-                          <Badge size="xs" color="red" variant="light">
-                            Cancelled
+                        {p.effectiveStatus !== 'active' && (
+                          <Badge size="xs" color={p.effectiveStatus === 'cancelled' ? 'red' : 'gray'} variant="light">
+                            {p.effectiveStatus === 'cancelled' ? 'Cancelled' : 'Ended'}
                           </Badge>
                         )}
                       </Group>
                     </Table.Td>
                     <Table.Td ta="right" fz="sm" ff="monospace">
-                      {taka(p.monthlyPremiumBdt)}
-                    </Table.Td>
-                    <Table.Td ta="right" fz="sm" ff="monospace">
-                      {taka(p.yearlyPremiumBdt)}
+                      {taka(p.annualPremiumBdt)}
                     </Table.Td>
                     <Table.Td ta="right" fz="sm" ff="monospace" fw={700}>
                       {taka(p.sumAssuredBdt)}
+                      {p.product === 'health' ? ' / yr' : ''}
                     </Table.Td>
                     <Table.Td fz="xs">
-                      {p.termYears} years, to {new Date(`${p.endDate}T00:00:00`).toLocaleDateString(undefined, { month: 'short', year: 'numeric' })}
+                      to {new Date(`${p.endDate}T00:00:00`).toLocaleDateString(undefined, { month: 'short', year: 'numeric' })}
                     </Table.Td>
-                    <Table.Td>
-                      <Text size="xs">
-                        {p.paidCount} paid · {taka(p.paidTotalBdt ?? 0)}
-                      </Text>
-                      {(p.overdueCount ?? 0) > 0 && (
-                        <Badge size="xs" color="red" variant="light">
-                          {p.overdueCount} overdue
-                        </Badge>
-                      )}
+                    <Table.Td fz="xs">
+                      {(p.claimsOpen ?? 0) > 0 ? `${p.claimsOpen} open` : '—'}
+                      {Number(p.claimsPaidBdt ?? 0) > 0 ? ` · ${taka(p.claimsPaidBdt ?? 0)} paid` : ''}
                     </Table.Td>
                   </Table.Tr>
                 ))}

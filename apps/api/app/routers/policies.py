@@ -1,13 +1,23 @@
 """Policies: issued when an application is approved, cancelled only by the owner.
 
-An approval used to be the end of the line. It now issues a policy the client
-can see on their portal: the plan, what they pay each month, what is paid out
-on a claim (the sum assured), and for how long. Each month's premium is
-recorded as it is paid, so both sides can see what has been paid and what is
-due (`app/policies.py` works the schedule out).
+**Dates, all derived from the day of the decision:**
+
+* *Start*: the day the application is approved. Cover runs from then.
+* *Free look*: 15 days from the start, in which the client may cancel for a
+  full refund.
+* *End*: life cover, the start plus the term in years; hospital cover, one
+  year (it is renewed each year, at the client's new age).
+* *Waiting periods*, hospital cover only: illness from 30 days after the
+  start (accidents from day one), conditions the client already had from 24
+  months after.
+* *Premiums* fall due on the start date and every month (or year) after it,
+  until the end. They are collected by the bank; this platform shows when they
+  fall due, never whether they were paid.
+
+A claim is checked against these dates (routers/claims.py).
 """
 
-from datetime import UTC, date, datetime
+from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
 from uuid import UUID
 
@@ -15,27 +25,39 @@ from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app import mailer, outbox, persistence, plans
+from app import mailer, outbox, persistence, pricing
 from app import policies as rules
 from app.db.session import get_db
 from app.deps import Principal, current_principal
 from app.models import (
     Applicant,
     Application,
+    Claim,
     InsurancePolicy,
     Notification,
     NotificationChannel,
     NotificationStatus,
     NotificationType,
-    PremiumPayment,
-    Tenant,
     UnderwriterDecision,
     User,
     UserRole,
 )
-from app.schemas.policy import CancelIn, InstallmentSchema, PaymentIn, PolicySchema
+from app.schemas.policy import CancelIn, PolicySchema
 
 router = APIRouter(tags=["Policies"])
+
+PRODUCT_NAME = {"life": "Term life", "health": "Hospital cover"}
+# Hospital cover nearing its yearly renewal: shown this many days before the end.
+RENEWAL_NOTICE_DAYS = 30
+OPEN_CLAIMS = ("submitted", "documents_requested", "under_review", "approved")
+
+
+def plan_name(product: str, rating_pct: int, exclusions: list[str]) -> str:
+    terms = "standard rates" if not rating_pct else f"rated +{rating_pct}%"
+    if exclusions:
+        terms += f", {len(exclusions)} exclusion{'s' if len(exclusions) != 1 else ''}"
+    return f"{PRODUCT_NAME.get(product, product)}, {terms}"
+
 
 # ── issuing ──────────────────────────────────────────────────────────────────
 
@@ -45,39 +67,39 @@ async def issue_policy(
     application: Application,
     applicant: Applicant,
     decision: UnderwriterDecision,
-) -> InsurancePolicy | None:
-    """The policy an approval issues, added to the caller's session.
-
-    None for a decision that approves nothing, or an application with no cover
-    amount to insure (there is nothing to pay out).
-    """
-    plan_name = rules.PLAN_FOR_DECISION.get(decision.decision.value)
-    if plan_name is None or not application.coverage_amount:
-        return None
-
-    premium = decision.final_premium
-    if premium is None:
-        tenant = await db.get(Tenant, application.tenant_id)
-        policy = plans.Policy.from_tenant(tenant) if tenant else plans.DEFAULT_POLICY
-        computed = plans.monthly_premium("low", float(application.coverage_amount), policy)
-        premium = Decimal(str(computed)) if computed is not None else None
-    if premium is None:
-        return None
-
-    years = rules.term_years(application.policy_term)
-    start = (decision.decided_at or datetime.now(UTC)).date()
+    priced: pricing.Quote,
+) -> InsurancePolicy:
+    """The policy an approval issues, added to the caller's session."""
+    product = priced.product
+    start = date.today()
     row = InsurancePolicy(
         tenant_id=application.tenant_id,
         application_id=application.id,
         applicant_id=applicant.id,
         policy_number=f"P-{applicant.external_ref}",
-        plan_name=plan_name,
+        plan_name=plan_name(product, decision.rating_pct, list(decision.exclusions or [])),
         coverage_type=application.coverage_type,
+        product=product,
         sum_assured_bdt=application.coverage_amount,
-        monthly_premium_bdt=Decimal(premium),
-        term_years=years,
+        annual_premium_bdt=Decimal(str(priced.annual_bdt)),
+        monthly_premium_bdt=Decimal(str(priced.monthly_bdt)),
+        premium_mode=application.payment_mode or "monthly",
+        rating_pct=decision.rating_pct or 0,
+        exclusions=list(decision.exclusions or []),
+        term_years=priced.term_years,
         start_date=start,
-        end_date=rules.end_date(start, years),
+        end_date=rules.end_date(start, priced.term_years),
+        free_look_until=start + timedelta(days=pricing.FREE_LOOK_DAYS),
+        waiting_until=(
+            start + timedelta(days=pricing.HEALTH_ILLNESS_WAIT_DAYS)
+            if product == "health"
+            else None
+        ),
+        preexisting_until=(
+            rules.add_months(start, pricing.HEALTH_PREEXISTING_WAIT_MONTHS)
+            if product == "health"
+            else None
+        ),
         status="active",
     )
     db.add(row)
@@ -87,22 +109,31 @@ async def issue_policy(
 # ── reading ──────────────────────────────────────────────────────────────────
 
 
-async def describe(
-    db: AsyncSession, rows: list[InsurancePolicy], *, with_installments: bool = True
-) -> list[PolicySchema]:
-    """Each policy with its payment schedule and totals, as of today."""
+def next_due(row: InsurancePolicy, today: date) -> date | None:
+    """The next day a premium falls due, from today, while the policy runs."""
+    step = 12 if row.premium_mode == "yearly" else 1
+    n = 0
+    while True:
+        due = rules.add_months(row.start_date, n * step)
+        if due >= row.end_date:
+            return None
+        if due >= today:
+            return due
+        n += 1
+
+
+def effective_status(row: InsurancePolicy, today: date) -> str:
+    if row.status == "cancelled":
+        return "cancelled"
+    return "expired" if today >= row.end_date else "active"
+
+
+async def describe(db: AsyncSession, rows: list[InsurancePolicy]) -> list[PolicySchema]:
+    """Each policy with its dates worked out as of today, and its claims."""
     if not rows:
         return []
     ids = [r.id for r in rows]
-    payments = (
-        (await db.execute(select(PremiumPayment).where(PremiumPayment.policy_id.in_(ids))))
-        .scalars()
-        .all()
-    )
-    paid: dict[UUID, dict[date, tuple[date, str]]] = {}
-    for p in payments:
-        paid.setdefault(p.policy_id, {})[p.due_date] = (p.paid_at.date(), p.method)
-
+    claims = (await db.execute(select(Claim).where(Claim.policy_id.in_(ids)))).scalars().all()
     applicants = {
         a.id: a
         for a in (
@@ -122,19 +153,24 @@ async def describe(
     )
 
     today = date.today()
+    zero = Decimal(0)
     out: list[PolicySchema] = []
     for r in rows:
-        installments = rules.schedule(
-            r.start_date,
-            r.end_date,
-            Decimal(r.monthly_premium_bdt),
-            paid.get(r.id, {}),
-            today,
-            cancelled_on=r.cancelled_at.date() if r.cancelled_at else None,
-        )
-        summary = rules.summarise(installments, r.term_years)
-        applicant = applicants.get(r.applicant_id)
+        mine = [c for c in claims if c.policy_id == r.id]
+        state = effective_status(r, today)
+        annual = Decimal(r.annual_premium_bdt or (r.monthly_premium_bdt * 12))
         monthly = Decimal(r.monthly_premium_bdt)
+        yearly = r.premium_mode == "yearly"
+        # Hospital cover: approved claims count against the year's limit.
+        used = sum(
+            (
+                Decimal(c.approved_amount_bdt or 0)
+                for c in mine
+                if c.status in ("approved", "settled")
+            ),
+            zero,
+        )
+        applicant = applicants.get(r.applicant_id)
         out.append(
             PolicySchema(
                 id=r.id,
@@ -143,39 +179,45 @@ async def describe(
                 client_id=r.applicant_id,
                 client_reference=applicant.external_ref if applicant else None,
                 client_name=applicant.name if applicant else None,
+                product=r.product,
+                product_name=PRODUCT_NAME.get(r.product, r.product),
                 plan_name=r.plan_name,
                 coverage_type=r.coverage_type,
                 sum_assured_bdt=Decimal(r.sum_assured_bdt),
+                annual_premium_bdt=annual,
                 monthly_premium_bdt=monthly,
-                yearly_premium_bdt=monthly * 12,
-                total_premium_bdt=monthly * 12 * r.term_years,
+                premium_mode=r.premium_mode,
+                premium_amount_bdt=annual if yearly else monthly,
+                total_premium_bdt=(annual if yearly else monthly * 12) * r.term_years,
+                rating_pct=r.rating_pct or 0,
+                exclusions=list(r.exclusions or []),
                 term_years=r.term_years,
                 start_date=r.start_date,
                 end_date=r.end_date,
                 status=r.status,
+                effective_status=state,
                 cancelled_at=r.cancelled_at,
                 cancel_reason=r.cancel_reason,
                 cancelled_by_name=names.get(r.cancelled_by) if r.cancelled_by else None,
-                paid_count=summary.paid_count,
-                paid_total_bdt=summary.paid_total,
-                overdue_count=summary.overdue_count if r.status == "active" else 0,
-                overdue_total_bdt=summary.overdue_total if r.status == "active" else Decimal(0),
-                next_due=summary.next_due if r.status == "active" else None,
-                next_amount_bdt=summary.next_amount if r.status == "active" else None,
-                months_total=summary.months_total,
-                installments=[
-                    InstallmentSchema(
-                        number=i.number,
-                        due_date=i.due_date,
-                        amount_bdt=i.amount,
-                        status=i.status,
-                        paid_on=i.paid_on,
-                        method=i.method,
-                    )
-                    for i in installments
-                ]
-                if with_installments
-                else [],
+                free_look_until=r.free_look_until,
+                in_free_look=state == "active"
+                and r.free_look_until is not None
+                and today <= r.free_look_until,
+                waiting_until=r.waiting_until,
+                preexisting_until=r.preexisting_until,
+                next_premium_due=next_due(r, today) if state == "active" else None,
+                renewal_due=r.product == "health"
+                and state == "active"
+                and (r.end_date - today).days <= RENEWAL_NOTICE_DAYS,
+                days_to_end=(r.end_date - today).days if state == "active" else None,
+                claims_open=sum(1 for c in mine if c.status in OPEN_CLAIMS),
+                claims_paid_bdt=sum(
+                    (Decimal(c.approved_amount_bdt or 0) for c in mine if c.status == "settled"),
+                    zero,
+                ),
+                remaining_limit_bdt=(
+                    max(zero, Decimal(r.sum_assured_bdt) - used) if r.product == "health" else None
+                ),
             )
         )
     return out
@@ -189,11 +231,11 @@ def _owner_only(principal: Principal, what: str) -> None:
         )
 
 
-async def _load(db: AsyncSession, policy_id: UUID, principal: Principal) -> InsurancePolicy:
+async def load(db: AsyncSession, policy_id: UUID, tenant_id: UUID) -> InsurancePolicy:
     row = (
         await db.execute(
             select(InsurancePolicy).where(
-                InsurancePolicy.id == policy_id, InsurancePolicy.tenant_id == principal.tenant_id
+                InsurancePolicy.id == policy_id, InsurancePolicy.tenant_id == tenant_id
             )
         )
     ).scalar_one_or_none()
@@ -219,7 +261,7 @@ async def list_policies(
         .scalars()
         .all()
     )
-    return await describe(db, list(rows), with_installments=False)
+    return await describe(db, list(rows))
 
 
 @router.get("/policies/{policy_id}", response_model=PolicySchema, summary="One policy")
@@ -232,11 +274,17 @@ async def get_policy(
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN, detail="Policies are not a doctor's."
         )
-    return (await describe(db, [await _load(db, policy_id, principal)]))[0]
+    return (await describe(db, [await load(db, policy_id, principal.tenant_id)]))[0]
 
 
-async def _notify_staff(db: AsyncSession, tenant_id: UUID, application_id: UUID, message: str):
-    """Underwriters and administrators: a policy is their business, not a doctor's."""
+async def notify_staff(
+    db: AsyncSession,
+    tenant_id: UUID,
+    application_id: UUID | None,
+    kind: NotificationType,
+    message: str,
+) -> None:
+    """Underwriters and administrators: policies and claims are theirs."""
     users = (
         (
             await db.execute(
@@ -256,11 +304,54 @@ async def _notify_staff(db: AsyncSession, tenant_id: UUID, application_id: UUID,
                 tenant_id=tenant_id,
                 user_id=user_id,
                 application_id=application_id,
-                notification_type=NotificationType.POLICY_CANCELLED,
+                notification_type=kind,
                 channel=NotificationChannel.IN_APP,
                 status=NotificationStatus.SENT,
                 message=message,
             )
+        )
+
+
+async def cancel(
+    db: AsyncSession,
+    row: InsurancePolicy,
+    reason: str,
+    actor: UUID | None,
+    background: BackgroundTasks | None,
+) -> None:
+    """Cancel a policy, record it, tell the staff and the client."""
+    row.status = "cancelled"
+    row.cancelled_at = datetime.now(UTC)
+    row.cancelled_by = actor
+    row.cancel_reason = reason
+    applicant = await db.get(Applicant, row.applicant_id)
+    await persistence.append_audit(
+        db,
+        tenant_id=row.tenant_id,
+        application_id=row.application_id,
+        actor_user_id=actor,
+        event_type="policy_cancelled",
+        payload={"policy_number": row.policy_number, "reason": reason},
+    )
+    await notify_staff(
+        db,
+        row.tenant_id,
+        row.application_id,
+        NotificationType.POLICY_CANCELLED,
+        f"Policy {row.policy_number} was cancelled. Reason: {reason}",
+    )
+    if background is not None and applicant and applicant.email:
+        background.add_task(
+            outbox.send_logged,
+            row.tenant_id,
+            row.application_id,
+            "policy_update",
+            applicant.email,
+            f"An update about your policy ({applicant.external_ref})",
+            mailer.send_policy_notice,
+            applicant.email,
+            applicant.name or "",
+            applicant.external_ref,
         )
 
 
@@ -277,113 +368,12 @@ async def cancel_policy(
     principal: Principal = Depends(current_principal),
 ) -> PolicySchema:
     _owner_only(principal, "cancel a policy")
-    row = await _load(db, policy_id, principal)
+    row = await load(db, policy_id, principal.tenant_id)
     if row.status == "cancelled":
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT, detail="This policy is already cancelled."
         )
-    row.status = "cancelled"
-    row.cancelled_at = datetime.now(UTC)
-    row.cancelled_by = principal.user_id
-    row.cancel_reason = payload.reason.strip()
-
-    applicant = await db.get(Applicant, row.applicant_id)
-    await persistence.append_audit(
-        db,
-        tenant_id=row.tenant_id,
-        application_id=row.application_id,
-        actor_user_id=principal.user_id,
-        event_type="policy_cancelled",
-        payload={"policy_number": row.policy_number, "reason": row.cancel_reason},
-    )
-    await _notify_staff(
-        db,
-        row.tenant_id,
-        row.application_id,
-        f"Policy {row.policy_number} was cancelled. Reason: {row.cancel_reason}",
-    )
+    await cancel(db, row, payload.reason.strip(), principal.user_id, background)
     await db.commit()
     await db.refresh(row)
-
-    if applicant and applicant.email:
-        background.add_task(
-            outbox.send_logged,
-            row.tenant_id,
-            row.application_id,
-            "policy_update",
-            applicant.email,
-            f"An update about your policy ({applicant.external_ref})",
-            mailer.send_policy_notice,
-            applicant.email,
-            applicant.name or "",
-            applicant.external_ref,
-        )
-    return (await describe(db, [row]))[0]
-
-
-@router.post(
-    "/policies/{policy_id}/payments",
-    response_model=PolicySchema,
-    status_code=status.HTTP_201_CREATED,
-    summary="Record a month's premium as paid (owner only)",
-)
-async def record_payment(
-    policy_id: UUID,
-    payload: PaymentIn,
-    db: AsyncSession = Depends(get_db),
-    principal: Principal = Depends(current_principal),
-) -> PolicySchema:
-    _owner_only(principal, "record a payment")
-    row = await _load(db, policy_id, principal)
-    if row.status != "active":
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail="This policy is cancelled; no premium is due on it.",
-        )
-
-    [current] = await describe(db, [row])
-    unpaid = [i for i in current.installments if i.status != "paid"]
-    if payload.due_date is None:
-        if not unpaid:
-            raise HTTPException(
-                status_code=status.HTTP_409_CONFLICT, detail="Nothing is due on this policy."
-            )
-        target = unpaid[0]
-    else:
-        target = next((i for i in current.installments if i.due_date == payload.due_date), None)
-        if target is None:
-            raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-                detail="No premium falls due on that date.",
-            )
-        if target.status == "paid":
-            raise HTTPException(
-                status_code=status.HTTP_409_CONFLICT, detail="That month is already paid."
-            )
-
-    db.add(
-        PremiumPayment(
-            tenant_id=row.tenant_id,
-            policy_id=row.id,
-            due_date=target.due_date,
-            amount_bdt=target.amount_bdt,
-            method=payload.method,
-            reference=(payload.reference or "").strip() or None,
-            recorded_by=principal.user_id,
-        )
-    )
-    await persistence.append_audit(
-        db,
-        tenant_id=row.tenant_id,
-        application_id=row.application_id,
-        actor_user_id=principal.user_id,
-        event_type="premium_paid",
-        payload={
-            "policy_number": row.policy_number,
-            "due_date": target.due_date.isoformat(),
-            "amount": float(target.amount_bdt),
-            "method": payload.method,
-        },
-    )
-    await db.commit()
     return (await describe(db, [row]))[0]

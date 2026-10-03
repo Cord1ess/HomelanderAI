@@ -24,5 +24,10 @@
     "ecg": {
       "known_arrhythmia": true
     }
+  },
+  "nominee": {
+    "name": "Jamal Malek",
+    "relation": "Son",
+    "phone": "01711 000205"
   }
 }

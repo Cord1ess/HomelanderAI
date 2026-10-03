@@ -48,14 +48,15 @@ CREATE TYPE risk_tier AS ENUM ('low', 'moderate', 'elevated', 'insufficient_evid
 
 CREATE TYPE underwriter_decision_type AS ENUM (
     'confirmed_fast_track', 'approved_with_adjustment',
-    'escalated_senior_review', 'requested_additional_evidence'
+    'escalated_senior_review', 'requested_additional_evidence', 'declined'
 );
 
 CREATE TYPE notification_type AS ENUM (
     'application_submitted', 'processing_complete', 'tier_escalation',
     'decision_recorded', 'evidence_requested', 'api_key_expiring', 'doctor_reviewed',
     'access_requested', 'access_decided', 'documents_uploaded',
-    'policy_issued', 'policy_cancelled'
+    'policy_issued', 'policy_cancelled',
+    'claim_filed', 'claim_updated', 'deletion_requested'
 );
 
 CREATE TYPE notification_channel AS ENUM ('email', 'in_app', 'sms');
@@ -90,7 +91,12 @@ CREATE TABLE tenants (
     premium_low_bdt      NUMERIC(12,2) NOT NULL DEFAULT 5000.00  CHECK (premium_low_bdt > 0),
     premium_moderate_bdt NUMERIC(12,2) NOT NULL DEFAULT 7500.00  CHECK (premium_moderate_bdt > 0),
     reference_cover_bdt  NUMERIC(14,2) NOT NULL DEFAULT 1000000.00 CHECK (reference_cover_bdt > 0),
-    created_at          TIMESTAMPTZ  NOT NULL DEFAULT now()
+    created_at          TIMESTAMPTZ  NOT NULL DEFAULT now(),
+    life_expense_loading_pct NUMERIC(5, 2) NOT NULL DEFAULT 22.32,
+    life_interest_pct NUMERIC(5, 2) NOT NULL DEFAULT 5.00,
+    health_rate_per_lakh_bdt NUMERIC(10, 2) NOT NULL DEFAULT 1800,
+    smoker_loading_pct NUMERIC(5, 2) NOT NULL DEFAULT 50,
+    monthly_loading_pct NUMERIC(5, 2) NOT NULL DEFAULT 5
 );
 
 
@@ -159,7 +165,16 @@ CREATE TABLE applicants (
     email           VARCHAR(255),
     password_hash   VARCHAR(255),
     created_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
-    CONSTRAINT uq_applicants_tenant_external_ref UNIQUE (tenant_id, external_ref)
+    CONSTRAINT uq_applicants_tenant_external_ref UNIQUE (tenant_id, external_ref),
+    nid_number VARCHAR(20),
+    nid_name VARCHAR(200),
+    nid_date_of_birth DATE,
+    nid_image_path VARCHAR(500),
+    nominee_name VARCHAR(200),
+    nominee_relation VARCHAR(50),
+    nominee_phone VARCHAR(30),
+    consent_at TIMESTAMPTZ,
+    deleted_at TIMESTAMPTZ
 );
 
 -- Per-tenant-diagnostic reference, generated automatically by the database at
@@ -207,7 +222,10 @@ CREATE TABLE applications (
     sent_to_doctor_at      TIMESTAMPTZ,
     evaluated_at           TIMESTAMPTZ,
     processing_started_at  TIMESTAMPTZ,
-    submitted_at           TIMESTAMPTZ NOT NULL DEFAULT now()
+    submitted_at           TIMESTAMPTZ NOT NULL DEFAULT now(),
+    payment_mode VARCHAR(10) NOT NULL DEFAULT 'monthly',
+    assigned_to UUID REFERENCES users(id) ON DELETE SET NULL,
+    assigned_at TIMESTAMPTZ
 );
 
 CREATE INDEX idx_applications_tenant_id ON applications(tenant_id);
@@ -353,7 +371,12 @@ CREATE TABLE underwriter_decisions (
     decision         underwriter_decision_type NOT NULL,
     final_premium    NUMERIC(12,2),
     decided_at       TIMESTAMPTZ NOT NULL DEFAULT now(),
-    CONSTRAINT uq_underwriter_decisions_application UNIQUE (application_id)
+    CONSTRAINT uq_underwriter_decisions_application UNIQUE (application_id),
+    rating_pct INTEGER NOT NULL DEFAULT 0,
+    exclusions JSONB NOT NULL DEFAULT '[]'::jsonb,
+    decline_reason VARCHAR(40),
+    decline_note TEXT,
+    reapply_after DATE
 );
 
 CREATE INDEX idx_underwriter_decisions_tenant_id ON underwriter_decisions(tenant_id);
@@ -439,27 +462,19 @@ CREATE TABLE policies (
     cancelled_at         TIMESTAMPTZ,
     cancelled_by         UUID REFERENCES users(id) ON DELETE SET NULL,
     cancel_reason        TEXT,
-    created_at           TIMESTAMPTZ NOT NULL DEFAULT now()
+    created_at           TIMESTAMPTZ NOT NULL DEFAULT now(),
+    product VARCHAR(20) NOT NULL DEFAULT 'life',
+    annual_premium_bdt NUMERIC(12, 2),
+    premium_mode VARCHAR(10) NOT NULL DEFAULT 'monthly',
+    rating_pct INTEGER NOT NULL DEFAULT 0,
+    exclusions JSONB NOT NULL DEFAULT '[]'::jsonb,
+    free_look_until DATE,
+    waiting_until DATE,
+    preexisting_until DATE
 );
 
 CREATE INDEX idx_policies_tenant ON policies(tenant_id, status);
 CREATE INDEX idx_policies_applicant ON policies(applicant_id);
-
--- Each month's premium, recorded when it is paid.
-CREATE TABLE premium_payments (
-    id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    tenant_id       UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
-    policy_id       UUID NOT NULL REFERENCES policies(id) ON DELETE CASCADE,
-    due_date        DATE NOT NULL,
-    amount_bdt      NUMERIC(12, 2) NOT NULL,
-    method          VARCHAR(30) NOT NULL DEFAULT 'cash',
-    reference       VARCHAR(100),
-    paid_at         TIMESTAMPTZ NOT NULL DEFAULT now(),
-    recorded_by     UUID REFERENCES users(id) ON DELETE SET NULL,
-    UNIQUE (policy_id, due_date)
-);
-
-CREATE INDEX idx_premium_payments_policy ON premium_payments(policy_id, due_date);
 
 -- Every message the platform tried to send. Never the body: it can hold a
 -- password.
@@ -476,6 +491,76 @@ CREATE TABLE email_log (
 );
 
 CREATE INDEX idx_email_log_application ON email_log(application_id, created_at DESC);
+
+-- A claim on a policy: a death claim on a life policy, or hospital bills on
+-- hospital cover. By law a claim is settled within 90 days of the documents
+-- being complete (`settle_by`).
+CREATE TABLE claims (
+    id                   UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    tenant_id            UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+    policy_id            UUID NOT NULL REFERENCES policies(id) ON DELETE CASCADE,
+    applicant_id         UUID NOT NULL REFERENCES applicants(id) ON DELETE CASCADE,
+    claim_number         VARCHAR(40) NOT NULL UNIQUE,
+    claim_type           VARCHAR(20) NOT NULL CHECK (claim_type IN ('death', 'hospital')),
+    event_date           DATE NOT NULL,
+    claimed_amount_bdt   NUMERIC(14, 2) NOT NULL CHECK (claimed_amount_bdt > 0),
+    description          TEXT NOT NULL,
+    hospital             VARCHAR(200),
+    claimant_name        VARCHAR(200),
+    accident             BOOLEAN NOT NULL DEFAULT false,
+    status               VARCHAR(30) NOT NULL DEFAULT 'submitted'
+                         CHECK (status IN ('submitted', 'documents_requested', 'under_review',
+                                           'approved', 'rejected', 'settled')),
+    documents_note       TEXT,
+    documents_complete_at TIMESTAMPTZ,
+    settle_by            DATE,
+    approved_amount_bdt  NUMERIC(14, 2),
+    decision_note        TEXT,
+    decided_by           UUID REFERENCES users(id) ON DELETE SET NULL,
+    decided_at           TIMESTAMPTZ,
+    settled_at           TIMESTAMPTZ,
+    settlement_reference VARCHAR(100),
+    filed_by_client      BOOLEAN NOT NULL DEFAULT false,
+    filed_by             UUID REFERENCES users(id) ON DELETE SET NULL,
+    created_at           TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX idx_claims_tenant ON claims(tenant_id, status);
+CREATE INDEX idx_claims_policy ON claims(policy_id);
+
+CREATE TABLE claim_documents (
+    id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    tenant_id       UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+    claim_id        UUID NOT NULL REFERENCES claims(id) ON DELETE CASCADE,
+    storage_path    VARCHAR(500) NOT NULL,
+    original_filename VARCHAR(255),
+    mime_type       VARCHAR(100),
+    uploaded_by_client BOOLEAN NOT NULL DEFAULT false,
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX idx_claim_documents_claim ON claim_documents(claim_id);
+
+-- A client asking for their data to be deleted. An administrator approves it;
+-- it is then carried out on `delete_on`, thirty days after the request.
+CREATE TABLE data_deletion_requests (
+    id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    tenant_id       UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+    applicant_id    UUID NOT NULL REFERENCES applicants(id) ON DELETE CASCADE,
+    reason          TEXT,
+    status          VARCHAR(20) NOT NULL DEFAULT 'pending'
+                    CHECK (status IN ('pending', 'approved', 'declined', 'withdrawn', 'completed')),
+    requested_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
+    delete_on       DATE NOT NULL,
+    decided_by      UUID REFERENCES users(id) ON DELETE SET NULL,
+    decided_at      TIMESTAMPTZ,
+    decline_reason  TEXT,
+    completed_at    TIMESTAMPTZ
+);
+
+CREATE INDEX idx_data_deletion_tenant ON data_deletion_requests(tenant_id, status);
+CREATE UNIQUE INDEX idx_applicants_tenant_nid ON applicants(tenant_id, nid_number)
+    WHERE nid_number IS NOT NULL;
 
 CREATE TABLE client_access_requests (
     id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),

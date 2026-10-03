@@ -16,7 +16,9 @@ import { useQuery } from '@tanstack/react-query'
 import {
   IconBell,
   IconChartBar,
+  IconFileDollar,
   IconFlask,
+  IconTrashX,
   IconKey,
   IconLock,
   IconChevronsLeft,
@@ -231,6 +233,8 @@ const ICONS: Record<ScreenId, () => JSX.Element> = {
   profile: () => <IconUserCircle size={18} />,
   access: () => <IconKey size={18} />,
   bench: () => <IconFlask size={18} />,
+  claims: () => <IconFileDollar size={18} />,
+  dataRequests: () => <IconTrashX size={18} />,
 }
 
 /** An open application belongs to "Applications"; the intake form does not. */

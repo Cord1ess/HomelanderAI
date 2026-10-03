@@ -115,10 +115,12 @@ export function QueuePage() {
   const [status, setStatus] = useState<ApplicationStatus | 'all'>('all')
   const [query, setQuery] = useState('')
   const [escalatedOnly, setEscalatedOnly] = useState(false)
+  // Only the cases this person has taken.
+  const [mine, setMine] = useState(false)
 
   const { data, isPending, isFetching, error, refetch } = useQuery({
-    queryKey: ['applications', status, query],
-    queryFn: () => getQueue({ status, q: query }),
+    queryKey: ['applications', status, query, mine],
+    queryFn: () => getQueue({ status, q: query, mine }),
     // Scoring finishes in the background, so the row changes under the user.
     // While a reader is running the progress bar is live, so ask often; the
     // rest of the time twice a minute is plenty.
@@ -135,8 +137,10 @@ export function QueuePage() {
   const counts = data?.counts ?? {}
   const total = data?.total ?? 0
 
-  const elevatedCount = rawRows.filter((r) => r.tier === 'elevated').length
-  const rows = escalatedOnly ? rawRows.filter((r) => r.tier === 'elevated') : rawRows
+  // A decided case no longer needs a doctor, whatever its tier.
+  const elevated = rawRows.filter((r) => r.tier === 'elevated' && r.status !== 'decided')
+  const elevatedCount = elevated.length
+  const rows = escalatedOnly ? elevated : rawRows
   const changed = useChangedRows(data?.items)
 
   const isMedical = user?.role === 'medical_professional'
@@ -253,6 +257,11 @@ export function QueuePage() {
           onChange={(e) => setQuery(e.currentTarget.value)}
           w={240}
         />
+        {user?.role !== 'medical_professional' && (
+          <Button size="xs" variant={mine ? 'filled' : 'default'} onClick={() => setMine((m) => !m)}>
+            {mine ? 'Showing my cases' : 'My cases'}
+          </Button>
+        )}
         <Tooltip label="Check for changes now" withArrow>
           <ActionIcon variant="subtle" aria-label="Refresh" onClick={() => void refetch()} loading={isFetching}>
             <IconRefresh size={16} />
@@ -403,7 +412,14 @@ function Row({ row, userRole, changed }: { row: QueueItem; userRole?: UserRole; 
           )}
         </Group>
       </Table.Td>
-      <Table.Td fz="sm">{row.applicantName ?? '—'}</Table.Td>
+      <Table.Td fz="sm">
+        {row.applicantName ?? '—'}
+        {row.assignedToName && (
+          <Text fz="xs" c="dimmed">
+            With {row.assignedToName}
+          </Text>
+        )}
+      </Table.Td>
       <Table.Td fz="sm" ff="monospace">
         {/* How much is at stake, so triage is not done on risk alone. */}
         {row.coverageAmount ? formatTaka(row.coverageAmount) : '—'}
@@ -429,7 +445,13 @@ function Row({ row, userRole, changed }: { row: QueueItem; userRole?: UserRole; 
           <ReadingProgress row={row} />
         ) : (
           <Stack gap={4} align="flex-start">
-            <StatusBadge status={row.status} />
+            {row.declined ? (
+              <Badge size="sm" color="red" variant="light" style={{ minWidth: 'max-content' }}>
+                Declined
+              </Badge>
+            ) : (
+              <StatusBadge status={row.status} />
+            )}
             <DoctorVerdictBadge verdict={row.doctorVerdict} size="xs" />
             {row.policyStatus && (
               <Badge

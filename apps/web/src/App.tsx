@@ -6,7 +6,9 @@ import { ProtectedRoute } from './components/auth/ProtectedRoute'
 import { AuthPage } from './pages/AuthPage'
 import { RegisterCarrierPage } from './pages/RegisterCarrierPage'
 import { AccessRequestsPage } from './pages/admin/AccessRequestsPage'
+import { DataRequestsPage } from './pages/admin/DataRequestsPage'
 import { ModelBenchPage } from './pages/admin/ModelBenchPage'
+import { ClaimsPage } from './pages/claims/ClaimsPage'
 import { SettingsPage } from './pages/admin/SettingsPage'
 import { StaffManagementPage } from './pages/admin/StaffManagementPage'
 import { AnalyticsPage } from './pages/analytics/AnalyticsPage'
@@ -85,6 +87,15 @@ export function App() {
             </ProtectedRoute>
           }
         />
+        <Route
+          path="/data-requests"
+          element={
+            <ProtectedRoute allowedRoles={['admin']}>
+              <DataRequestsPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route path="/claims" element={<NotForDoctors><ClaimsPage /></NotForDoctors>} />
         <Route
           path="/model-bench"
           element={

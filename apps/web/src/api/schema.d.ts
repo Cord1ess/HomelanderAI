@@ -210,30 +210,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/pricing": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * The plan for each risk tier, priced for a given cover
-         * @description What each tier means for the policy, under this company's settings.
-         *
-         *     Premiums are worked out here rather than in the dashboard so one change to
-         *     the company's policy moves every screen at once. The plans and their prices
-         *     are the company owner's: an administrator's only.
-         */
-        get: operations["get_pricing_api_pricing_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/evidence/classify": {
         parameters: {
             query?: never;
@@ -343,6 +319,44 @@ export interface paths {
          *     and a decision has to be attributable to a person who can be held to it.
          */
         post: operations["record_decision_api_applications__application_id__decision_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/applications/{application_id}/quote": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** The premium for this client at a given rating */
+        post: operations["quote_application_api_applications__application_id__quote_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/applications/{application_id}/assign": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Take the case (or hand it back with release=true)
+         * @description One underwriter takes a case so two do not work it at once. Anyone may
+         *     see it; the queue says who has it. An administrator can take it over.
+         */
+        post: operations["assign_application_api_applications__application_id__assign_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -728,6 +742,62 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/portal/claims": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * The client files a claim for hospital bills
+         * @description Hospital cover only. A death claim is made by the nominee at the office,
+         *     with the death certificate; staff enter it.
+         */
+        post: operations["portal_claim_api_portal_claims_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/portal/claims/{claim_id}/documents": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** The client adds documents to their claim */
+        post: operations["portal_claim_documents_api_portal_claims__claim_id__documents_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/portal/deletion-request": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** The client asks for their data to be deleted */
+        post: operations["portal_request_deletion_api_portal_deletion_request_post"];
+        /** The client withdraws their request */
+        delete: operations["portal_withdraw_deletion_api_portal_deletion_request_delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/portal/logout": {
         parameters: {
             query?: never;
@@ -905,23 +975,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/policies/{policy_id}/payments": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Record a month's premium as paid (owner only) */
-        post: operations["record_payment_api_policies__policy_id__payments_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/applications/{application_id}/client-sign-in": {
         parameters: {
             query?: never;
@@ -951,6 +1004,193 @@ export interface paths {
         put?: never;
         /** Run one model on a test, outside any application (owner only) */
         post: operations["try_model_api_models__model_id__try_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/policies/{policy_id}/claims": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** File a claim on someone's behalf (a death claim from the nominee, say) */
+        post: operations["file_staff_claim_api_policies__policy_id__claims_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/claims": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Claims, newest first */
+        get: operations["list_claims_api_claims_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/claims/{claim_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** One claim */
+        get: operations["get_claim_api_claims__claim_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/claims/{claim_id}/documents/{document_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** One claim document */
+        get: operations["get_claim_document_api_claims__claim_id__documents__document_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/claims/{claim_id}/documents": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Add documents to a claim */
+        post: operations["add_claim_documents_api_claims__claim_id__documents_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/claims/{claim_id}/action": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Move a claim on */
+        post: operations["act_on_claim_api_claims__claim_id__action_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/deletion-requests": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Requests to delete data */
+        get: operations["list_requests_api_deletion_requests_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/deletion-requests/{request_id}/decision": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Approve or decline a request to delete data */
+        post: operations["decide_api_deletion_requests__request_id__decision_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/pricing": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The products and their prices (owner) */
+        get: operations["get_pricing_api_pricing_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/quote": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Price one policy */
+        post: operations["quote_api_quote_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/nid/read": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Read an NID card photo */
+        post: operations["read_card_api_nid_read_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1071,6 +1311,23 @@ export interface components {
             sex?: string | null;
             /** Email */
             email?: string | null;
+            /** Nidnumber */
+            nidNumber?: string | null;
+            /** Nidname */
+            nidName?: string | null;
+            /** Niddateofbirth */
+            nidDateOfBirth?: string | null;
+            /** Nomineename */
+            nomineeName?: string | null;
+            /** Nomineerelation */
+            nomineeRelation?: string | null;
+            /** Nomineephone */
+            nomineePhone?: string | null;
+            /**
+             * Consent
+             * @default false
+             */
+            consent: boolean;
         };
         /** ApplicationDetailSchema */
         ApplicationDetailSchema: {
@@ -1127,6 +1384,24 @@ export interface components {
             /** Clientmessages */
             clientMessages?: components["schemas"]["ClientMessageSchema"][];
             policy?: components["schemas"]["PolicySchema"] | null;
+            /**
+             * Product
+             * @default life
+             */
+            product: string;
+            /** Age */
+            age?: number | null;
+            /**
+             * Smoker
+             * @default false
+             */
+            smoker: boolean;
+            /** Suggestedexclusions */
+            suggestedExclusions?: string[];
+            /** Assignedtoid */
+            assignedToId?: string | null;
+            /** Assignedtoname */
+            assignedToName?: string | null;
             /** Errors */
             errors?: string[];
         };
@@ -1253,8 +1528,26 @@ export interface components {
             /** Durationms */
             durationMs: number;
         };
+        /** Body_add_claim_documents_api_claims__claim_id__documents_post */
+        Body_add_claim_documents_api_claims__claim_id__documents_post: {
+            /** Files */
+            files: string[];
+        };
         /** Body_classify_evidence_api_evidence_classify_post */
         Body_classify_evidence_api_evidence_classify_post: {
+            /**
+             * Files
+             * @default []
+             */
+            files: string[];
+        };
+        /** Body_file_staff_claim_api_policies__policy_id__claims_post */
+        Body_file_staff_claim_api_policies__policy_id__claims_post: {
+            /**
+             * Payload
+             * @description JSON matching ClaimIn
+             */
+            payload: string;
             /**
              * Files
              * @default []
@@ -1266,10 +1559,33 @@ export interface components {
             /** File */
             file?: string | null;
         };
+        /** Body_portal_claim_api_portal_claims_post */
+        Body_portal_claim_api_portal_claims_post: {
+            /**
+             * Payload
+             * @description JSON matching ClaimIn
+             */
+            payload: string;
+            /**
+             * Files
+             * @default []
+             */
+            files: string[];
+        };
+        /** Body_portal_claim_documents_api_portal_claims__claim_id__documents_post */
+        Body_portal_claim_documents_api_portal_claims__claim_id__documents_post: {
+            /** Files */
+            files: string[];
+        };
         /** Body_portal_upload_api_portal_documents__document_id__upload_post */
         Body_portal_upload_api_portal_documents__document_id__upload_post: {
             /** File */
             file: string;
+        };
+        /** Body_read_card_api_nid_read_post */
+        Body_read_card_api_nid_read_post: {
+            /** Image */
+            image: string;
         };
         /** Body_submit_application_api_applications_post */
         Body_submit_application_api_applications_post: {
@@ -1295,6 +1611,8 @@ export interface components {
             file_kinds: string[];
             /** Face Photo */
             face_photo?: string | null;
+            /** Nid Image */
+            nid_image?: string | null;
         };
         /** Body_try_model_api_models__model_id__try_post */
         Body_try_model_api_models__model_id__try_post: {
@@ -1315,7 +1633,8 @@ export interface components {
         };
         /**
          * BusinessSchema
-         * @description The money side of the book, from issued policies and recorded payments.
+         * @description The money side of the book, from issued policies and their claims.
+         *     Premiums are collected by the bank; these are what falls due.
          */
         BusinessSchema: {
             /** Clients */
@@ -1324,26 +1643,53 @@ export interface components {
             policiesActive: number;
             /** Policiescancelled */
             policiesCancelled: number;
-            /** Premiummonthlybdt */
-            premiumMonthlyBdt: string;
+            /** Policiesexpired */
+            policiesExpired: number;
+            /** Lifepolicies */
+            lifePolicies: number;
+            /** Healthpolicies */
+            healthPolicies: number;
             /** Premiumyearlybdt */
             premiumYearlyBdt: string;
-            /** Collectedthismonthbdt */
-            collectedThisMonthBdt: string;
-            /** Collectedthisyearbdt */
-            collectedThisYearBdt: string;
-            /** Collectedalltimebdt */
-            collectedAllTimeBdt: string;
-            /** Overduebdt */
-            overdueBdt: string;
-            /** Overduepolicies */
-            overduePolicies: number;
+            /** Premiummonthlybdt */
+            premiumMonthlyBdt: string;
+            /** Expectedclaimsyearlybdt */
+            expectedClaimsYearlyBdt: string;
+            /** Expectedmarginyearlybdt */
+            expectedMarginYearlyBdt: string;
             /** Sumassuredinforcebdt */
             sumAssuredInForceBdt: string;
             /** Largestpayoutbdt */
             largestPayoutBdt?: string | null;
             /** Averagepayoutbdt */
             averagePayoutBdt?: string | null;
+            /**
+             * Claimsopen
+             * @default 0
+             */
+            claimsOpen: number;
+            /**
+             * Claimsoverdue
+             * @default 0
+             */
+            claimsOverdue: number;
+            /**
+             * Claimspaidbdt
+             * @default 0
+             */
+            claimsPaidBdt: string;
+            /**
+             * Claimsowedbdt
+             * @default 0
+             */
+            claimsOwedBdt: string;
+            /** Lossratiopct */
+            lossRatioPct?: number | null;
+            /**
+             * Renewalsdue
+             * @default 0
+             */
+            renewalsDue: number;
             /** Months */
             months?: components["schemas"]["MonthMoneySchema"][];
             /** Policies */
@@ -1363,6 +1709,121 @@ export interface components {
             currentPassword: string;
             /** Newpassword */
             newPassword: string;
+        };
+        /** ClaimActionIn */
+        ClaimActionIn: {
+            /**
+             * Action
+             * @enum {string}
+             */
+            action: "request_documents" | "documents_complete" | "approve" | "reject" | "settle";
+            /** Note */
+            note?: string | null;
+            /** Approvedamountbdt */
+            approvedAmountBdt?: number | string | null;
+            /** Settlementreference */
+            settlementReference?: string | null;
+        };
+        /** ClaimDocumentSchema */
+        ClaimDocumentSchema: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Filename */
+            fileName?: string | null;
+            /**
+             * Uploadedbyclient
+             * @default false
+             */
+            uploadedByClient: boolean;
+            /**
+             * Createdat
+             * Format: date-time
+             */
+            createdAt: string;
+        };
+        /** ClaimSchema */
+        ClaimSchema: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Claimnumber */
+            claimNumber: string;
+            /**
+             * Policyid
+             * Format: uuid
+             */
+            policyId: string;
+            /** Policynumber */
+            policyNumber?: string | null;
+            /** Product */
+            product?: string | null;
+            /**
+             * Clientid
+             * Format: uuid
+             */
+            clientId: string;
+            /** Clientname */
+            clientName?: string | null;
+            /** Clientreference */
+            clientReference?: string | null;
+            /** Claimtype */
+            claimType: string;
+            /**
+             * Eventdate
+             * Format: date
+             */
+            eventDate: string;
+            /** Claimedamountbdt */
+            claimedAmountBdt: string;
+            /** Description */
+            description: string;
+            /** Hospital */
+            hospital?: string | null;
+            /** Claimantname */
+            claimantName?: string | null;
+            /** Status */
+            status: string;
+            /** Documentsnote */
+            documentsNote?: string | null;
+            /** Documentscompleteat */
+            documentsCompleteAt?: string | null;
+            /** Settleby */
+            settleBy?: string | null;
+            /** Daysleft */
+            daysLeft?: number | null;
+            /** Approvedamountbdt */
+            approvedAmountBdt?: string | null;
+            /** Decisionnote */
+            decisionNote?: string | null;
+            /** Decidedbyname */
+            decidedByName?: string | null;
+            /** Decidedat */
+            decidedAt?: string | null;
+            /** Settledat */
+            settledAt?: string | null;
+            /** Settlementreference */
+            settlementReference?: string | null;
+            /**
+             * Filedbyclient
+             * @default false
+             */
+            filedByClient: boolean;
+            /**
+             * Createdat
+             * Format: date-time
+             */
+            createdAt: string;
+            /** Checks */
+            checks?: string[];
+            /** Payablelimitbdt */
+            payableLimitBdt?: string | null;
+            /** Documents */
+            documents?: components["schemas"]["ClaimDocumentSchema"][];
         };
         /**
          * ClassifiedFileSchema
@@ -1500,6 +1961,18 @@ export interface components {
             heightCm?: string | null;
             /** Weightkg */
             weightKg?: string | null;
+            /** Nidnumber */
+            nidNumber?: string | null;
+            /** Nomineename */
+            nomineeName?: string | null;
+            /** Nomineerelation */
+            nomineeRelation?: string | null;
+            /** Nomineephone */
+            nomineePhone?: string | null;
+            /** Consentat */
+            consentAt?: string | null;
+            /** Deletedat */
+            deletedAt?: string | null;
             /**
              * Createdat
              * Format: date-time
@@ -1621,6 +2094,12 @@ export interface components {
             coverageAmount?: string | null;
             /** Policyterm */
             policyTerm?: string | null;
+            /**
+             * Paymentmode
+             * @default monthly
+             * @enum {string}
+             */
+            paymentMode: "monthly" | "yearly";
         };
         /** DatabaseHealth */
         DatabaseHealth: {
@@ -1642,11 +2121,31 @@ export interface components {
              */
             admin_login_enabled: boolean;
         };
-        /** DecisionIn */
+        /**
+         * DecisionIn
+         * @description An underwriter's decision.
+         *
+         *     Approvals carry a rating (extra on the premium, one of pricing.RATINGS) and,
+         *     for hospital cover, exclusions. The premium is worked out by the server from
+         *     the rating; it is not typed. A decline carries a reason code
+         *     (app/decline.py), an optional note the client reads, and optionally when
+         *     they may apply again.
+         */
         DecisionIn: {
             decision: components["schemas"]["UnderwriterDecisionType"];
-            /** Finalpremium */
-            finalPremium?: number | string | null;
+            /**
+             * Ratingpct
+             * @default 0
+             */
+            ratingPct: number;
+            /** Exclusions */
+            exclusions?: string[];
+            /** Declinereason */
+            declineReason?: string | null;
+            /** Declinenote */
+            declineNote?: string | null;
+            /** Reapplyaftermonths */
+            reapplyAfterMonths?: number | null;
         };
         /** DecisionSchema */
         DecisionSchema: {
@@ -1660,6 +2159,79 @@ export interface components {
             decidedAt: string;
             /** Underwritername */
             underwriterName?: string | null;
+            /**
+             * Ratingpct
+             * @default 0
+             */
+            ratingPct: number;
+            /** Exclusions */
+            exclusions?: string[];
+            /** Declinereason */
+            declineReason?: string | null;
+            /** Declinereasonlabel */
+            declineReasonLabel?: string | null;
+            /** Declinenote */
+            declineNote?: string | null;
+            /** Reapplyafter */
+            reapplyAfter?: string | null;
+        };
+        /** DeletionDecisionIn */
+        DeletionDecisionIn: {
+            /** Approve */
+            approve: boolean;
+            /** Reason */
+            reason?: string | null;
+            /**
+             * Now
+             * @default false
+             */
+            now: boolean;
+        };
+        /** DeletionIn */
+        DeletionIn: {
+            /** Reason */
+            reason?: string | null;
+        };
+        /** DeletionSchema */
+        DeletionSchema: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Clientid
+             * Format: uuid
+             */
+            clientId: string;
+            /** Clientreference */
+            clientReference?: string | null;
+            /** Clientname */
+            clientName?: string | null;
+            /** Reason */
+            reason?: string | null;
+            /** Status */
+            status: string;
+            /**
+             * Requestedat
+             * Format: date-time
+             */
+            requestedAt: string;
+            /**
+             * Deleteon
+             * Format: date
+             */
+            deleteOn: string;
+            /** Decidedbyname */
+            decidedByName?: string | null;
+            /** Decidedat */
+            decidedAt?: string | null;
+            /** Declinereason */
+            declineReason?: string | null;
+            /** Completedat */
+            completedAt?: string | null;
+            /** Blockers */
+            blockers?: string[];
         };
         /**
          * DoctorReviewIn
@@ -1723,6 +2295,23 @@ export interface components {
             label: string;
             /** Arms */
             arms?: string[];
+        };
+        /** ExampleSchema */
+        ExampleSchema: {
+            /** Product */
+            product: string;
+            /** Age */
+            age: number;
+            /** Sex */
+            sex: string;
+            /** Sumassuredbdt */
+            sumAssuredBdt: number;
+            /** Termyears */
+            termYears: number;
+            /** Annualbdt */
+            annualBdt: number;
+            /** Monthlybdt */
+            monthlyBdt: number;
         };
         /** FileSchema */
         FileSchema: {
@@ -1805,24 +2394,6 @@ export interface components {
              */
             uptime_seconds: number;
         };
-        /** InstallmentSchema */
-        InstallmentSchema: {
-            /** Number */
-            number: number;
-            /**
-             * Duedate
-             * Format: date
-             */
-            dueDate: string;
-            /** Amountbdt */
-            amountBdt: string;
-            /** Status */
-            status: string;
-            /** Paidon */
-            paidOn?: string | null;
-            /** Method */
-            method?: string | null;
-        };
         /**
          * MailStatusSchema
          * @description Whether outgoing mail is set up, without revealing the credentials.
@@ -1888,8 +2459,7 @@ export interface components {
         };
         /**
          * MonthMoneySchema
-         * @description One calendar month: what policies in force were due to pay, and what
-         *     was actually recorded as paid.
+         * @description One calendar month: premiums due from the policies in force, and claims paid.
          */
         MonthMoneySchema: {
             /**
@@ -1897,10 +2467,25 @@ export interface components {
              * Format: date
              */
             month: string;
-            /** Expectedbdt */
-            expectedBdt: string;
-            /** Collectedbdt */
-            collectedBdt: string;
+            /** Premiumsduebdt */
+            premiumsDueBdt: string;
+            /** Claimspaidbdt */
+            claimsPaidBdt: string;
+        };
+        /** NidReadSchema */
+        NidReadSchema: {
+            /** Number */
+            number?: string | null;
+            /** Name */
+            name?: string | null;
+            /** Dateofbirth */
+            dateOfBirth?: string | null;
+            /** Confidence */
+            confidence?: number | null;
+            /** Missing */
+            missing?: string[];
+            /** Lines */
+            lines?: string[];
         };
         /** NotificationSchema */
         NotificationSchema: {
@@ -1925,27 +2510,9 @@ export interface components {
             /** Readat */
             readAt?: string | null;
         };
-        /** PaymentIn */
-        PaymentIn: {
-            /** Duedate */
-            dueDate?: string | null;
-            /**
-             * Method
-             * @default cash
-             * @enum {string}
-             */
-            method: "bkash" | "nagad" | "rocket" | "bank" | "card" | "cash";
-            /** Reference */
-            reference?: string | null;
-        };
         /**
          * PlanSchema
-         * @description The policy recommendation for a tier, priced for this application.
-         *
-         *     Illustrative, not actuarial: Idea.md gives a premium per tier but no rate
-         *     card, so `baseMonthlyBdt` is the premium at `referenceCoverBdt` and
-         *     `monthlyPremiumBdt` scales it to the cover actually requested. The screen
-         *     says so wherever it shows a number.
+         * @description What the tier recommends, priced for this client at its suggested rating.
          */
         PlanSchema: {
             /** Tier */
@@ -1956,17 +2523,19 @@ export interface components {
             recommendation: string;
             /** Humanstep */
             humanStep: string;
-            /** Basemonthlybdt */
-            baseMonthlyBdt?: number | null;
-            /** Referencecoverbdt */
-            referenceCoverBdt: number;
+            /**
+             * Product
+             * @default life
+             */
+            product: string;
+            /** Ratingpct */
+            ratingPct?: number | null;
+            /** Annualpremiumbdt */
+            annualPremiumBdt?: number | null;
             /** Monthlypremiumbdt */
             monthlyPremiumBdt?: number | null;
-            /**
-             * Wellnessdiscounteligible
-             * @default false
-             */
-            wellnessDiscountEligible: boolean;
+            /** Ineligiblereason */
+            ineligibleReason?: string | null;
         };
         /** PolicySchema */
         PolicySchema: {
@@ -1991,18 +2560,33 @@ export interface components {
             clientReference?: string | null;
             /** Clientname */
             clientName?: string | null;
+            /** Product */
+            product: string;
+            /** Productname */
+            productName: string;
             /** Planname */
             planName: string;
             /** Coveragetype */
             coverageType?: string | null;
             /** Sumassuredbdt */
             sumAssuredBdt: string;
+            /** Annualpremiumbdt */
+            annualPremiumBdt: string;
             /** Monthlypremiumbdt */
             monthlyPremiumBdt: string;
-            /** Yearlypremiumbdt */
-            yearlyPremiumBdt: string;
+            /** Premiummode */
+            premiumMode: string;
+            /** Premiumamountbdt */
+            premiumAmountBdt: string;
             /** Totalpremiumbdt */
             totalPremiumBdt: string;
+            /**
+             * Ratingpct
+             * @default 0
+             */
+            ratingPct: number;
+            /** Exclusions */
+            exclusions?: string[];
             /** Termyears */
             termYears: number;
             /**
@@ -2017,48 +2601,92 @@ export interface components {
             endDate: string;
             /** Status */
             status: string;
+            /** Effectivestatus */
+            effectiveStatus: string;
             /** Cancelledat */
             cancelledAt?: string | null;
             /** Cancelreason */
             cancelReason?: string | null;
             /** Cancelledbyname */
             cancelledByName?: string | null;
+            /** Freelookuntil */
+            freeLookUntil?: string | null;
             /**
-             * Paidcount
+             * Infreelook
+             * @default false
+             */
+            inFreeLook: boolean;
+            /** Waitinguntil */
+            waitingUntil?: string | null;
+            /** Preexistinguntil */
+            preexistingUntil?: string | null;
+            /** Nextpremiumdue */
+            nextPremiumDue?: string | null;
+            /**
+             * Renewaldue
+             * @default false
+             */
+            renewalDue: boolean;
+            /** Daystoend */
+            daysToEnd?: number | null;
+            /**
+             * Claimsopen
              * @default 0
              */
-            paidCount: number;
+            claimsOpen: number;
             /**
-             * Paidtotalbdt
+             * Claimspaidbdt
              * @default 0
              */
-            paidTotalBdt: string;
+            claimsPaidBdt: string;
+            /** Remaininglimitbdt */
+            remainingLimitBdt?: string | null;
+        };
+        /**
+         * PortalClaimSchema
+         * @description A claim as its client sees it: where it is, and what was decided.
+         */
+        PortalClaimSchema: {
             /**
-             * Overduecount
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Claimnumber */
+            claimNumber: string;
+            /**
+             * Eventdate
+             * Format: date
+             */
+            eventDate: string;
+            /** Claimedamountbdt */
+            claimedAmountBdt: string;
+            /** Description */
+            description: string;
+            /** Hospital */
+            hospital?: string | null;
+            /** Status */
+            status: string;
+            /** Documentsnote */
+            documentsNote?: string | null;
+            /** Approvedamountbdt */
+            approvedAmountBdt?: string | null;
+            /** Decisionnote */
+            decisionNote?: string | null;
+            /** Settleby */
+            settleBy?: string | null;
+            /** Settledat */
+            settledAt?: string | null;
+            /**
+             * Documents
              * @default 0
              */
-            overdueCount: number;
+            documents: number;
             /**
-             * Overduetotalbdt
-             * @default 0
+             * Createdat
+             * Format: date-time
              */
-            overdueTotalBdt: string;
-            /** Nextdue */
-            nextDue?: string | null;
-            /** Nextamountbdt */
-            nextAmountBdt?: string | null;
-            /**
-             * Monthstotal
-             * @default 0
-             */
-            monthsTotal: number;
-            /**
-             * Gracedays
-             * @default 30
-             */
-            graceDays: number;
-            /** Installments */
-            installments?: components["schemas"]["InstallmentSchema"][];
+            createdAt: string;
         };
         /**
          * PortalCredentialsSchema
@@ -2080,6 +2708,40 @@ export interface components {
             emailed: boolean;
             /** Email */
             email?: string | null;
+        };
+        /**
+         * PortalDeclineSchema
+         * @description A decline, in the words the client reads. Never a score or a finding.
+         */
+        PortalDeclineSchema: {
+            /** Reason */
+            reason: string;
+            /** Note */
+            note?: string | null;
+            /** Reapplyafter */
+            reapplyAfter?: string | null;
+            /**
+             * Decidedat
+             * Format: date-time
+             */
+            decidedAt: string;
+        };
+        /** PortalDeletionSchema */
+        PortalDeletionSchema: {
+            /** Status */
+            status: string;
+            /**
+             * Requestedat
+             * Format: date-time
+             */
+            requestedAt: string;
+            /**
+             * Deleteon
+             * Format: date
+             */
+            deleteOn: string;
+            /** Declinereason */
+            declineReason?: string | null;
         };
         /**
          * PortalDocumentSchema
@@ -2200,24 +2862,38 @@ export interface components {
             messages?: components["schemas"]["PortalMessageSchema"][];
             offer?: components["schemas"]["PortalOfferSchema"] | null;
             policy?: components["schemas"]["PolicySchema"] | null;
+            declined?: components["schemas"]["PortalDeclineSchema"] | null;
+            /** Claims */
+            claims?: components["schemas"]["PortalClaimSchema"][];
+            /** Nomineename */
+            nomineeName?: string | null;
+            deletion?: components["schemas"]["PortalDeletionSchema"] | null;
         };
-        /**
-         * PricingSchema
-         * @description The full plan table, with each tier's score band attached.
-         *
-         *     One response so the pricing screen cannot show a premium against the wrong
-         *     band: the cut-points come from `scoring.Thresholds`, the rates from
-         *     `plans.PLANS`, and neither is retyped in the dashboard.
-         */
+        /** PricingSchema */
         PricingSchema: {
-            /** Plans */
-            plans: components["schemas"]["PlanSchema"][];
-            /** Lowmax */
-            lowMax: number;
-            /** Moderatemax */
-            moderateMax: number;
-            /** Coverageamount */
-            coverageAmount?: number | null;
+            rates: components["schemas"]["RatesSchema"];
+            /** Lifeamounts */
+            lifeAmounts: number[];
+            /** Lifeterms */
+            lifeTerms: number[];
+            /** Healthamounts */
+            healthAmounts: number[];
+            /** Ratings */
+            ratings: number[];
+            /** Lifeentryages */
+            lifeEntryAges: number[];
+            /** Lifemaxexpiryage */
+            lifeMaxExpiryAge: number;
+            /** Healthentryages */
+            healthEntryAges: number[];
+            /** Freelookdays */
+            freeLookDays: number;
+            /** Healthillnesswaitdays */
+            healthIllnessWaitDays: number;
+            /** Healthpreexistingwaitmonths */
+            healthPreexistingWaitMonths: number;
+            /** Examples */
+            examples?: components["schemas"]["ExampleSchema"][];
         };
         /** QueueItemSchema */
         QueueItemSchema: {
@@ -2263,6 +2939,15 @@ export interface components {
             policyNumber?: string | null;
             /** Policystatus */
             policyStatus?: string | null;
+            /**
+             * Declined
+             * @default false
+             */
+            declined: boolean;
+            /** Assignedtoid */
+            assignedToId?: string | null;
+            /** Assignedtoname */
+            assignedToName?: string | null;
         };
         /** QueueSchema */
         QueueSchema: {
@@ -2274,6 +2959,82 @@ export interface components {
             counts?: {
                 [key: string]: number;
             };
+        };
+        /** QuoteIn */
+        QuoteIn: {
+            /**
+             * Ratingpct
+             * @default 0
+             */
+            ratingPct: number;
+        };
+        /** QuoteRequest */
+        QuoteRequest: {
+            /** Product */
+            product: string;
+            /** Sumassuredbdt */
+            sumAssuredBdt: number;
+            /**
+             * Termyears
+             * @default 10
+             */
+            termYears: number;
+            /** Dateofbirth */
+            dateOfBirth?: string | null;
+            /** Age */
+            age?: number | null;
+            /** Sex */
+            sex?: string | null;
+            /**
+             * Smoker
+             * @default false
+             */
+            smoker: boolean;
+            /**
+             * Ratingpct
+             * @default 0
+             */
+            ratingPct: number;
+        };
+        /** QuoteSchema */
+        QuoteSchema: {
+            /** Product */
+            product: string;
+            /** Sumassuredbdt */
+            sumAssuredBdt: number;
+            /** Termyears */
+            termYears: number;
+            /** Age */
+            age: number;
+            /** Annualbdt */
+            annualBdt: number;
+            /** Monthlybdt */
+            monthlyBdt: number;
+            /** Totalbdt */
+            totalBdt: number;
+            /** Expectedclaimsbdt */
+            expectedClaimsBdt: number;
+            /** Ratingpct */
+            ratingPct: number;
+            /** Smoker */
+            smoker: boolean;
+            /** Eligible */
+            eligible: boolean;
+            /** Reason */
+            reason?: string | null;
+        };
+        /** RatesSchema */
+        RatesSchema: {
+            /** Lifeexpenseloadingpct */
+            lifeExpenseLoadingPct: number;
+            /** Lifeinterestpct */
+            lifeInterestPct: number;
+            /** Healthrateperlakhbdt */
+            healthRatePerLakhBdt: number;
+            /** Smokerloadingpct */
+            smokerLoadingPct: number;
+            /** Monthlyloadingpct */
+            monthlyLoadingPct: number;
         };
         /**
          * RegisterStaffSchema
@@ -2456,12 +3217,16 @@ export interface components {
             tierLowMax?: number | null;
             /** Tiermoderatemax */
             tierModerateMax?: number | null;
-            /** Premiumlowbdt */
-            premiumLowBdt?: number | null;
-            /** Premiummoderatebdt */
-            premiumModerateBdt?: number | null;
-            /** Referencecoverbdt */
-            referenceCoverBdt?: number | null;
+            /** Lifeexpenseloadingpct */
+            lifeExpenseLoadingPct?: number | null;
+            /** Lifeinterestpct */
+            lifeInterestPct?: number | null;
+            /** Healthrateperlakhbdt */
+            healthRatePerLakhBdt?: number | null;
+            /** Smokerloadingpct */
+            smokerLoadingPct?: number | null;
+            /** Monthlyloadingpct */
+            monthlyLoadingPct?: number | null;
         };
         /** TenantSettingsSchema */
         TenantSettingsSchema: {
@@ -2473,12 +3238,16 @@ export interface components {
             tierLowMax: number;
             /** Tiermoderatemax */
             tierModerateMax: number;
-            /** Premiumlowbdt */
-            premiumLowBdt: number;
-            /** Premiummoderatebdt */
-            premiumModerateBdt: number;
-            /** Referencecoverbdt */
-            referenceCoverBdt: number;
+            /** Lifeexpenseloadingpct */
+            lifeExpenseLoadingPct: number;
+            /** Lifeinterestpct */
+            lifeInterestPct: number;
+            /** Healthrateperlakhbdt */
+            healthRatePerLakhBdt: number;
+            /** Smokerloadingpct */
+            smokerLoadingPct: number;
+            /** Monthlyloadingpct */
+            monthlyLoadingPct: number;
         };
         /**
          * TurnaroundIn
@@ -2506,7 +3275,7 @@ export interface components {
          *     (SPEC.md §1).
          * @enum {string}
          */
-        UnderwriterDecisionType: "confirmed_fast_track" | "approved_with_adjustment" | "escalated_senior_review" | "requested_additional_evidence";
+        UnderwriterDecisionType: "confirmed_fast_track" | "approved_with_adjustment" | "escalated_senior_review" | "requested_additional_evidence" | "declined";
         /**
          * UpdateProfileSchema
          * @description Payload for updating operator profile details.
@@ -2946,40 +3715,6 @@ export interface operations {
             };
         };
     };
-    get_pricing_api_pricing_get: {
-        parameters: {
-            query?: {
-                /** @description Sum assured in BDT; premiums scale from it */
-                coverage?: number | null;
-            };
-            header?: never;
-            path?: never;
-            cookie?: {
-                session_token?: string | null;
-            };
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["PricingSchema"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
     classify_evidence_api_evidence_classify_post: {
         parameters: {
             query?: never;
@@ -3052,6 +3787,8 @@ export interface operations {
                 status?: string | null;
                 /** @description Match a reference or applicant name */
                 q?: string | null;
+                /** @description Only the cases I have taken */
+                mine?: boolean;
                 limit?: number;
                 offset?: number;
             };
@@ -3175,6 +3912,78 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["DecisionSchema"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    quote_application_api_applications__application_id__quote_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                application_id: string;
+            };
+            cookie?: {
+                session_token?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["QuoteIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["QuoteSchema"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    assign_application_api_applications__application_id__assign_post: {
+        parameters: {
+            query?: {
+                release?: boolean;
+            };
+            header?: never;
+            path: {
+                application_id: string;
+            };
+            cookie?: {
+                session_token?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApplicationDetailSchema"];
                 };
             };
             /** @description Validation Error */
@@ -3840,6 +4649,144 @@ export interface operations {
             };
         };
     };
+    portal_claim_api_portal_claims_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: {
+                portal_token?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": components["schemas"]["Body_portal_claim_api_portal_claims_post"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PortalStatusSchema"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    portal_claim_documents_api_portal_claims__claim_id__documents_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                claim_id: string;
+            };
+            cookie?: {
+                portal_token?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": components["schemas"]["Body_portal_claim_documents_api_portal_claims__claim_id__documents_post"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PortalStatusSchema"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    portal_request_deletion_api_portal_deletion_request_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: {
+                portal_token?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DeletionIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PortalStatusSchema"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    portal_withdraw_deletion_api_portal_deletion_request_delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: {
+                portal_token?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PortalStatusSchema"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     portal_logout_api_portal_logout_post: {
         parameters: {
             query?: never;
@@ -4165,43 +5112,6 @@ export interface operations {
             };
         };
     };
-    record_payment_api_policies__policy_id__payments_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                policy_id: string;
-            };
-            cookie?: {
-                session_token?: string | null;
-            };
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["PaymentIn"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            201: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["PolicySchema"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
     get_client_sign_in_api_applications__application_id__client_sign_in_get: {
         parameters: {
             query?: never;
@@ -4296,6 +5206,386 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["BenchResultSchema"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    file_staff_claim_api_policies__policy_id__claims_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                policy_id: string;
+            };
+            cookie?: {
+                session_token?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": components["schemas"]["Body_file_staff_claim_api_policies__policy_id__claims_post"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ClaimSchema"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_claims_api_claims_get: {
+        parameters: {
+            query?: {
+                status_filter?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: {
+                session_token?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ClaimSchema"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_claim_api_claims__claim_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                claim_id: string;
+            };
+            cookie?: {
+                session_token?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ClaimSchema"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_claim_document_api_claims__claim_id__documents__document_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                claim_id: string;
+                document_id: string;
+            };
+            cookie?: {
+                session_token?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    add_claim_documents_api_claims__claim_id__documents_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                claim_id: string;
+            };
+            cookie?: {
+                session_token?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": components["schemas"]["Body_add_claim_documents_api_claims__claim_id__documents_post"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ClaimSchema"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    act_on_claim_api_claims__claim_id__action_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                claim_id: string;
+            };
+            cookie?: {
+                session_token?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ClaimActionIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ClaimSchema"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_requests_api_deletion_requests_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: {
+                session_token?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeletionSchema"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    decide_api_deletion_requests__request_id__decision_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                request_id: string;
+            };
+            cookie?: {
+                session_token?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DeletionDecisionIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeletionSchema"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_pricing_api_pricing_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: {
+                session_token?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PricingSchema"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    quote_api_quote_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: {
+                session_token?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["QuoteRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["QuoteSchema"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    read_card_api_nid_read_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: {
+                session_token?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": components["schemas"]["Body_read_card_api_nid_read_post"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NidReadSchema"];
                 };
             };
             /** @description Validation Error */

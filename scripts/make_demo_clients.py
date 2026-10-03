@@ -90,7 +90,7 @@ CLIENTS = [
             "Email": "fatema.begum@example.com",
             "Date of birth": "1974-07-02",
             "Sex": "Female",
-            "Cover": "Health, 500,000, 10 years",
+            "Cover": "Health, 500,000, 1 year",
         },
         "blood": {
             "Serum albumin (g/dL)": 4.1,
@@ -119,7 +119,7 @@ CLIENTS = [
             "Email": "karim.hossain@example.com",
             "Date of birth": "1965-11-23",
             "Sex": "Male",
-            "Cover": "Life, 2,500,000, 15 years",
+            "Cover": "Life, 2,000,000, 10 years",
         },
         "blood": {
             "Serum albumin (g/dL)": 3.7,
@@ -148,7 +148,7 @@ CLIENTS = [
             "Email": "nusrat.jahan@example.com",
             "Date of birth": "1981-05-09",
             "Sex": "Female",
-            "Cover": "Critical illness, 1,500,000, 20 years",
+            "Cover": "Life, 2,000,000, 20 years",
         },
         "blood": {
             "Serum albumin (g/dL)": 4.2,

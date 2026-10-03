@@ -6,9 +6,8 @@ Create Date: 2026-10-03
 
 An approval used to end at the decision. It now issues a policy: the plan, the
 monthly premium, the sum assured (what is paid out on a claim), the term, and
-the dates it runs between. Each month's premium is recorded when it is paid
-(`premium_payments`), so the client can see what they have paid and what is
-due, and the owner can see what comes in. Only an administrator cancels one.
+the dates it runs between. Only an administrator cancels one. (Payment
+tracking was added here and taken out again in 016: the bank handles it.)
 
 `email_log` records every message the platform tried to send (never the body,
 which can hold a password), so a failed sign-in email can be seen and sent
@@ -50,20 +49,6 @@ CREATE TABLE IF NOT EXISTS policies (
 )
 """
 
-PAYMENTS = """
-CREATE TABLE IF NOT EXISTS premium_payments (
-    id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    tenant_id       UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
-    policy_id       UUID NOT NULL REFERENCES policies(id) ON DELETE CASCADE,
-    due_date        DATE NOT NULL,
-    amount_bdt      NUMERIC(12, 2) NOT NULL,
-    method          VARCHAR(30) NOT NULL DEFAULT 'cash',
-    reference       VARCHAR(100),
-    paid_at         TIMESTAMPTZ NOT NULL DEFAULT now(),
-    recorded_by     UUID REFERENCES users(id) ON DELETE SET NULL,
-    UNIQUE (policy_id, due_date)
-)
-"""
 
 EMAILS = """
 CREATE TABLE IF NOT EXISTS email_log (
@@ -125,11 +110,6 @@ def upgrade() -> None:
     op.execute(POLICIES)
     op.execute("CREATE INDEX IF NOT EXISTS idx_policies_tenant ON policies(tenant_id, status)")
     op.execute("CREATE INDEX IF NOT EXISTS idx_policies_applicant ON policies(applicant_id)")
-    op.execute(PAYMENTS)
-    op.execute(
-        "CREATE INDEX IF NOT EXISTS idx_premium_payments_policy "
-        "ON premium_payments(policy_id, due_date)"
-    )
     op.execute(EMAILS)
     op.execute(
         "CREATE INDEX IF NOT EXISTS idx_email_log_application "
@@ -140,6 +120,5 @@ def upgrade() -> None:
 
 def downgrade() -> None:
     op.execute("DROP TABLE IF EXISTS email_log")
-    op.execute("DROP TABLE IF EXISTS premium_payments")
     op.execute("DROP TABLE IF EXISTS policies")
     op.execute("ALTER TABLE users DROP COLUMN IF EXISTS password_changed_at")

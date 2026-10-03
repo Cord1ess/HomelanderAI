@@ -74,11 +74,11 @@ def add_admin(tenant_id: uuid.UUID) -> dict:
     return asyncio.run(make())
 
 
-def submit(client: TestClient) -> dict:
+def submit(client: TestClient, payload: str | None = None) -> dict:
     response = client.post(
         "/api/applications",
         data={
-            "payload": json.dumps(json.loads(intake_payload())),
+            "payload": payload or json.dumps(json.loads(intake_payload())),
             "file_arms": ["cxr_lung"],
             "file_kinds": ["chest_xray"],
         },
@@ -97,11 +97,11 @@ def test_defaults_are_the_constants_the_code_used_to_have(carrier):
         sign_in(client, account)
         s = client.get("/api/tenant/settings").json()
     assert (s["tierLowMax"], s["tierModerateMax"]) == (30, 65)
-    assert (s["premiumLowBdt"], s["premiumModerateBdt"], s["referenceCoverBdt"]) == (
-        5000,
-        7500,
-        1_000_000,
-    )
+    # The pricing assumptions default to IDRA's limits for non-participating
+    # life plans, and the hospital rate to the market's.
+    assert s["lifeExpenseLoadingPct"] == 22.32
+    assert s["lifeInterestPct"] == 5.0
+    assert s["healthRatePerLakhBdt"] == 1800
 
 
 def test_only_an_administrator_can_change_settings(carrier):
@@ -120,11 +120,11 @@ def test_a_change_is_recorded_with_who_and_from_what(carrier):
         sign_in(client, admin)
         response = client.patch(
             "/api/tenant/settings",
-            json={"tierLowMax": 25, "premiumLowBdt": 6000},
+            json={"tierLowMax": 25, "healthRatePerLakhBdt": 2000},
         )
         assert response.status_code == 200, response.text
         assert response.json()["tierLowMax"] == 25
-        assert response.json()["premiumLowBdt"] == 6000
+        assert response.json()["healthRatePerLakhBdt"] == 2000
         # Untouched fields are untouched.
         assert response.json()["tierModerateMax"] == 65
 
@@ -133,7 +133,7 @@ def test_a_change_is_recorded_with_who_and_from_what(carrier):
     assert history[0]["actorName"] == "Test Administrator"
     assert history[0]["changes"] == {
         "tier_low_max": {"from": 30, "to": 25},
-        "premium_low_bdt": {"from": 5000, "to": 6000},
+        "health_rate_per_lakh_bdt": {"from": 1800, "to": 2000},
     }
 
 
@@ -175,8 +175,10 @@ def test_crossed_boundaries_are_refused(carrier, body):
     [
         {"tierLowMax": 0},
         {"tierModerateMax": 100},
-        {"premiumLowBdt": 0},
-        {"referenceCoverBdt": -1},
+        {"healthRatePerLakhBdt": 0},
+        # IDRA caps the expense loading at 22.32% and the interest at 5%.
+        {"lifeExpenseLoadingPct": 30},
+        {"lifeInterestPct": 8},
         {},
     ],
 )
@@ -192,43 +194,39 @@ def test_out_of_range_and_empty_changes_are_refused(carrier, body):
 
 
 def test_prices_everywhere_follow_the_policy(carrier):
-    """The pricing screen, the review screen's plan and the client's offer all
-    read the company's policy, not the old constants."""
+    """The pricing screen, the quote and the policy an approval issues all read
+    the company's assumptions, not the defaults."""
     medical = asyncio.run(carrier())
     admin = add_admin(medical["tenant_id"])
 
     with TestClient(app) as client:
         sign_in(client, admin)
-        client.patch(
-            "/api/tenant/settings",
-            json={
-                "premiumLowBdt": 6000,
-                "premiumModerateBdt": 9000,
-                "referenceCoverBdt": 1_000_000,
-            },
-        )
-        # The intake payload asks for 500,000 of cover: half the reference.
-        pricing = client.get("/api/pricing", params={"coverage": 500_000}).json()
-        by_tier = {p["tier"]: p for p in pricing["plans"]}
-        assert by_tier["low"]["monthlyPremiumBdt"] == 3000
-        assert by_tier["moderate"]["monthlyPremiumBdt"] == 4500
-        assert by_tier["elevated"]["monthlyPremiumBdt"] is None
+        before = client.post(
+            "/api/quote",
+            json={"product": "health", "sumAssuredBdt": 200000, "age": 30},
+        ).json()
+        client.patch("/api/tenant/settings", json={"healthRatePerLakhBdt": 2400})
+        after = client.post(
+            "/api/quote",
+            json={"product": "health", "sumAssuredBdt": 200000, "age": 30},
+        ).json()
+        assert before["annualBdt"] == 3600
+        assert after["annualBdt"] == 4800
+        examples = client.get("/api/pricing").json()["examples"]
+        assert any(e["product"] == "health" and e["annualBdt"] == 4800 for e in examples)
 
-        created = submit(client)
-        # No score (scoring is skipped), so the review shows no plan yet; the
-        # decision path below is what prices the offer.
+        from tests.test_applications import eligible_payload
+
+        created = submit(client, eligible_payload(coverage={
+            "coverageType": "Health", "coverageAmount": 200000, "policyTerm": "1"
+        }))
         client.post(
             f"/api/applications/{created['id']}/decision", json={"decision": "confirmed_fast_track"}
         )
-
-    with TestClient(app) as client:
-        creds = created["portal"]
-        offer = client.post(
-            "/api/portal/login", json={"portalId": creds["portalId"], "password": creds["password"]}
-        ).json()["offer"]
-    assert offer["planName"] == "Standard"
-    assert float(offer["monthlyPremiumBdt"]) == 3000
-
+        policy = client.get(f"/api/applications/{created['id']}").json()["policy"]
+    # Forty-six is in the 46-55 band (1.9 times the base rate), and the test
+    # client declared smoking (50% more).
+    assert float(policy["annualPremiumBdt"]) == 2400 * 2 * 1.9 * 1.5
 
 def test_a_new_score_is_tiered_with_the_companys_boundaries(carrier, real_scoring):
     """Score once with the defaults, then set the boundaries either side of that

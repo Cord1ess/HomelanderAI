@@ -52,6 +52,23 @@ class Applicant(Base):
     email: Mapped[str | None] = mapped_column(String(255), nullable=True)
     password_hash: Mapped[str | None] = mapped_column(String(255), nullable=True)
 
+    # The national ID, as read from the card (app/nid.py) and confirmed by the
+    # operator. The card image is identity, like the face photo: no model reads it.
+    nid_number: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    nid_name: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    nid_date_of_birth: Mapped[date | None] = mapped_column(Date, nullable=True)
+    nid_image_path: Mapped[str | None] = mapped_column(String(500), nullable=True)
+
+    # Who is paid if the client dies: required for life cover.
+    nominee_name: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    nominee_relation: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    nominee_phone: Mapped[str | None] = mapped_column(String(30), nullable=True)
+
+    # When the client agreed to their health data being processed.
+    consent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # Set once their personal data has been erased at their request.
+    deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )

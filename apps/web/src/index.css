@@ -1612,3 +1612,24 @@ body {
 .upload-tile[data-state='reading'] {
   opacity: 0.8;
 }
+
+/* Portal: a list inside a card, a claim form, a checkbox line. */
+.portal-list {
+  margin: 0.4rem 0 0;
+  padding-left: 1.2rem;
+}
+
+.portal-claim-form {
+  margin-top: 1rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--neo-border);
+}
+
+.portal-check {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+  margin-bottom: 1rem;
+  font-size: 0.9rem;
+  color: var(--neo-ink);
+}

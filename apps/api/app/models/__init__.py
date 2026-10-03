@@ -32,7 +32,13 @@ from app.models.evaluation import (
     RiskTier,
     SubScore,
 )
-from app.models.policy import EmailLog, InsurancePolicy, PremiumPayment
+from app.models.policy import (
+    Claim,
+    ClaimDocument,
+    DataDeletionRequest,
+    EmailLog,
+    InsurancePolicy,
+)
 from app.models.tenant import Tenant, TenantSettingsChange
 from app.models.user import User, UserRole
 
@@ -52,10 +58,12 @@ __all__ = [
     "ModelRun",
     "ModelRunStatus",
     "ClientAccessRequest",
+    "Claim",
+    "ClaimDocument",
     "ClientMessage",
+    "DataDeletionRequest",
     "EmailLog",
     "InsurancePolicy",
-    "PremiumPayment",
     "DoctorReview",
     "Notification",
     "NotificationChannel",

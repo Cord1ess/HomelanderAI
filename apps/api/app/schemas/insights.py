@@ -71,6 +71,13 @@ class ClientProfileSchema(BaseSchema):
     sex: str | None = None
     height_cm: Decimal | None = None
     weight_kg: Decimal | None = None
+    nid_number: str | None = None
+    nominee_name: str | None = None
+    nominee_relation: str | None = None
+    nominee_phone: str | None = None
+    consent_at: datetime | None = None
+    # Set once their data was erased at their request.
+    deleted_at: datetime | None = None
     created_at: datetime
     applications: list[ClientApplicationSchema] = Field(default_factory=list)
     # Every policy issued to this client, newest first.
@@ -103,35 +110,45 @@ class ArmActivitySchema(BaseSchema):
 
 
 class MonthMoneySchema(BaseSchema):
-    """One calendar month: what policies in force were due to pay, and what
-    was actually recorded as paid."""
+    """One calendar month: premiums due from the policies in force, and claims paid."""
 
     month: date
-    expected_bdt: Decimal
-    collected_bdt: Decimal
+    premiums_due_bdt: Decimal
+    claims_paid_bdt: Decimal
 
 
 class BusinessSchema(BaseSchema):
-    """The money side of the book, from issued policies and recorded payments."""
+    """The money side of the book, from issued policies and their claims.
+    Premiums are collected by the bank; these are what falls due."""
 
     clients: int
     policies_active: int
     policies_cancelled: int
-    # What active policies bring in if every client pays.
-    premium_monthly_bdt: Decimal
+    policies_expired: int
+    life_policies: int
+    health_policies: int
+    # What active policies bring in a year, and a month on average.
     premium_yearly_bdt: Decimal
-    # What was recorded as paid.
-    collected_this_month_bdt: Decimal
-    collected_this_year_bdt: Decimal
-    collected_all_time_bdt: Decimal
-    overdue_bdt: Decimal
-    overdue_policies: int
-    # Paid out if every active policy were claimed today: the company's exposure.
+    premium_monthly_bdt: Decimal
+    # What the premiums are expected to cost in claims a year, and so what is
+    # left for expenses, commission and profit.
+    expected_claims_yearly_bdt: Decimal
+    expected_margin_yearly_bdt: Decimal
+    # The most the company would pay if every active policy were claimed: life
+    # sums assured plus a year of hospital limits.
     sum_assured_in_force_bdt: Decimal
     largest_payout_bdt: Decimal | None = None
     average_payout_bdt: Decimal | None = None
+    claims_open: int = 0
+    # Open claims whose 90-day settlement date has passed.
+    claims_overdue: int = 0
+    claims_paid_bdt: Decimal = Decimal(0)
+    # Approved and still to be paid by the bank.
+    claims_owed_bdt: Decimal = Decimal(0)
+    # Claims paid this year as a share of a year's premiums.
+    loss_ratio_pct: float | None = None
+    renewals_due: int = 0
     months: list[MonthMoneySchema] = Field(default_factory=list)
-    # Every policy, with what it pays out on a claim.
     policies: list[PolicySchema] = Field(default_factory=list)
 
 

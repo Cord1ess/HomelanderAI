@@ -27,7 +27,6 @@ from app.models import (
     InsurancePolicy,
     ModelArm,
     ModelRun,
-    PremiumPayment,
     SubScore,
     UnderwriterDecision,
     UnderwriterDecisionType,
@@ -247,6 +246,12 @@ async def get_client(
         sex=applicant.sex,
         height_cm=applicant.height_cm,
         weight_kg=applicant.weight_kg,
+        nid_number=applicant.nid_number,
+        nominee_name=applicant.nominee_name,
+        nominee_relation=applicant.nominee_relation,
+        nominee_phone=applicant.nominee_phone,
+        consent_at=applicant.consent_at,
+        deleted_at=applicant.deleted_at,
         created_at=applicant.created_at,
         applications=[
             ClientApplicationSchema(
@@ -428,14 +433,19 @@ async def analytics(
 
 
 async def _business(db: AsyncSession, tenant_id: UUID) -> BusinessSchema:
-    """Premiums in, payouts owed. Expected income is what active policies are
-    due to pay; collected is what was recorded as paid. A claim pays the sum
-    assured, so the sum over active policies is the most the company could owe."""
+    """Premiums due, claims expected and paid, and what the company could owe.
+    Payments are the bank's; these figures are what falls due and what was
+    decided, never what was collected."""
+    from app.models import Claim, Tenant
     from app.policies import add_months
     from app.routers.policies import describe
 
     clients = (
-        await db.execute(select(func.count()).where(Applicant.tenant_id == tenant_id))
+        await db.execute(
+            select(func.count()).where(
+                Applicant.tenant_id == tenant_id, Applicant.deleted_at.is_(None)
+            )
+        )
     ).scalar_one()
     rows = (
         await db.execute(
@@ -445,57 +455,101 @@ async def _business(db: AsyncSession, tenant_id: UUID) -> BusinessSchema:
         )
     ).scalars().all()
     described = await describe(db, list(rows))
-    active = [p for p in described if p.status == "active"]
+    active = [p for p in described if p.effective_status == "active"]
+    claims = (
+        await db.execute(select(Claim).where(Claim.tenant_id == tenant_id))
+    ).scalars().all()
+    tenant = await db.get(Tenant, tenant_id)
+    life_loading = float(tenant.life_expense_loading_pct) / 100 if tenant else 0.2232
 
-    payments = (
-        await db.execute(
-            select(PremiumPayment.paid_at, PremiumPayment.amount_bdt).where(
-                PremiumPayment.tenant_id == tenant_id
-            )
-        )
-    ).all()
-    today = date.today()
-    this_month = today.replace(day=1)
     zero = Decimal(0)
-    collected_month = sum(
-        (a for paid, a in payments if paid.date() >= this_month), zero
+    # What clients actually pay in a year: twelve instalments cost more than one payment.
+    yearly = sum(
+        (
+            p.annual_premium_bdt if p.premium_mode == "yearly" else p.monthly_premium_bdt * 12
+            for p in active
+        ),
+        zero,
     )
-    collected_year = sum(
-        (a for paid, a in payments if paid.date().year == today.year), zero
+    expected = sum(
+        (
+            p.annual_premium_bdt * Decimal(str(1 - life_loading if p.product == "life" else 0.70))
+            for p in active
+        ),
+        zero,
+    ).quantize(Decimal("1"))
+    today = date.today()
+    still_open = ("submitted", "documents_requested", "under_review", "approved")
+    open_claims = [c for c in claims if c.status in still_open]
+    paid = [c for c in claims if c.status == "settled"]
+    paid_this_year = sum(
+        (
+            Decimal(c.approved_amount_bdt or 0)
+            for c in paid
+            if c.settled_at and c.settled_at.year == today.year
+        ),
+        zero,
     )
-    collected_all = sum((a for _, a in payments), zero)
 
-    # The last twelve months: due from each policy in force that month, and paid.
+    this_month = today.replace(day=1)
     months: list[MonthMoneySchema] = []
     for back in range(11, -1, -1):
         start = add_months(this_month, -back)
         end = add_months(start, 1)
-        expected = zero
+        due = zero
         for p in described:
             stop = p.cancelled_at.date() if p.cancelled_at else p.end_date
-            if p.start_date < end and stop > start:
-                expected += p.monthly_premium_bdt
-        collected = sum((a for paid, a in payments if start <= paid.date() < end), zero)
-        months.append(MonthMoneySchema(month=start, expected_bdt=expected, collected_bdt=collected))
+            if not (p.start_date < end and stop > start):
+                continue
+            if p.premium_mode == "yearly":
+                # Due once a year, in the month the policy started.
+                if p.start_date.month == start.month:
+                    due += p.annual_premium_bdt
+            else:
+                due += p.monthly_premium_bdt
+        claims_paid = sum(
+            (
+                Decimal(c.approved_amount_bdt or 0)
+                for c in paid
+                if c.settled_at and start <= c.settled_at.date() < end
+            ),
+            zero,
+        )
+        months.append(
+            MonthMoneySchema(month=start, premiums_due_bdt=due, claims_paid_bdt=claims_paid)
+        )
 
-    payouts = [p.sum_assured_bdt for p in active]
-    monthly = sum((p.monthly_premium_bdt for p in active), zero)
+    # Hospital cover can only pay what is left of this year's limit.
+    payouts = [
+        p.remaining_limit_bdt
+        if p.product == "health" and p.remaining_limit_bdt is not None
+        else p.sum_assured_bdt
+        for p in active
+    ]
     return BusinessSchema(
         clients=clients,
         policies_active=len(active),
-        policies_cancelled=sum(1 for p in described if p.status == "cancelled"),
-        premium_monthly_bdt=monthly,
-        premium_yearly_bdt=monthly * 12,
-        collected_this_month_bdt=collected_month,
-        collected_this_year_bdt=collected_year,
-        collected_all_time_bdt=collected_all,
-        overdue_bdt=sum((p.overdue_total_bdt for p in active), zero),
-        overdue_policies=sum(1 for p in active if p.overdue_count),
+        policies_cancelled=sum(1 for p in described if p.effective_status == "cancelled"),
+        policies_expired=sum(1 for p in described if p.effective_status == "expired"),
+        life_policies=sum(1 for p in active if p.product == "life"),
+        health_policies=sum(1 for p in active if p.product == "health"),
+        premium_yearly_bdt=yearly,
+        premium_monthly_bdt=(yearly / 12).quantize(Decimal("1")),
+        expected_claims_yearly_bdt=expected,
+        expected_margin_yearly_bdt=yearly - expected,
         sum_assured_in_force_bdt=sum(payouts, zero),
         largest_payout_bdt=max(payouts) if payouts else None,
         average_payout_bdt=(sum(payouts, zero) / len(payouts)).quantize(Decimal("1"))
         if payouts
         else None,
+        claims_open=len(open_claims),
+        claims_overdue=sum(1 for c in open_claims if c.settle_by and c.settle_by < today),
+        claims_paid_bdt=sum((Decimal(c.approved_amount_bdt or 0) for c in paid), zero),
+        claims_owed_bdt=sum(
+            (Decimal(c.approved_amount_bdt or 0) for c in claims if c.status == "approved"), zero
+        ),
+        loss_ratio_pct=round(float(paid_this_year / yearly * 100), 1) if yearly else None,
+        renewals_due=sum(1 for p in active if p.renewal_due),
         months=months,
-        policies=[p.model_copy(update={"installments": []}) for p in described],
+        policies=described,
     )

@@ -77,6 +77,13 @@ class Application(Base):
     sent_to_doctor_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
+    # How the client wants to pay: "monthly" or "yearly". Collected by the bank.
+    payment_mode: Mapped[str] = mapped_column(String(10), nullable=False, default="monthly")
+    # The underwriter who took the case, so two do not work the same one.
+    assigned_to: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    assigned_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     evaluated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     processing_started_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True

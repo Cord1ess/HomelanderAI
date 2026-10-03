@@ -68,6 +68,42 @@ class PortalOfferSchema(BaseSchema):
     decided_at: datetime
 
 
+class PortalDeclineSchema(BaseSchema):
+    """A decline, in the words the client reads. Never a score or a finding."""
+
+    reason: str
+    note: str | None = None
+    reapply_after: date | None = None
+    decided_at: datetime
+
+
+class PortalClaimSchema(BaseSchema):
+    """A claim as its client sees it: where it is, and what was decided."""
+
+    id: UUID
+    claim_number: str
+    event_date: date
+    claimed_amount_bdt: Decimal
+    description: str
+    hospital: str | None = None
+    # submitted | documents_requested | under_review | approved | rejected | settled
+    status: str
+    documents_note: str | None = None
+    approved_amount_bdt: Decimal | None = None
+    decision_note: str | None = None
+    settle_by: date | None = None
+    settled_at: datetime | None = None
+    documents: int = 0
+    created_at: datetime
+
+
+class PortalDeletionSchema(BaseSchema):
+    status: str
+    requested_at: datetime
+    delete_on: date
+    decline_reason: str | None = None
+
+
 class PortalStatusSchema(BaseSchema):
     reference: str
     applicant_name: str | None = None
@@ -93,5 +129,12 @@ class PortalStatusSchema(BaseSchema):
     # What a doctor has written to the applicant directly, newest first.
     messages: list[PortalMessageSchema] = Field(default_factory=list)
     offer: PortalOfferSchema | None = None
-    # Once approved: the policy, what they pay each month, and what is paid.
+    # Once approved: the policy, what they pay and when, and what it covers.
     policy: PolicySchema | None = None
+    # Once declined: why, in plain words, and when they may apply again.
+    declined: PortalDeclineSchema | None = None
+    claims: list[PortalClaimSchema] = Field(default_factory=list)
+    # Who is paid if they die (life cover).
+    nominee_name: str | None = None
+    # Their latest request to have their data deleted.
+    deletion: PortalDeletionSchema | None = None

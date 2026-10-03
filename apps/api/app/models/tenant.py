@@ -53,6 +53,24 @@ class Tenant(Base):
         Numeric(14, 2), nullable=False, default=Decimal("1000000")
     )
 
+    # The pricing engine's assumptions (app/pricing.py). The two life figures
+    # default to IDRA's limits for non-participating plans.
+    life_expense_loading_pct: Mapped[Decimal] = mapped_column(
+        Numeric(5, 2), nullable=False, default=Decimal("22.32")
+    )
+    life_interest_pct: Mapped[Decimal] = mapped_column(
+        Numeric(5, 2), nullable=False, default=Decimal("5.00")
+    )
+    health_rate_per_lakh_bdt: Mapped[Decimal] = mapped_column(
+        Numeric(10, 2), nullable=False, default=Decimal("1800")
+    )
+    smoker_loading_pct: Mapped[Decimal] = mapped_column(
+        Numeric(5, 2), nullable=False, default=Decimal("50")
+    )
+    monthly_loading_pct: Mapped[Decimal] = mapped_column(
+        Numeric(5, 2), nullable=False, default=Decimal("5")
+    )
+
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )

@@ -156,7 +156,7 @@ def test_the_owner_may_decide_while_a_doctor_has_it(carrier):
     with TestClient(app) as client:
         sign_in(client, underwriter)
         client.post(f"{url}/escalate", json={})
-        body = {"decision": "approved_with_adjustment", "finalPremium": 12000}
+        body = {"decision": "approved_with_adjustment", "ratingPct": 50}
         assert client.post(f"{url}/decision", json=body).status_code == 409
     with TestClient(app) as client:
         sign_in(client, admin)

@@ -5,6 +5,7 @@ import {
   Badge,
   Box,
   Button,
+  Checkbox,
   FileButton,
   Group,
   Loader,
@@ -44,9 +45,11 @@ import { useNavigate } from 'react-router-dom'
 import {
   classifyEvidence,
   getModels,
-  getTenantSettings,
+  quote,
+  readNid,
   submitApplication,
   type ClassifyResponse,
+  type NidRead,
 } from '../../api/client'
 import { PageHeader } from '../../components/PageHeader'
 import { Section } from './components'
@@ -115,6 +118,12 @@ interface IntakeForm {
   coverageType: string | null
   coverageAmount: number | null
   policyTerm: string | null
+  paymentMode: 'monthly' | 'yearly'
+  nidNumber: string
+  nomineeName: string
+  nomineeRelation: string | null
+  nomineePhone: string
+  consent: boolean
   modelFields: Record<string, ModelValues>
 }
 
@@ -139,23 +148,42 @@ interface SetAside {
   what: string
 }
 
-const COVER_TYPES = [
+// The two products (app/pricing.py). Few options on purpose.
+const PRODUCTS = [
   {
     value: 'Life',
-    title: 'Life cover',
-    text: 'Pays the full amount to the family if the client dies during the term.',
+    title: 'Term life',
+    text: 'Pays the full amount to the nominee if the client dies during the term. The premium stays the same every year.',
   },
   {
     value: 'Health',
-    title: 'Health cover',
-    text: 'Pays hospital and treatment bills, up to the amount, in each year of the policy.',
-  },
-  {
-    value: 'Critical illness',
-    title: 'Critical illness cover',
-    text: 'Pays the full amount once if the client is diagnosed with a covered serious illness, such as cancer, a heart attack or a stroke.',
+    title: 'Hospital cover',
+    text: 'Pays hospital and treatment bills up to a yearly limit. One year at a time, renewed each year.',
   },
 ]
+const LIFE_AMOUNTS = [500_000, 1_000_000, 2_000_000, 3_000_000, 5_000_000, 10_000_000]
+const HEALTH_AMOUNTS = [100_000, 200_000, 300_000, 500_000]
+const LIFE_MAX_EXPIRY_AGE = 70
+const RELATIONS = ['Spouse', 'Son', 'Daughter', 'Father', 'Mother', 'Brother', 'Sister', 'Other']
+
+function ageFrom(dob: string): number | null {
+  if (!dob) return null
+  const born = new Date(`${dob}T00:00:00`)
+  const now = new Date()
+  let age = now.getFullYear() - born.getFullYear()
+  if (now.getMonth() < born.getMonth() || (now.getMonth() === born.getMonth() && now.getDate() < born.getDate())) age -= 1
+  return age
+}
+
+/** Every word of the shorter name appears in the longer (MD, Md. left to the operator). */
+function namesMatch(a: string, b: string): boolean {
+  const words = (t: string) => new Set(t.toLowerCase().replace(/[^a-z\s]/g, ' ').split(/\s+/).filter((w) => w.length > 1))
+  const x = words(a)
+  const y = words(b)
+  if (!x.size || !y.size) return true
+  const [small, big] = x.size <= y.size ? [x, y] : [y, x]
+  return [...small].every((w) => big.has(w))
+}
 
 const TERMS = ['5', '10', '15', '20', '25']
 
@@ -171,18 +199,67 @@ export function IntakePage() {
       coverageType: null,
       coverageAmount: null,
       policyTerm: '10',
+      paymentMode: 'monthly',
+      nidNumber: '',
+      nomineeName: '',
+      nomineeRelation: null,
+      nomineePhone: '',
+      consent: false,
       modelFields: {},
     },
   })
 
-  const { data: policy } = useQuery({ queryKey: ['tenant-settings'], queryFn: getTenantSettings })
-  const reference = policy?.referenceCoverBdt ?? 1_000_000
-  const rateStandard = policy?.premiumLowBdt ?? 5_000
-  const rateAdjusted = policy?.premiumModerateBdt ?? 7_500
-  const premiumFor = (amount: number, rate: number) => Math.round((rate * amount) / reference)
-  const amounts = [0.25, 0.5, 1, 1.5, 2, 3, 5, 10].map(
-    (m) => Math.round((reference * m) / 50_000) * 50_000,
+  // The NID card: read once, shown beside what it said, applied to the form.
+  const [nidFile, setNidFile] = useState<File | null>(null)
+  const [nidPreview, setNidPreview] = useState<string | null>(null)
+  const [nidRead, setNidRead] = useState<NidRead | null>(null)
+  const [nidReading, setNidReading] = useState(false)
+  const readCard = async (file: File) => {
+    if (nidPreview) URL.revokeObjectURL(nidPreview)
+    setNidFile(file)
+    setNidPreview(URL.createObjectURL(file))
+    setNidRead(null)
+    setNidReading(true)
+    try {
+      const read = await readNid(file)
+      setNidRead(read)
+      // Fill what is empty; never overwrite what the operator typed.
+      form.setValues((v) => ({
+        nidNumber: read.number ?? v.nidNumber,
+        name: (v.name ?? '').trim() ? v.name : (read.name ?? v.name),
+        dob: v.dob ? v.dob : (read.dateOfBirth ?? v.dob),
+      }))
+    } catch (err) {
+      notifications.show({
+        title: 'Could not read the card',
+        message: err instanceof Error ? err.message : 'Type the details in.',
+        color: 'orange',
+      })
+    } finally {
+      setNidReading(false)
+    }
+  }
+
+  const product: 'life' | 'health' = form.values.coverageType === 'Health' ? 'health' : 'life'
+  const age = ageFrom(form.values.dob)
+  const amounts = product === 'life' ? LIFE_AMOUNTS : HEALTH_AMOUNTS
+  // Smoking, wherever it was asked (it costs more).
+  const smoker = Object.values(form.values.modelFields).some(
+    (v) => v?.smoker === true || (Array.isArray(v?.history) && (v.history as string[]).includes('smoker')),
   )
+  const priced = useQuery({
+    queryKey: ['intake-quote', product, form.values.coverageAmount, form.values.policyTerm, form.values.dob, form.values.sex, smoker],
+    queryFn: () =>
+      quote({
+        product,
+        sumAssuredBdt: form.values.coverageAmount ?? 0,
+        termYears: Number(form.values.policyTerm ?? 10),
+        dateOfBirth: form.values.dob || null,
+        sex: form.values.sex,
+        smoker,
+      }),
+    enabled: Boolean(form.values.coverageType && form.values.coverageAmount && form.values.dob),
+  })
 
   const { data: catalogue = [] } = useQuery({ queryKey: ['models'], queryFn: getModels, staleTime: 5 * 60 * 1000 })
   const availability = new Map(catalogue.map((m) => [m.id, m]))
@@ -239,6 +316,11 @@ export function IntakePage() {
     const rest: File[] = []
     for (const file of files) {
       const name = file.name.toLowerCase()
+      if (/(^|[^a-z])nid/.test(name) && /\.(png|jpe?g)$/.test(name)) {
+        void readCard(file)
+        setSetAside((p) => [...p, { name: file.name, what: 'NID card: read for the client\'s name, birth date and ID' }])
+        continue
+      }
       if (name.endsWith('.md')) {
         setSetAside((p) => [...p, { name: file.name, what: 'Notes about the folder: not evidence, not read' }])
         continue
@@ -260,6 +342,9 @@ export function IntakePage() {
             coverageType: typeof cover.type === 'string' ? cover.type : v.coverageType,
             coverageAmount: typeof cover.amount === 'number' ? cover.amount : v.coverageAmount,
             policyTerm: typeof cover.term === 'string' ? cover.term : v.policyTerm,
+            nomineeName: typeof (data.nominee as Record<string, unknown>)?.name === 'string' ? String((data.nominee as Record<string, unknown>).name) : v.nomineeName,
+            nomineeRelation: typeof (data.nominee as Record<string, unknown>)?.relation === 'string' ? String((data.nominee as Record<string, unknown>).relation) : v.nomineeRelation,
+            nomineePhone: typeof (data.nominee as Record<string, unknown>)?.phone === 'string' ? String((data.nominee as Record<string, unknown>).phone) : v.nomineePhone,
           }))
           const questions = (data.questions ?? {}) as Record<string, Record<string, Scalar>>
           for (const [modelId, values] of Object.entries(questions)) {
@@ -370,14 +455,22 @@ export function IntakePage() {
     return v?.prior_tb_treatment_completed === 'yes' || v?.prior_tb_treatment_completed === 'no'
   })()
 
+  // The date of birth prices the cover, so it is needed now.
   const clientDone =
-    Boolean(form.values.name.trim()) &&
-    Boolean(form.values.phone.trim()) &&
-    (form.values.dob === '' || isAdult(form.values.dob))
+    Boolean(form.values.name.trim()) && Boolean(form.values.phone.trim()) && isAdult(form.values.dob)
+  const nomineeDone = product === 'health' || Boolean(form.values.nomineeName.trim())
   const coverDone =
-    Boolean(form.values.coverageType) && (form.values.coverageAmount ?? 0) > 0 && Boolean(form.values.policyTerm)
+    Boolean(form.values.coverageType) &&
+    (form.values.coverageAmount ?? 0) > 0 &&
+    (product === 'health' || Boolean(form.values.policyTerm)) &&
+    priced.data?.eligible === true
+  const nidMismatch =
+    nidRead &&
+    ((nidRead.name && form.values.name && !namesMatch(nidRead.name, form.values.name)) ||
+      (nidRead.dateOfBirth && form.values.dob && nidRead.dateOfBirth !== form.values.dob))
   const evidenceDone = activeReaders.length > 0 && !reading && unresolved.length === 0 && tbFollowUpAnswered
   const done = [clientDone, coverDone, evidenceDone]
+  const ready = done.every(Boolean) && nomineeDone && form.values.consent
 
   const sendApplication = async () => {
     setSubmitting(true)
@@ -391,11 +484,19 @@ export function IntakePage() {
             dateOfBirth: form.values.dob || null,
             sex: form.values.sex,
             email: form.values.email.trim() || null,
+            nidNumber: form.values.nidNumber.replace(/\D/g, '') || null,
+            nidName: nidRead?.name ?? null,
+            nidDateOfBirth: nidRead?.dateOfBirth ?? null,
+            nomineeName: form.values.nomineeName.trim() || null,
+            nomineeRelation: form.values.nomineeRelation,
+            nomineePhone: form.values.nomineePhone.trim() || null,
+            consent: form.values.consent,
           },
           coverage: {
             coverageType: form.values.coverageType,
             coverageAmount: form.values.coverageAmount,
-            policyTerm: form.values.policyTerm,
+            policyTerm: product === 'health' ? '1' : form.values.policyTerm,
+            paymentMode: form.values.paymentMode,
           },
           modelsRequested: activeReaders,
           declaredHistory: declaredHistory(activeReaders, form.values.modelFields),
@@ -404,6 +505,7 @@ export function IntakePage() {
         // the underwriter to read, and simply not scored.
         files: evidence.map((e) => ({ file: e.file, arm: readerFor(e.kind) ?? '', kind: e.kind })),
         facePhoto,
+        nidImage: nidFile,
       })
       // The client's sign-in has its own page, which can be come back to.
       navigate(`/applications/${result.id}/sign-in`, {
@@ -478,9 +580,8 @@ export function IntakePage() {
   )
 
   const amount = form.values.coverageAmount ?? 0
-  const years = Number(form.values.policyTerm ?? 0)
-  const standard = amount ? premiumFor(amount, rateStandard) : 0
-  const adjusted = amount ? premiumFor(amount, rateAdjusted) : 0
+  const years = product === 'health' ? 1 : Number(form.values.policyTerm ?? 0)
+  const q = priced.data
 
   return (
     <Stack gap="lg" maw={1080}>
@@ -534,7 +635,79 @@ export function IntakePage() {
                     />
                   </Group>
                 </Stack>
-                <FacePhoto file={facePhoto} preview={facePreview} onFile={setFace} />
+                <Stack gap="sm">
+                  <Paper bd="1px solid var(--mantine-color-default-border)" p="md">
+                    <Group justify="space-between" mb={4}>
+                      <Text fw={600} size="sm">
+                        National ID card
+                      </Text>
+                      <FileButton accept="image/png,image/jpeg" onChange={(f) => f && void readCard(f)}>
+                        {(props) => (
+                          <Button {...props} size="compact-xs" variant="light" loading={nidReading}>
+                            {nidFile ? 'Read another' : 'Upload the front'}
+                          </Button>
+                        )}
+                      </FileButton>
+                    </Group>
+                    <Text size="xs" c="dimmed" mb="xs">
+                      A photo of the front of the card. The name, date of birth and ID number are read for you; check
+                      them against the card.
+                    </Text>
+                    {nidPreview && (
+                      <Group align="flex-start" gap="sm" wrap="nowrap" mb="xs">
+                        <Box w={150} style={{ borderRadius: 6, overflow: 'hidden', border: '1px solid var(--neo-border-mid)', flexShrink: 0 }}>
+                          <img src={nidPreview} alt="NID card" style={{ width: '100%', display: 'block' }} />
+                        </Box>
+                        <Stack gap={2}>
+                          {nidReading && <Text size="xs" c="dimmed">Reading the card…</Text>}
+                          {nidRead && (
+                            <>
+                              <Text size="xs">Name: <b>{nidRead.name ?? 'not found'}</b></Text>
+                              <Text size="xs">Born: <b>{nidRead.dateOfBirth ?? 'not found'}</b></Text>
+                              <Text size="xs">ID: <b>{nidRead.number ?? 'not found'}</b></Text>
+                              {nidRead.confidence != null && (
+                                <Text size="xs" c="dimmed">Read with {Math.round(nidRead.confidence * 100)}% confidence</Text>
+                              )}
+                            </>
+                          )}
+                        </Stack>
+                      </Group>
+                    )}
+                    <TextInput
+                      size="xs"
+                      label="NID number"
+                      placeholder="10, 13 or 17 digits"
+                      {...form.getInputProps('nidNumber')}
+                      error={
+                        form.values.nidNumber && ![10, 13, 17].includes(form.values.nidNumber.replace(/\D/g, '').length)
+                          ? 'An NID number has 10, 13 or 17 digits'
+                          : undefined
+                      }
+                    />
+                    {nidMismatch && (
+                      <Alert color="orange" variant="light" p="xs" mt="xs" icon={<IconAlertTriangle size={14} />}>
+                        <Text size="xs">
+                          The card says {nidRead?.name} born {nidRead?.dateOfBirth}; the form says {form.values.name} born{' '}
+                          {form.values.dob || '—'}. Check which is right before going on.
+                        </Text>
+                      </Alert>
+                    )}
+                  </Paper>
+                  <Paper bd="1px solid var(--mantine-color-default-border)" p="md">
+                    <Text fw={600} size="sm" mb={4}>
+                      Nominee
+                    </Text>
+                    <Text size="xs" c="dimmed" mb="xs">
+                      Who is paid if the client dies. Needed for term life.
+                    </Text>
+                    <Group grow align="flex-start">
+                      <TextInput size="xs" label="Name" {...form.getInputProps('nomineeName')} />
+                      <Select size="xs" label="Relation" data={RELATIONS} clearable {...form.getInputProps('nomineeRelation')} />
+                    </Group>
+                    <TextInput size="xs" mt="xs" label="Phone" placeholder="+880 1XXXXXXXXX" {...form.getInputProps('nomineePhone')} />
+                  </Paper>
+                  <FacePhoto file={facePhoto} preview={facePreview} onFile={setFace} />
+                </Stack>
               </SimpleGrid>
             </Section>
           </div>
@@ -545,76 +718,115 @@ export function IntakePage() {
           <div key="cover" className="page-enter">
             <Section n="2" title="The cover they want" complete={coverDone}>
               <Text size="sm" fw={600}>
-                1. What should the policy pay for?
+                1. Which cover?
               </Text>
-              <SimpleGrid cols={{ base: 1, sm: 3 }} spacing="sm">
-                {COVER_TYPES.map((c) => (
+              <SimpleGrid cols={{ base: 1, sm: 2 }} spacing="sm">
+                {PRODUCTS.map((c) => (
                   <ChoiceCard
                     key={c.value}
                     selected={form.values.coverageType === c.value}
-                    onClick={() => form.setFieldValue('coverageType', c.value)}
+                    onClick={() => {
+                      form.setFieldValue('coverageType', c.value)
+                      const list = c.value === 'Health' ? HEALTH_AMOUNTS : LIFE_AMOUNTS
+                      if (!list.includes(form.values.coverageAmount ?? -1)) form.setFieldValue('coverageAmount', null)
+                    }}
                     title={c.title}
                     text={c.text}
                   />
                 ))}
               </SimpleGrid>
 
-              <Text size="sm" fw={600} mt="sm">
-                2. How much should it pay out?
-              </Text>
-              <Text size="xs" c="dimmed" mt={-8}>
-                The amount paid on a claim (the sum assured), with what it costs each month at your standard
-                rate. The final price is set by the underwriter after the health check.
-              </Text>
-              <SimpleGrid cols={{ base: 2, sm: 4 }} spacing="sm">
-                {amounts.map((a) => (
-                  <ChoiceCard
-                    key={a}
-                    selected={form.values.coverageAmount === a}
-                    onClick={() => form.setFieldValue('coverageAmount', a)}
-                    title={`Pays ${taka(a)}`}
-                    text={`from ${taka(premiumFor(a, rateStandard))} a month`}
-                  />
-                ))}
-              </SimpleGrid>
+              {form.values.coverageType && (
+                <>
+                  <Text size="sm" fw={600} mt="sm">
+                    2. {product === 'life' ? 'How much should it pay out?' : 'Up to how much a year?'}
+                  </Text>
+                  <SimpleGrid cols={{ base: 2, sm: product === 'life' ? 6 : 4 }} spacing="sm">
+                    {amounts.map((a) => (
+                      <ChoiceCard
+                        key={a}
+                        selected={form.values.coverageAmount === a}
+                        onClick={() => form.setFieldValue('coverageAmount', a)}
+                        title={taka(a)}
+                        text={a >= 10_000_000 ? `${a / 10_000_000} crore` : `${a / 100_000} lakh`}
+                      />
+                    ))}
+                  </SimpleGrid>
+                </>
+              )}
 
-              <Text size="sm" fw={600} mt="sm">
-                3. For how many years?
-              </Text>
-              <Group gap="xs">
-                {TERMS.map((t) => (
-                  <Button
-                    key={t}
-                    size="xs"
-                    variant={form.values.policyTerm === t ? 'filled' : 'default'}
-                    onClick={() => form.setFieldValue('policyTerm', t)}
-                  >
-                    {t} years
-                  </Button>
-                ))}
-              </Group>
+              {product === 'life' && form.values.coverageType && (
+                <>
+                  <Text size="sm" fw={600} mt="sm">
+                    3. For how many years?
+                  </Text>
+                  <Group gap="xs">
+                    {TERMS.map((t) => {
+                      const tooLong = age != null && age + Number(t) > LIFE_MAX_EXPIRY_AGE
+                      return (
+                        <Tooltip key={t} label={`Cover must end by age ${LIFE_MAX_EXPIRY_AGE}`} disabled={!tooLong} withArrow>
+                          <Button
+                            size="xs"
+                            variant={form.values.policyTerm === t ? 'filled' : 'default'}
+                            disabled={tooLong}
+                            onClick={() => form.setFieldValue('policyTerm', t)}
+                          >
+                            {t} years
+                          </Button>
+                        </Tooltip>
+                      )
+                    })}
+                  </Group>
+                </>
+              )}
 
-              {coverDone && (
+              {form.values.coverageType && (
+                <>
+                  <Text size="sm" fw={600} mt="sm">
+                    {product === 'life' ? '4' : '3'}. How will they pay?
+                  </Text>
+                  <Group gap="xs">
+                    {(['monthly', 'yearly'] as const).map((m) => (
+                      <Button key={m} size="xs" variant={form.values.paymentMode === m ? 'filled' : 'default'} onClick={() => form.setFieldValue('paymentMode', m)}>
+                        {m === 'monthly' ? `Monthly${q?.eligible ? `: ${taka(q.monthlyBdt)}` : ''}` : `Yearly${q?.eligible ? `: ${taka(q.annualBdt)}` : ''}`}
+                      </Button>
+                    ))}
+                  </Group>
+                  <Text size="xs" c="dimmed">
+                    Premiums are paid to the bank. Paying yearly costs a little less.
+                  </Text>
+                </>
+              )}
+
+              {!form.values.dob && form.values.coverageType && (
+                <Alert color="yellow" variant="light" p="xs" mt="sm">
+                  <Text size="sm">Add the client's date of birth on the first step: the price depends on their age.</Text>
+                </Alert>
+              )}
+              {q && !q.eligible && (
+                <Alert color="red" variant="light" p="xs" mt="sm">
+                  <Text size="sm">{q.reason}</Text>
+                </Alert>
+              )}
+              {q?.eligible && (
                 <Paper p="md" mt="sm" bd="1px solid var(--neo-forest)" bg="var(--neo-accent-soft)">
                   <Text size="xs" tt="uppercase" fw={700} lts={0.5} c="dimmed">
                     What this means for the client
                   </Text>
                   <SimpleGrid cols={{ base: 2, sm: 4 }} mt="xs" spacing="md">
-                    <Figure label="Pays out on a claim" value={taka(amount)} />
-                    <Figure label="They pay each month" value={`from ${taka(standard)}`} />
-                    <Figure label="Each year" value={`from ${taka(standard * 12)}`} />
-                    <Figure label={`Over ${years} years`} value={`from ${taka(standard * 12 * years)}`} />
+                    <Figure label={product === 'life' ? 'Pays out on a claim' : 'Pays in a year, at most'} value={taka(amount)} />
+                    <Figure label="They pay each month" value={taka(q.monthlyBdt)} />
+                    <Figure label="Or each year" value={taka(q.annualBdt)} />
+                    <Figure label={product === 'life' ? `Over ${years} years` : 'Cover'} value={product === 'life' ? taka(q.annualBdt * years) : 'One year, renewable'} />
                   </SimpleGrid>
                   <Text size="xs" mt="sm">
-                    {form.values.coverageType === 'Life'
-                      ? `If the client dies within the ${years} years, the family is paid ${taka(amount)}.`
-                      : form.values.coverageType === 'Health'
-                        ? `Each year for ${years} years, hospital and treatment bills are paid up to ${taka(amount)}.`
-                        : `If the client is diagnosed with a covered serious illness within ${years} years, they are paid ${taka(amount)} once.`}{' '}
-                    The monthly price is the standard rate. If the health check finds a moderate risk it may
-                    be about {taka(adjusted)} a month; an elevated risk goes to a doctor first and has no price
-                    until then. Payments stop and the cover ends after {years} years, or if the policy is
-                    cancelled.
+                    {product === 'life'
+                      ? `If the client dies within the ${years} years, the nominee is paid ${taka(amount)}. The premium stays the same every year.`
+                      : `For a year, hospital and treatment bills are paid up to ${taka(amount)}. Illness is covered after 30 days (accidents at once), conditions they already have after two years. Renewed each year at their new age.`}{' '}
+                    This is the standard price at age {q.age}
+                    {q.smoker ? ', as a smoker' : ''}. After the health check the underwriter may add a rating
+                    {product === 'health' ? ' or exclusions' : ''}, or decline. The client has 15 days after approval to
+                    change their mind for a full refund.
                   </Text>
                 </Paper>
               )}
@@ -838,19 +1050,25 @@ export function IntakePage() {
         {/* ── 4. Review and submit ────────────────────────────── */}
         <Stepper.Step label="Submit" description="A last look">
           <div key="submit" className="page-enter">
-            <Section n="4" title="Ready to submit" complete={done.every(Boolean)}>
-              {!done.every(Boolean) ? (
+            <Section n="4" title="Ready to submit" complete={ready}>
+              {!done.every(Boolean) || !nomineeDone ? (
                 <Alert color="yellow" variant="light" icon={<IconAlertTriangle size={16} />} title="Something still needs doing">
                   <Stack gap={4}>
                     {!clientDone && (
                       <Group justify="space-between">
-                        <Text size="sm">The client needs a name and a phone number.</Text>
+                        <Text size="sm">The client needs a name, a phone number and a date of birth (18 or over).</Text>
+                        <Button size="compact-xs" variant="light" onClick={() => setStep(0)}>Fix</Button>
+                      </Group>
+                    )}
+                    {!nomineeDone && (
+                      <Group justify="space-between">
+                        <Text size="sm">Term life needs a nominee.</Text>
                         <Button size="compact-xs" variant="light" onClick={() => setStep(0)}>Fix</Button>
                       </Group>
                     )}
                     {!coverDone && (
                       <Group justify="space-between">
-                        <Text size="sm">Choose the cover, the amount and the years.</Text>
+                        <Text size="sm">{q && !q.eligible ? q.reason : 'Choose the cover, the amount and the years.'}</Text>
                         <Button size="compact-xs" variant="light" onClick={() => setStep(1)}>Fix</Button>
                       </Group>
                     )}
@@ -881,9 +1099,12 @@ export function IntakePage() {
                   </Summary>
                   <Summary title="Cover">
                     <Text size="sm" fw={600}>
-                      {form.values.coverageType} · pays {taka(amount)} · {years} years
+                      {product === 'life' ? `Term life · pays ${taka(amount)} · ${years} years` : `Hospital cover · up to ${taka(amount)} a year`}
                     </Text>
-                    <Text size="xs" c="dimmed">from {taka(standard)} a month at the standard rate</Text>
+                    <Text size="xs" c="dimmed">
+                      {q?.eligible ? `${taka(q.monthlyBdt)} a month or ${taka(q.annualBdt)} a year at standard rates · paid ${form.values.paymentMode}` : ''}
+                      {product === 'life' && form.values.nomineeName ? ` · nominee ${form.values.nomineeName}` : ''}
+                    </Text>
                   </Summary>
                   <Summary title="Readers">
                     <Group gap={4}>
@@ -911,8 +1132,13 @@ export function IntakePage() {
                 </Group>
               )}
 
+              <Checkbox
+                label="The client agrees to their health information, test results and ID being used to assess this application, and has been told they can ask for it to be deleted."
+                checked={form.values.consent}
+                onChange={(e) => form.setFieldValue('consent', e.currentTarget.checked)}
+              />
               <Group justify="flex-end">
-                <Button size="md" onClick={() => void sendApplication()} loading={submitting} disabled={!done.every(Boolean)}>
+                <Button size="md" onClick={() => void sendApplication()} loading={submitting} disabled={!ready}>
                   Submit application
                 </Button>
               </Group>
@@ -937,7 +1163,7 @@ export function IntakePage() {
           </Button>
           <Group gap="sm" align="center">
             <Text size="xs" c="dimmed" ta="right" maw={420}>
-              {step === 0 && 'A name and a phone number are needed. Everything else here is optional.'}
+              {step === 0 && 'A name, a phone number and a date of birth are needed: the price depends on age.'}
               {step === 1 && 'What it pays for, how much, and for how long.'}
               {step === 2 && 'Every file needs a kind. Nothing is scored until you submit.'}
             </Text>

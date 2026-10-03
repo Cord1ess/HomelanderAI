@@ -2,10 +2,10 @@
 
 import enum
 import uuid
-from datetime import datetime
+from datetime import date, datetime
 from decimal import Decimal
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, Numeric, String, Text, func
+from sqlalchemy import Boolean, Date, DateTime, ForeignKey, Integer, Numeric, String, Text, func
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -24,6 +24,10 @@ class UnderwriterDecisionType(enum.StrEnum):
     APPROVED_WITH_ADJUSTMENT = "approved_with_adjustment"
     ESCALATED_SENIOR_REVIEW = "escalated_senior_review"
     REQUESTED_ADDITIONAL_EVIDENCE = "requested_additional_evidence"
+    # A person's decision not to insure, always with a reason and never made by
+    # a model. Added 2026-10-04: a platform where everything is eventually
+    # approved is not underwriting.
+    DECLINED = "declined"
 
 
 class NotificationType(enum.StrEnum):
@@ -40,6 +44,9 @@ class NotificationType(enum.StrEnum):
     ACCESS_DECIDED = "access_decided"
     # The client uploaded a requested document from their portal.
     DOCUMENTS_UPLOADED = "documents_uploaded"
+    CLAIM_FILED = "claim_filed"
+    CLAIM_UPDATED = "claim_updated"
+    DELETION_REQUESTED = "deletion_requested"
     # An approval issued a policy; an administrator cancelled one.
     POLICY_ISSUED = "policy_issued"
     POLICY_CANCELLED = "policy_cancelled"
@@ -85,6 +92,15 @@ class UnderwriterDecision(Base):
     decided_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )
+    # An approval's terms: an extra percentage on the premium, and conditions
+    # the policy will not pay for.
+    rating_pct: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    exclusions: Mapped[list] = mapped_column(JSONB, nullable=False, default=list)
+    # A decline's reason (a code from app/decline.py), the words the client
+    # reads, and when they may apply again.
+    decline_reason: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    decline_note: Mapped[str | None] = mapped_column(Text, nullable=True)
+    reapply_after: Mapped[date | None] = mapped_column(Date, nullable=True)
 
 
 class RequestedDocument(Base):

@@ -37,8 +37,11 @@ const REVIEW_KINDS = new Set([
 /** Where a notification leads: its application, or for a request to see a
  * client's details, the place it is answered. */
 function linkFor(n: { applicationId?: string | null; notificationType: string }): string | null {
+  if (n.notificationType === 'claim_filed' || n.notificationType === 'claim_updated') return '/claims'
   if (n.applicationId) return `/applications/${n.applicationId}`
   if (n.notificationType === 'access_requested') return '/access-requests'
+  if (n.notificationType === 'deletion_requested') return '/data-requests'
+  if (n.notificationType === 'claim_filed' || n.notificationType === 'claim_updated') return '/claims'
   if (n.notificationType === 'access_decided') return '/clients'
   return null
 }

@@ -11,7 +11,7 @@ from fastapi.testclient import TestClient
 
 from app.main import app
 from tests.conftest import needs_database
-from tests.test_applications import sign_in, submit
+from tests.test_applications import eligible_payload, sign_in, submit
 
 pytestmark = needs_database
 
@@ -23,7 +23,7 @@ def test_requesting_evidence_pauses_rather_than_decides(carrier):
 
     with TestClient(app) as client:
         sign_in(client, account)
-        created = submit(client)
+        created = submit(client, eligible_payload())
 
         response = client.post(
             f"/api/applications/{created['id']}/evidence-request",
@@ -147,7 +147,7 @@ def test_cannot_request_evidence_on_a_decided_application(carrier):
 
     with TestClient(app) as client:
         sign_in(client, account)
-        created = submit(client)
+        created = submit(client, eligible_payload())
         client.post(
             f"/api/applications/{created['id']}/decision",
             json={"decision": "confirmed_fast_track"},

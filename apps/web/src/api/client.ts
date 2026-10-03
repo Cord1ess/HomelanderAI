@@ -27,6 +27,7 @@ export type AppNotification = Schemas['NotificationSchema']
 export type Plan = Schemas['PlanSchema']
 export type ModelInfo = Schemas['ModelSchema']
 export type Pricing = Schemas['PricingSchema']
+export type Quote = Schemas['QuoteSchema']
 export type ClassifiedFile = Schemas['ClassifiedFileSchema']
 export type ClassifyResponse = Schemas['ClassifyResponseSchema']
 export type RequestedDocument = Schemas['RequestedDocumentSchema']
@@ -40,14 +41,17 @@ export type PortalCredentials = Schemas['PortalCredentialsSchema']
 export type ArmRun = Schemas['ArmRunSchema']
 export type AccessRequest = Schemas['AccessRequestSchema']
 export type Policy = Schemas['PolicySchema']
-export type Installment = Schemas['InstallmentSchema']
+export type Claim = Schemas['ClaimSchema']
+export type PortalClaim = Schemas['PortalClaimSchema']
+export type Deletion = Schemas['DeletionSchema']
+export type NidRead = Schemas['NidReadSchema']
 export type ClientSignIn = Schemas['ClientSignInSchema']
 export type EmailLogEntry = Schemas['EmailLogSchema']
 export type MailStatus = Schemas['MailStatusSchema']
 export type BenchResult = Schemas['BenchResultSchema']
 export type BenchRun = Schemas['BenchRunSchema']
 export type Business = Schemas['BusinessSchema']
-export type PaymentMethod = NonNullable<Schemas['PaymentIn']['method']>
+export type ClaimAction = Schemas['ClaimActionIn']['action']
 
 // Relative, so the Vite dev proxy handles it and the production build works
 // from whatever origin serves the bundle.
@@ -168,9 +172,10 @@ export const provisionStaffUser = (payload: {
 
 // ── applications ─────────────────────────────────────────────────────────────
 
-export function getQueue(params: { status?: string; q?: string } = {}) {
+export function getQueue(params: { status?: string; q?: string; mine?: boolean } = {}) {
   const search = new URLSearchParams()
   if (params.status && params.status !== 'all') search.set('status', params.status)
+  if (params.mine) search.set('mine', 'true')
   if (params.q?.trim()) search.set('q', params.q.trim())
 
   const query = search.toString()
@@ -207,8 +212,45 @@ export function classifyEvidence(files: File[]): Promise<ClassifyResponse> {
  * not keep its own copy, or the two drift and a screen quotes a premium against
  * the wrong band.
  */
-export const getPricing = (coverage?: number | null) =>
-  request<Pricing>(`/pricing${coverage ? `?coverage=${coverage}` : ''}`)
+export const getPricing = () => request<Pricing>('/pricing')
+
+/** Price one policy from the facts, before there is an application. */
+export const quote = (body: {
+  product: 'life' | 'health'
+  sumAssuredBdt: number
+  termYears?: number
+  dateOfBirth?: string | null
+  age?: number | null
+  sex?: string | null
+  smoker?: boolean
+  ratingPct?: number
+}) =>
+  request<Quote>('/quote', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  })
+
+/** Price an application's cover at a rating. */
+export const quoteApplication = (id: string, ratingPct: number) =>
+  request<Quote>(`/applications/${id}/quote`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ ratingPct }),
+  })
+
+/** Read the front of an NID card: name, date of birth, number. Stores nothing. */
+export function readNid(image: File): Promise<NidRead> {
+  const form = new FormData()
+  form.append('image', image)
+  return request<NidRead>('/nid/read', { method: 'POST', body: form })
+}
+
+/** Take a case (or hand it back), so two underwriters do not work it at once. */
+export const assignApplication = (id: string, release = false) =>
+  request<ApplicationDetail>(`/applications/${id}/assign${release ? '?release=true' : ''}`, {
+    method: 'POST',
+  })
 
 export interface IntakePayload {
   applicant: {
@@ -218,11 +260,19 @@ export interface IntakePayload {
     sex: string | null
     /** Where the client's portal sign-in is sent. Without it the operator is shown it. */
     email: string | null
+    nidNumber?: string | null
+    nidName?: string | null
+    nidDateOfBirth?: string | null
+    nomineeName?: string | null
+    nomineeRelation?: string | null
+    nomineePhone?: string | null
+    consent: boolean
   }
   coverage: {
     coverageType: string | null
     coverageAmount: number | null
     policyTerm: string | null
+    paymentMode: 'monthly' | 'yearly'
   }
   modelsRequested: string[]
   declaredHistory: Record<string, unknown>
@@ -244,6 +294,7 @@ export function submitApplication(input: {
   payload: IntakePayload
   files: { file: File; arm: string; kind: string }[]
   facePhoto?: File | null
+  nidImage?: File | null
 }): Promise<SubmitResponse> {
   const form = new FormData()
   form.append('payload', JSON.stringify(input.payload))
@@ -259,6 +310,7 @@ export function submitApplication(input: {
   }
 
   if (input.facePhoto) form.append('face_photo', input.facePhoto)
+  if (input.nidImage) form.append('nid_image', input.nidImage)
 
   // No Content-Type header: the browser has to set it, because only it knows
   // the multipart boundary.
@@ -267,7 +319,14 @@ export function submitApplication(input: {
 
 export const recordDecision = (
   id: string,
-  body: { decision: DecisionType; finalPremium?: number | null },
+  body: {
+    decision: DecisionType
+    ratingPct?: number
+    exclusions?: string[]
+    declineReason?: string | null
+    declineNote?: string | null
+    reapplyAfterMonths?: number | null
+  },
 ) =>
   request<Decision>(`/applications/${id}/decision`, {
     method: 'POST',
@@ -449,11 +508,55 @@ export const cancelPolicy = (id: string, reason: string) =>
     body: JSON.stringify({ reason }),
   })
 
-export const recordPayment = (
+// ── claims ───────────────────────────────────────────────────────────────────
+
+export const getClaims = (status?: string) =>
+  request<Claim[]>(`/claims${status ? `?status_filter=${encodeURIComponent(status)}` : ''}`)
+
+export const getClaim = (id: string) => request<Claim>(`/claims/${id}`)
+
+export const claimAction = (
   id: string,
-  body: { dueDate?: string | null; method: PaymentMethod; reference?: string | null },
+  body: { action: ClaimAction; note?: string | null; approvedAmountBdt?: number | null; settlementReference?: string | null },
 ) =>
-  request<Policy>(`/policies/${id}/payments`, {
+  request<Claim>(`/claims/${id}/action`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  })
+
+export interface ClaimInput {
+  eventDate: string
+  claimedAmountBdt: number
+  description: string
+  hospital?: string | null
+  claimantName?: string | null
+  accident?: boolean
+}
+
+/** Staff file a claim for someone (a death claim from the nominee, say). */
+export function fileClaim(policyId: string, claim: ClaimInput, files: File[]): Promise<Claim> {
+  const form = new FormData()
+  form.append('payload', JSON.stringify(claim))
+  for (const f of files) form.append('files', f)
+  return request<Claim>(`/policies/${policyId}/claims`, { method: 'POST', body: form })
+}
+
+export function addClaimDocuments(claimId: string, files: File[]): Promise<Claim> {
+  const form = new FormData()
+  for (const f of files) form.append('files', f)
+  return request<Claim>(`/claims/${claimId}/documents`, { method: 'POST', body: form })
+}
+
+export const claimDocumentUrl = (claimId: string, documentId: string) =>
+  `${BASE_URL}/claims/${claimId}/documents/${documentId}`
+
+// ── requests to delete a client's data ───────────────────────────────────────
+
+export const getDeletionRequests = () => request<Deletion[]>('/deletion-requests')
+
+export const decideDeletion = (id: string, body: { approve: boolean; reason?: string | null; now?: boolean }) =>
+  request<Deletion>(`/deletion-requests/${id}/decision`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
@@ -499,3 +602,27 @@ export const tryModel = (
   if (input.sex) body.append('sex', input.sex)
   return request<BenchResult>(`/models/${modelId}/try`, { method: 'POST', body })
 }
+
+/** The client files a claim for hospital bills, with the bills. */
+export function portalFileClaim(claim: ClaimInput, files: File[]): Promise<PortalStatus> {
+  const form = new FormData()
+  form.append('payload', JSON.stringify(claim))
+  for (const f of files) form.append('files', f)
+  return request<PortalStatus>('/portal/claims', { method: 'POST', body: form })
+}
+
+export function portalClaimDocuments(claimId: string, files: File[]): Promise<PortalStatus> {
+  const form = new FormData()
+  for (const f of files) form.append('files', f)
+  return request<PortalStatus>(`/portal/claims/${claimId}/documents`, { method: 'POST', body: form })
+}
+
+export const portalRequestDeletion = (reason?: string | null) =>
+  request<PortalStatus>('/portal/deletion-request', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ reason: reason ?? null }),
+  })
+
+export const portalWithdrawDeletion = () =>
+  request<PortalStatus>('/portal/deletion-request', { method: 'DELETE' })

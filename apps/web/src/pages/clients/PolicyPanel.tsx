@@ -1,25 +1,26 @@
 import {
   Alert,
+  Anchor,
   Badge,
   Button,
   Group,
+  List,
   Modal,
   Paper,
-  Select,
   SimpleGrid,
   Stack,
-  Table,
   Text,
-  TextInput,
   Textarea,
 } from '@mantine/core'
 import { notifications } from '@mantine/notifications'
-import { IconCash, IconCircleX } from '@tabler/icons-react'
+import { IconCircleX, IconFileDollar } from '@tabler/icons-react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { useState } from 'react'
+import { Link } from 'react-router-dom'
 
-import { cancelPolicy, recordPayment, type PaymentMethod, type Policy } from '../../api/client'
+import { cancelPolicy, type Policy } from '../../api/client'
 import { useAuth } from '../../context/AuthContext'
+import { ClaimForm } from '../claims/ClaimForm'
 
 const taka = (v: string | number) => `৳${Number(v).toLocaleString('en-IN', { maximumFractionDigits: 0 })}`
 const day = (iso: string) =>
@@ -29,25 +30,16 @@ const day = (iso: string) =>
     year: 'numeric',
   })
 
-const METHODS: { value: PaymentMethod; label: string }[] = [
-  { value: 'bkash', label: 'bKash' },
-  { value: 'nagad', label: 'Nagad' },
-  { value: 'rocket', label: 'Rocket' },
-  { value: 'bank', label: 'Bank transfer' },
-  { value: 'card', label: 'Card' },
-  { value: 'cash', label: 'Cash at the office' },
-]
-
-const STATUS: Record<string, { label: string; color: string }> = {
-  paid: { label: 'Paid', color: 'teal' },
-  due: { label: 'Due now', color: 'yellow' },
-  overdue: { label: 'Overdue', color: 'red' },
-  upcoming: { label: 'Coming up', color: 'gray' },
+const STATE: Record<string, { label: string; color: string }> = {
+  active: { label: 'In force', color: 'teal' },
+  cancelled: { label: 'Cancelled', color: 'red' },
+  expired: { label: 'Ended', color: 'gray' },
 }
 
 /**
- * A client's policies: what each pays out and costs, its payments, and, for
- * the company owner, recording a payment or cancelling it.
+ * A client's policies: what each pays out and costs, its dates, what it does
+ * not cover; filing a claim on it; and, for the owner, cancelling it.
+ * Premiums are collected by the bank, so this shows when they fall due only.
  */
 export function PolicyPanel({
   policies,
@@ -71,80 +63,73 @@ export function PolicyPanel({
 function OnePolicy({ policy, clientId, compact }: { policy: Policy; clientId: string; compact: boolean }) {
   const { user } = useAuth()
   const isOwner = user?.role === 'admin'
+  const canClaim = user?.role === 'admin' || user?.role === 'underwriter'
   const queryClient = useQueryClient()
-  const [method, setMethod] = useState<PaymentMethod>('bkash')
-  const [reference, setReference] = useState('')
   const [cancelling, setCancelling] = useState(false)
+  const [claiming, setClaiming] = useState(false)
   const [reason, setReason] = useState('')
-  const active = policy.status === 'active'
-
-  const refresh = () => {
-    void queryClient.invalidateQueries({ queryKey: ['client', clientId] })
-    void queryClient.invalidateQueries({ queryKey: ['analytics'] })
-    void queryClient.invalidateQueries({ queryKey: ['applications'] })
-    void queryClient.invalidateQueries({ queryKey: ['application', policy.applicationId] })
-  }
-
-  const pay = useMutation({
-    mutationFn: () => recordPayment(policy.id, { method, reference: reference.trim() || null }),
-    onSuccess: (p) => {
-      refresh()
-      setReference('')
-      notifications.show({
-        title: 'Payment recorded',
-        message: `${p.paidCount} of ${p.monthsTotal} months paid. The client sees it on their portal.`,
-        color: 'teal',
-      })
-    },
-    onError: (e) => notifications.show({ title: 'Could not record it', message: (e as Error).message, color: 'red' }),
-  })
+  const state = STATE[policy.effectiveStatus] ?? STATE.active
+  const active = policy.effectiveStatus === 'active'
+  const health = policy.product === 'health'
 
   const cancel = useMutation({
     mutationFn: () => cancelPolicy(policy.id, reason.trim()),
     onSuccess: () => {
-      refresh()
+      void queryClient.invalidateQueries({ queryKey: ['client', clientId] })
+      void queryClient.invalidateQueries({ queryKey: ['application', policy.applicationId] })
+      void queryClient.invalidateQueries({ queryKey: ['analytics'] })
+      void queryClient.invalidateQueries({ queryKey: ['applications'] })
       setCancelling(false)
       setReason('')
       notifications.show({
         title: 'Policy cancelled',
-        message: 'No more payments fall due. The client sees it on their portal.',
+        message: 'No more premiums fall due. The client sees it on their portal.',
         color: 'gray',
       })
     },
     onError: (e) => notifications.show({ title: 'Could not cancel', message: (e as Error).message, color: 'red' }),
   })
 
-  const installments = [...(policy.installments ?? [])].reverse().slice(0, 8)
-
   return (
     <Paper p="md" bd={`1px solid ${active ? 'var(--neo-forest)' : 'var(--neo-border-mid)'}`}>
-      <Group justify="space-between" align="flex-start" mb="sm">
+      <Group justify="space-between" align="flex-start" mb="sm" gap="xs">
         <div>
           <Group gap="xs">
             <Text fw={700}>Policy {policy.policyNumber}</Text>
-            <Badge color={active ? 'teal' : 'red'} variant="light" style={{ minWidth: 'max-content' }}>
-              {active ? 'In force' : 'Cancelled'}
+            <Badge color={state.color} variant="light" style={{ minWidth: 'max-content' }}>
+              {state.label}
             </Badge>
-            {(policy.overdueCount ?? 0) > 0 && active && (
-              <Badge color="red" variant="filled">
-                {policy.overdueCount} overdue
+            {policy.inFreeLook && (
+              <Badge color="blue" variant="light" style={{ minWidth: 'max-content' }}>
+                Free look until {day(policy.freeLookUntil!)}
+              </Badge>
+            )}
+            {policy.renewalDue && (
+              <Badge color="orange" variant="light" style={{ minWidth: 'max-content' }}>
+                Renewal due
               </Badge>
             )}
           </Group>
           <Text size="xs" c="dimmed">
-            {policy.planName}
-            {policy.coverageType ? ` · ${policy.coverageType} cover` : ''} · {day(policy.startDate)} to{' '}
-            {day(policy.endDate)} ({policy.termYears} years)
+            {policy.planName} · {day(policy.startDate)} to {day(policy.endDate)}
+            {health ? ' (renewed yearly)' : ` (${policy.termYears} years)`}
           </Text>
         </div>
-        {isOwner && active && (
-          <Button size="xs" color="red" variant="light" leftSection={<IconCircleX size={14} />} onClick={() => setCancelling(true)}>
-            Cancel this policy
-          </Button>
-        )}
+        <Group gap="xs">
+          {canClaim && policy.effectiveStatus !== 'cancelled' && (
+            <Button size="xs" variant="light" leftSection={<IconFileDollar size={14} />} onClick={() => setClaiming(true)}>
+              File a claim
+            </Button>
+          )}
+          {isOwner && active && (
+            <Button size="xs" color="red" variant="light" leftSection={<IconCircleX size={14} />} onClick={() => setCancelling(true)}>
+              Cancel
+            </Button>
+          )}
+        </Group>
       </Group>
 
-      {!active && (
+      {policy.effectiveStatus === 'cancelled' && (
         <Alert color="red" variant="light" mb="sm" p="xs">
           <Text size="sm">
             Cancelled {policy.cancelledAt ? day(policy.cancelledAt) : ''}
@@ -154,79 +139,66 @@ function OnePolicy({ policy, clientId, compact }: { policy: Policy; clientId: st
       )}
 
       <SimpleGrid cols={compact ? 2 : { base: 2, md: 5 }} spacing="md">
-        <Figure label="Pays out on a claim" value={taka(policy.sumAssuredBdt)} strong />
-        <Figure label="Premium" value={`${taka(policy.monthlyPremiumBdt)} / month`} />
-        <Figure label="Per year" value={taka(policy.yearlyPremiumBdt)} />
-        <Figure label="Paid so far" value={`${policy.paidCount} of ${policy.monthsTotal} · ${taka(policy.paidTotalBdt ?? 0)}`} />
+        <Figure label={health ? 'Pays in a year, at most' : 'Pays out on a claim'} value={taka(policy.sumAssuredBdt)} strong />
         <Figure
-          label="Next due"
-          value={active && policy.nextDue ? `${day(policy.nextDue)} · ${taka(policy.nextAmountBdt ?? policy.monthlyPremiumBdt)}` : '—'}
+          label={`Premium (${policy.premiumMode === 'yearly' ? 'yearly' : 'monthly'})`}
+          value={`${taka(policy.premiumAmountBdt)}${policy.premiumMode === 'yearly' ? ' / year' : ' / month'}`}
         />
+        <Figure label="Per year" value={taka(policy.annualPremiumBdt)} />
+        <Figure label="Next premium due" value={policy.nextPremiumDue ? day(policy.nextPremiumDue) : '—'} />
+        {health ? (
+          <Figure label="Left this year" value={policy.remainingLimitBdt != null ? taka(policy.remainingLimitBdt) : '—'} />
+        ) : (
+          <Figure label="Rating" value={policy.ratingPct ? `+${policy.ratingPct}%` : 'Standard'} />
+        )}
       </SimpleGrid>
 
-      {isOwner && active && policy.nextDue && (
-        <Group mt="md" gap="xs" align="flex-end">
-          <Select
-            size="xs"
-            label="Record the next payment"
-            data={METHODS}
-            value={method}
-            onChange={(v) => v && setMethod(v as PaymentMethod)}
-            allowDeselect={false}
-            w={180}
-          />
-          <TextInput
-            size="xs"
-            label="Transaction reference"
-            placeholder="Optional, e.g. bKash TrxID"
-            value={reference}
-            onChange={(e) => setReference(e.currentTarget.value)}
-            w={220}
-          />
-          <Button size="xs" leftSection={<IconCash size={14} />} loading={pay.isPending} onClick={() => pay.mutate()}>
-            Mark {day(policy.nextDue)} as paid
-          </Button>
-        </Group>
+      {health && (policy.waitingUntil || policy.preexistingUntil) && (
+        <Text size="xs" c="dimmed" mt="sm">
+          Illness covered from {policy.waitingUntil ? day(policy.waitingUntil) : 'the start'} (accidents from day one);
+          conditions the client already had from {policy.preexistingUntil ? day(policy.preexistingUntil) : '—'}.
+        </Text>
       )}
-
-      {installments.length > 0 && (
-        <Table mt="md" verticalSpacing={4} fz="sm">
-          <Table.Thead>
-            <Table.Tr>
-              <Table.Th>#</Table.Th>
-              <Table.Th>Due</Table.Th>
-              <Table.Th>Amount</Table.Th>
-              <Table.Th>Status</Table.Th>
-            </Table.Tr>
-          </Table.Thead>
-          <Table.Tbody>
-            {installments.map((i) => (
-              <Table.Tr key={i.dueDate}>
-                <Table.Td>{i.number}</Table.Td>
-                <Table.Td>{day(i.dueDate)}</Table.Td>
-                <Table.Td ff="monospace">{taka(i.amountBdt)}</Table.Td>
-                <Table.Td>
-                  <Badge size="sm" variant="light" color={STATUS[i.status]?.color ?? 'gray'} style={{ minWidth: 'max-content' }}>
-                    {STATUS[i.status]?.label ?? i.status}
-                    {i.status === 'paid' && i.paidOn ? ` ${day(i.paidOn)}` : ''}
-                    {i.status === 'paid' && i.method ? ` · ${METHODS.find((m) => m.value === i.method)?.label ?? i.method}` : ''}
-                  </Badge>
-                </Table.Td>
-              </Table.Tr>
+      {(policy.exclusions ?? []).length > 0 && (
+        <Stack gap={2} mt="sm">
+          <Text size="xs" fw={700} c="dimmed" tt="uppercase">
+            Not covered
+          </Text>
+          <List size="xs" spacing={2}>
+            {(policy.exclusions ?? []).map((e) => (
+              <List.Item key={e}>{e}</List.Item>
             ))}
-          </Table.Tbody>
-        </Table>
+          </List>
+        </Stack>
       )}
+      <Group gap="md" mt="sm">
+        <Text size="xs" c="dimmed">
+          Premiums are collected by the bank.
+        </Text>
+        {(policy.claimsOpen ?? 0) > 0 && (
+          <Anchor component={Link} to="/claims" size="xs">
+            {policy.claimsOpen} open claim{policy.claimsOpen === 1 ? '' : 's'}
+          </Anchor>
+        )}
+        {Number(policy.claimsPaidBdt ?? 0) > 0 && (
+          <Text size="xs" c="dimmed">
+            {taka(policy.claimsPaidBdt ?? 0)} paid in claims
+          </Text>
+        )}
+      </Group>
 
+      <ClaimForm policy={policy} opened={claiming} onClose={() => setClaiming(false)} />
       <Modal opened={cancelling} onClose={() => setCancelling(false)} title={`Cancel policy ${policy.policyNumber}?`} centered>
         <Stack gap="sm">
           <Text size="sm">
-            The client stops being covered and no more payments fall due. They see the cancellation, and your reason,
-            on their portal. This cannot be undone.
+            {policy.inFreeLook
+              ? 'This is within the free-look period: the client is owed a full refund of what they paid, through the bank.'
+              : 'The client stops being covered and no more premiums fall due.'}{' '}
+            They see the cancellation, and your reason, on their portal. This cannot be undone.
           </Text>
           <Textarea
             label="Reason"
-            placeholder="For example: the client asked to cancel; premiums unpaid for three months."
+            placeholder="For example: the client asked to cancel within the free-look period."
             autosize
             minRows={3}
             value={reason}

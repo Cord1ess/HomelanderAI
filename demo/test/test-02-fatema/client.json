@@ -20,5 +20,10 @@
     "eyepacs": {
       "diabetes_duration": "8"
     }
+  },
+  "nominee": {
+    "name": "Rafiq Ahmed",
+    "relation": "Son",
+    "phone": "01711 000202"
   }
 }

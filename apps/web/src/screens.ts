@@ -45,6 +45,8 @@ export type ScreenId =
   | 'profile'
   | 'access'
   | 'bench'
+  | 'claims'
+  | 'dataRequests'
 
 const ALL: UserRole[] = ['underwriter', 'medical_professional', 'admin']
 // Taking and deciding applications are not a doctor's: a doctor reviews the
@@ -171,6 +173,26 @@ export const SCREENS: Record<ScreenId, Screen> = {
     description: 'Changes on applications your company is handling.',
     roles: ALL,
     navOrder: 50,
+  },
+  claims: {
+    id: 'claims',
+    path: '/claims',
+    label: 'Claims',
+    title: 'Claims',
+    description:
+      'Claims on your policies: what is waiting on documents, what is being reviewed, and the legal clock. A claim is settled within 90 days of its documents being complete.',
+    roles: STAFF,
+    navOrder: 13,
+  },
+  dataRequests: {
+    id: 'dataRequests',
+    path: '/data-requests',
+    label: 'Data deletion',
+    title: 'Requests to delete data',
+    description:
+      "Clients asking for their personal data to be deleted. Approve and it is erased on the thirtieth day after they asked; decline and say why.",
+    roles: OWNER,
+    navOrder: 34,
   },
   bench: {
     id: 'bench',

@@ -41,6 +41,11 @@ def intake_payload(**overrides) -> str:
             "phone": "01700000000",
             "dateOfBirth": "1958-04-11",
             "sex": "male",
+            # Required since 2026-10-04: consent to health data being used, and
+            # a nominee for life cover.
+            "consent": True,
+            "nomineeName": "Test Nominee",
+            "nomineeRelation": "Spouse",
         },
         "coverage": {"coverageType": "life", "coverageAmount": 500000, "policyTerm": "10"},
         "modelsRequested": ["cxr_lung"],
@@ -52,6 +57,14 @@ def intake_payload(**overrides) -> str:
         },
     }
     body.update(overrides)
+    return json.dumps(body)
+
+
+def eligible_payload(**overrides) -> str:
+    """The same application from a forty-six-year-old: inside both products'
+    age limits (the default applicant is 68, past them), so it can be approved."""
+    body = json.loads(intake_payload(**overrides))
+    body["applicant"]["dateOfBirth"] = "1980-01-15"
     return json.dumps(body)
 
 
@@ -292,7 +305,7 @@ def test_a_decision_can_only_be_made_once(carrier):
 
     with TestClient(app) as client:
         sign_in(client, account)
-        created = submit(client)
+        created = submit(client, eligible_payload())
 
         first = client.post(
             f"/api/applications/{created['id']}/decision",
@@ -302,7 +315,7 @@ def test_a_decision_can_only_be_made_once(carrier):
 
         second = client.post(
             f"/api/applications/{created['id']}/decision",
-            json={"decision": "approved_with_adjustment", "finalPremium": 9000},
+            json={"decision": "approved_with_adjustment", "ratingPct": 50},
         )
         assert second.status_code == 409
         assert "already been decided" in second.json()["detail"]
@@ -313,21 +326,39 @@ def test_a_decision_can_only_be_made_once(carrier):
         assert detail["status"] == "decided"
 
 
-def test_an_adjusted_approval_needs_a_premium(carrier):
-    """'Approved with adjustment' and no rate is not a decision anyone can act
-    on."""
+def test_an_adjusted_approval_needs_a_rating_or_an_exclusion(carrier):
+    """'Approved with adjustment' with nothing adjusted is not a decision
+    anyone can act on."""
     account = asyncio.run(carrier())
 
     with TestClient(app) as client:
         sign_in(client, account)
-        created = submit(client)
+        created = submit(client, eligible_payload())
 
         response = client.post(
             f"/api/applications/{created['id']}/decision",
             json={"decision": "approved_with_adjustment"},
         )
         assert response.status_code == 422
-        assert "final premium" in response.json()["detail"]
+        assert "rating" in response.json()["detail"]
+
+
+def test_a_client_outside_the_age_limits_cannot_be_approved(carrier):
+    """68, asking for ten years of life cover: it would run past seventy. The
+    application can be taken, but only declined."""
+    account = asyncio.run(carrier())
+    with TestClient(app) as client:
+        sign_in(client, account)
+        created = submit(client)  # the default applicant is 68
+        url = f"/api/applications/{created['id']}/decision"
+        refused = client.post(url, json={"decision": "confirmed_fast_track"})
+        assert refused.status_code == 422
+        assert "ages 18 to 60" in refused.json()["detail"]
+        declined = client.post(
+            url, json={"decision": "declined", "declineReason": "outside_limits"}
+        )
+        assert declined.status_code == 201, declined.text
+        assert declined.json()["declineReasonLabel"].startswith("Outside")
 
 
 # ── audit ────────────────────────────────────────────────────────────────────
@@ -338,7 +369,7 @@ def test_the_audit_chain_records_and_verifies(carrier):
 
     with TestClient(app) as client:
         sign_in(client, account)
-        created = submit(client)
+        created = submit(client, eligible_payload())
         client.post(
             f"/api/applications/{created['id']}/decision",
             # A real decision. Requesting evidence and escalating are not: each
@@ -535,20 +566,26 @@ def test_the_plan_scales_with_the_cover_requested(carrier):
     """
     from app import plans
 
-    small = plans.for_tier("low", 1_000_000)
-    large = plans.for_tier("low", 4_000_000)
+    small = plans.for_tier("low", "life", 1_000_000, 10, 40, "male")
+    large = plans.for_tier("low", "life", 4_000_000, 10, 40, "male")
 
     # plans.for_tier returns plain snake_case; the camelCase aliasing happens
-    # at the schema boundary, not here.
-    assert small["monthly_premium_bdt"] == 5_000
-    assert large["monthly_premium_bdt"] == 20_000
+    # at the schema boundary, not here. Four times the cover, about four times
+    # the premium (rounding apart).
+    assert small["annual_premium_bdt"] > 0
+    assert abs(large["annual_premium_bdt"] - 4 * small["annual_premium_bdt"]) <= 40
 
-    # Elevated is a routing decision, not a price. Quoting one would imply an
-    # outcome nobody has decided (SPEC §7: never an automated denial).
-    assert plans.for_tier("elevated", 4_000_000)["monthly_premium_bdt"] is None
+    # A moderate reading starts at a rating, so it costs more.
+    rated = plans.for_tier("moderate", "life", 1_000_000, 10, 40, "male")
+    assert rated["rating_pct"] == 50
+    assert rated["annual_premium_bdt"] > small["annual_premium_bdt"]
 
     # No cover requested means no premium invented.
-    assert plans.for_tier("moderate", None)["monthly_premium_bdt"] is None
+    assert plans.for_tier("moderate", "life", None, 10, 40)["monthly_premium_bdt"] is None
+
+    # Too old for the term asked: no price, and the reason.
+    too_old = plans.for_tier("low", "life", 1_000_000, 20, 60)
+    assert too_old["annual_premium_bdt"] is None and "70" in too_old["ineligible_reason"]
 
 
 def test_a_scored_application_carries_its_plan(carrier):
@@ -567,7 +604,7 @@ def test_a_scored_application_carries_its_plan(carrier):
     assert plan is not None
     assert plan["tier"] == detail["score"]["tier"]
     assert plan["humanStep"]
-    assert plan["referenceCoverBdt"] == 1_000_000
+    assert plan["product"] == "life"
 
 
 # ── the identity photo ───────────────────────────────────────────────────────

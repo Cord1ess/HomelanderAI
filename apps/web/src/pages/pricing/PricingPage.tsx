@@ -2,9 +2,11 @@ import {
   Alert,
   Badge,
   Card,
+  Checkbox,
   Group,
   NumberInput,
-  Paper,
+  SegmentedControl,
+  Select,
   SimpleGrid,
   Stack,
   Table,
@@ -14,210 +16,200 @@ import { IconInfoCircle } from '@tabler/icons-react'
 import { useQuery } from '@tanstack/react-query'
 import { useState } from 'react'
 
-import { getPricing } from '../../api/client'
-import { PricingPolicyCard } from '../admin/PricingPolicyCard'
+import { getPricing, quote } from '../../api/client'
 import { PageHeader } from '../../components/PageHeader'
 import { ErrorState, LoadingState } from '../../components/states'
-import { TierBadge, type Tier } from '../../components/TierBadge'
+import { PricingPolicyCard } from '../admin/PricingPolicyCard'
+
+const taka = (v: string | number) => `৳${Number(v).toLocaleString('en-IN', { maximumFractionDigits: 0 })}`
+const lakh = (v: number) => (v >= 10_000_000 ? `${v / 10_000_000} crore` : `${v / 100_000} lakh`)
 
 /**
- * Pricing — what each risk tier means for the policy.
- *
- * Every number here comes from `GET /api/pricing`. The dashboard deliberately
- * keeps no copy of the rates or the tier cut-points: two copies drift, and a
- * screen quoting a premium against the wrong band is worse than no screen.
+ * Plans and pricing: the two products, what they cost, and the assumptions
+ * behind it. Every figure comes from the pricing engine on the server; the
+ * dashboard keeps no rate of its own.
  */
-
-const BDT = new Intl.NumberFormat('en-BD', { maximumFractionDigits: 0 })
-
-/** Cover amounts an operator actually types, so the table is useful immediately. */
-const PRESETS = [500_000, 1_000_000, 2_500_000, 5_000_000]
-
 export function PricingPage() {
-  const [coverage, setCoverage] = useState<number>(1_000_000)
-
-  const { data, isPending, error, refetch } = useQuery({
-    queryKey: ['pricing', coverage],
-    queryFn: () => getPricing(coverage),
-    staleTime: 5 * 60 * 1000,
-  })
+  const { data, isPending, error, refetch } = useQuery({ queryKey: ['pricing'], queryFn: getPricing })
 
   if (isPending) {
     return (
-      <Stack gap="lg" maw={980}>
+      <Stack gap="lg" maw={1080}>
         <PageHeader screen="pricing" />
-        <LoadingState label="Working out the plans" />
+        <LoadingState label="Working out the prices" />
       </Stack>
     )
   }
-
   if (error || !data) {
     return (
-      <Stack gap="lg" maw={980}>
+      <Stack gap="lg" maw={1080}>
         <PageHeader screen="pricing" />
-        <ErrorState title="Could not load the plans" error={error} retry={() => void refetch()} />
+        <ErrorState title="Could not load the prices" error={error} retry={() => void refetch()} />
       </Stack>
     )
   }
 
-  const band = (tier: string) => {
-    if (tier === 'low') return `0 – ${data.lowMax}`
-    if (tier === 'moderate') return `${data.lowMax + 0.1} – ${data.moderateMax}`
-    if (tier === 'elevated') return `${data.moderateMax + 0.1} – 100`
-    return 'no score'
-  }
-
+  const examples = data.examples ?? []
   return (
-    <Stack gap="lg" maw={980}>
+    <Stack gap="lg" maw={1080}>
       <PageHeader screen="pricing" />
 
-      {/* The owner changes the rates here; the tiers below follow at once. */}
-      <PricingPolicyCard />
-
-      <Paper p="md" bd="1px solid var(--mantine-color-default-border)">
-        <Group align="flex-end" gap="md" wrap="wrap">
-          <NumberInput
-            label="Cover requested"
-            description="Premiums below scale with this"
-            thousandSeparator=","
-            prefix="৳ "
-            min={0}
-            step={100_000}
-            value={coverage}
-            onChange={(v) => setCoverage(typeof v === 'number' ? v : Number(v) || 0)}
-            w={240}
-          />
-          <Group gap="xs" pb={4}>
-            {PRESETS.map((amount) => (
-              <Badge
-                key={amount}
-                variant={coverage === amount ? 'filled' : 'outline'}
-                color={coverage === amount ? 'clinical' : 'gray'}
-                style={{ cursor: 'pointer' }}
-                onClick={() => setCoverage(amount)}
-              >
-                ৳{BDT.format(amount)}
-              </Badge>
-            ))}
-          </Group>
-        </Group>
-      </Paper>
-
       <SimpleGrid cols={{ base: 1, md: 2 }} spacing="md">
-        {data.plans.map((plan) => (
-          <Card
-            key={plan.tier}
-            withBorder
-            padding="md"
-            bd="1px solid var(--mantine-color-default-border)"
-          >
-            <Group justify="space-between" mb="xs">
-              <TierBadge tier={plan.tier as Tier} />
-              <Text size="xs" c="dimmed" ff="monospace">
-                score {band(plan.tier)}
-              </Text>
-            </Group>
-
-            <Text fw={600} size="sm">
-              {plan.name}
+        <Card p="md">
+          <Group justify="space-between">
+            <Text fw={700}>Term life</Text>
+            <Badge variant="light">Level premium</Badge>
+          </Group>
+          <Text size="sm" mt={4}>
+            Pays the sum assured to the nominee if the client dies during the term. The premium stays the same every year.
+          </Text>
+          <Stack gap={2} mt="sm">
+            <Text size="xs">Sums assured: {data.lifeAmounts.map((a) => lakh(a)).join(', ')}</Text>
+            <Text size="xs">Terms: {data.lifeTerms.join(', ')} years</Text>
+            <Text size="xs">
+              Ages {data.lifeEntryAges[0]} to {data.lifeEntryAges[1]} at the start; cover ends by {data.lifeMaxExpiryAge}
             </Text>
-
-            <Text size="xl" fw={700} mt={4}>
-              {plan.monthlyPremiumBdt != null ? (
-                <>
-                  ৳{BDT.format(plan.monthlyPremiumBdt)}
-                  <Text span size="sm" c="dimmed" fw={400}>
-                    {' '}
-                    / month
-                  </Text>
-                </>
-              ) : (
-                <Text span size="sm" c="dimmed" fw={500}>
-                  No rate quoted until a person has looked
-                </Text>
-              )}
+            <Text size="xs">Free look: {data.freeLookDays} days to cancel for a full refund</Text>
+          </Stack>
+        </Card>
+        <Card p="md">
+          <Group justify="space-between">
+            <Text fw={700}>Hospital cover</Text>
+            <Badge variant="light" color="grape">
+              One year, renewed yearly
+            </Badge>
+          </Group>
+          <Text size="sm" mt={4}>
+            Pays hospital and treatment bills up to the yearly limit. Renewed each year at the client's new age.
+          </Text>
+          <Stack gap={2} mt="sm">
+            <Text size="xs">Yearly limits: {data.healthAmounts.map((a) => lakh(a)).join(', ')}</Text>
+            <Text size="xs">
+              Ages {data.healthEntryAges[0]} to {data.healthEntryAges[1]} at the start
             </Text>
-
-            <Text size="sm" c="dimmed" mt="sm">
-              {plan.recommendation}
+            <Text size="xs">
+              Waiting: illness {data.healthIllnessWaitDays} days (accidents none), conditions already had{' '}
+              {data.healthPreexistingWaitMonths} months
             </Text>
-
-            <Text size="xs" c="dimmed" mt="xs">
-              <Text span fw={600}>
-                Human step:
-              </Text>{' '}
-              {plan.humanStep}
-            </Text>
-
-            {plan.wellnessDiscountEligible && (
-              <Badge size="xs" variant="light" color="teal" mt="sm">
-                Wellness-plan discount eligible
-              </Badge>
-            )}
-          </Card>
-        ))}
+            <Text size="xs">Findings and declared conditions can be excluded at approval</Text>
+          </Stack>
+        </Card>
       </SimpleGrid>
 
-      <Paper p="md" bd="1px solid var(--mantine-color-default-border)">
-        <Text fw={600} size="sm" mb="sm">
-          At a glance
+      <Alert variant="light" color="clinical" icon={<IconInfoCircle size={16} />}>
+        <Text size="sm">
+          A moderate reading is approved at a rating and, for hospital cover, with exclusions; an elevated one goes to
+          a doctor first. Ratings available: {data.ratings.filter((r) => r).map((r) => `+${r}%`).join(', ')}.
         </Text>
-        <Table.ScrollContainer minWidth={620}>
-          <Table fz="sm">
+      </Alert>
+
+      <Card p="md">
+        <Text fw={700} mb="xs">
+          What clients pay at these assumptions
+        </Text>
+        <Table.ScrollContainer minWidth={640}>
+          <Table fz="sm" verticalSpacing={4}>
             <Table.Thead>
               <Table.Tr>
-                <Table.Th>Tier</Table.Th>
-                <Table.Th>Score</Table.Th>
-                <Table.Th>Plan</Table.Th>
-                <Table.Th>Monthly premium</Table.Th>
-                <Table.Th>Who signs it off</Table.Th>
+                <Table.Th>Age</Table.Th>
+                <Table.Th ta="right">Term life, 10 lakh, 10 years: man</Table.Th>
+                <Table.Th ta="right">woman</Table.Th>
+                <Table.Th ta="right">Hospital cover, 2 lakh a year</Table.Th>
               </Table.Tr>
             </Table.Thead>
             <Table.Tbody>
-              {data.plans.map((plan) => (
-                <Table.Tr key={plan.tier}>
-                  <Table.Td>
-                    <TierBadge tier={plan.tier as Tier} />
-                  </Table.Td>
-                  <Table.Td ff="monospace" c="dimmed">
-                    {band(plan.tier)}
-                  </Table.Td>
-                  <Table.Td>{plan.name}</Table.Td>
-                  <Table.Td ff="monospace">
-                    {plan.monthlyPremiumBdt != null
-                      ? `৳${BDT.format(plan.monthlyPremiumBdt)}`
-                      : '—'}
-                  </Table.Td>
-                  <Table.Td c="dimmed">{plan.humanStep}</Table.Td>
-                </Table.Tr>
-              ))}
+              {[25, 35, 45, 55].map((age) => {
+                const at = (product: string, sex: string) =>
+                  examples.find((e) => e.age === age && e.product === product && e.sex === sex)
+                const cell = (e?: { monthlyBdt: number; annualBdt: number }) =>
+                  e && e.annualBdt > 0 ? `${taka(e.monthlyBdt)}/mo · ${taka(e.annualBdt)}/yr` : 'Not offered'
+                return (
+                  <Table.Tr key={age}>
+                    <Table.Td>{age}</Table.Td>
+                    <Table.Td ta="right">{cell(at('life', 'male'))}</Table.Td>
+                    <Table.Td ta="right">{cell(at('life', 'female'))}</Table.Td>
+                    <Table.Td ta="right">{cell(at('health', 'any'))}</Table.Td>
+                  </Table.Tr>
+                )
+              })}
             </Table.Tbody>
           </Table>
         </Table.ScrollContainer>
-      </Paper>
+      </Card>
 
-      {/*
-        Saying this on the screen rather than only in a document. Idea.md gives a
-        premium per tier and no rate card, so the scaling is an assumption, and
-        anyone reading a number off this page should know that.
-      */}
-      <Alert color="yellow" variant="light" icon={<IconInfoCircle size={18} />} title="How these numbers are worked out">
-        <Text size="sm">
-          Each tier has a baseline monthly premium at a reference cover of{' '}
-          <Text span fw={600}>
-            ৳{BDT.format(data.plans[0]?.referenceCoverBdt ?? 1_000_000)}
-          </Text>
-          , and the figures above scale linearly from it — asking for twice the
-          cover doubles the premium.
-        </Text>
-        <Text size="sm" mt="xs">
-          These are illustrative rates taken from the project specification, not
-          actuarial pricing. There is no mortality table, no expense loading and
-          no reinsurance behind them. Elevated risk carries no quoted rate on
-          purpose: attaching a price to it would imply an outcome that has not
-          been decided, and it is never an automated denial.
-        </Text>
-      </Alert>
+      <Calculator lifeAmounts={data.lifeAmounts} lifeTerms={data.lifeTerms} healthAmounts={data.healthAmounts} ratings={data.ratings} />
+
+      <PricingPolicyCard />
     </Stack>
+  )
+}
+
+function Calculator({
+  lifeAmounts,
+  lifeTerms,
+  healthAmounts,
+  ratings,
+}: {
+  lifeAmounts: number[]
+  lifeTerms: number[]
+  healthAmounts: number[]
+  ratings: number[]
+}) {
+  const [product, setProduct] = useState<'life' | 'health'>('life')
+  const [amount, setAmount] = useState<number>(1_000_000)
+  const [term, setTerm] = useState<number>(10)
+  const [age, setAge] = useState<number>(35)
+  const [sex, setSex] = useState<string>('male')
+  const [smoker, setSmoker] = useState(false)
+  const [rating, setRating] = useState(0)
+  const amounts = product === 'life' ? lifeAmounts : healthAmounts
+  const sum = amounts.includes(amount) ? amount : amounts[0]
+  const { data } = useQuery({
+    queryKey: ['quote', product, sum, term, age, sex, smoker, rating],
+    queryFn: () => quote({ product, sumAssuredBdt: sum, termYears: term, age, sex, smoker, ratingPct: rating }),
+  })
+  return (
+    <Card p="md">
+      <Text fw={700} mb="xs">
+        Price a policy
+      </Text>
+      <Group align="flex-end" gap="sm" wrap="wrap">
+        <SegmentedControl
+          size="xs"
+          value={product}
+          onChange={(v) => setProduct(v as 'life' | 'health')}
+          data={[
+            { value: 'life', label: 'Term life' },
+            { value: 'health', label: 'Hospital cover' },
+          ]}
+        />
+        <Select size="xs" label="Amount" w={130} data={amounts.map((a) => ({ value: String(a), label: lakh(a) }))} value={String(sum)} onChange={(v) => v && setAmount(Number(v))} allowDeselect={false} />
+        {product === 'life' && (
+          <Select size="xs" label="Years" w={90} data={lifeTerms.map(String)} value={String(term)} onChange={(v) => v && setTerm(Number(v))} allowDeselect={false} />
+        )}
+        <NumberInput size="xs" label="Age" w={80} min={18} max={70} value={age} onChange={(v) => setAge(Number(v) || 18)} />
+        <Select
+          size="xs"
+          label="Sex"
+          w={100}
+          data={[
+            { value: 'male', label: 'Male' },
+            { value: 'female', label: 'Female' },
+          ]}
+          value={sex}
+          onChange={(v) => v && setSex(v)}
+          allowDeselect={false}
+        />
+        <Select size="xs" label="Rating" w={110} data={ratings.map((r) => ({ value: String(r), label: r ? `+${r}%` : 'Standard' }))} value={String(rating)} onChange={(v) => v && setRating(Number(v))} allowDeselect={false} />
+        <Checkbox size="xs" label="Smoker" checked={smoker} onChange={(e) => setSmoker(e.currentTarget.checked)} mb={6} />
+      </Group>
+      {data && (
+        <Text size="sm" mt="sm" fw={600} c={data.eligible ? undefined : 'red'}>
+          {data.eligible
+            ? `${taka(data.monthlyBdt)} a month, or ${taka(data.annualBdt)} a year. Expected claims about ${taka(data.expectedClaimsBdt)} a year; the rest pays costs and profit.`
+            : data.reason}
+        </Text>
+      )}
+    </Card>
   )
 }

@@ -27,12 +27,25 @@ class ApplicantIn(BaseSchema):
     # Where the portal sign-in is sent. Optional: without it the operator is
     # shown the credentials to hand over in person.
     email: str | None = Field(default=None, max_length=255)
+    # The national ID, read from the card and confirmed by the operator.
+    nid_number: str | None = Field(default=None, max_length=20)
+    nid_name: str | None = Field(default=None, max_length=200)
+    nid_date_of_birth: date | None = None
+    # Who is paid if the client dies. Required for life cover.
+    nominee_name: str | None = Field(default=None, max_length=200)
+    nominee_relation: str | None = Field(default=None, max_length=50)
+    nominee_phone: str | None = Field(default=None, max_length=30)
+    # The client agreed to their health data being processed for this
+    # application. Required: health data is sensitive personal data.
+    consent: bool = False
 
 
 class CoverageIn(BaseSchema):
     coverage_type: str | None = None
     coverage_amount: Decimal | None = None
     policy_term: str | None = None
+    # How the client will pay the bank.
+    payment_mode: Literal["monthly", "yearly"] = "monthly"
 
 
 class IntakeIn(BaseSchema):
@@ -78,6 +91,10 @@ class QueueItemSchema(BaseSchema):
     # The policy an approval issued, and whether it is still in force.
     policy_number: str | None = None
     policy_status: str | None = None
+    # Declined, and the underwriter handling it.
+    declined: bool = False
+    assigned_to_id: UUID | None = None
+    assigned_to_name: str | None = None
 
 
 class QueueSchema(BaseSchema):
@@ -109,11 +126,12 @@ class TenantSettingsSchema(BaseSchema):
     # up to and including moderate_max, elevated above that.
     tier_low_max: float
     tier_moderate_max: float
-    # Pricing policy: monthly premium for the two quotable plans at the
-    # reference cover; premiums scale linearly with the cover requested.
-    premium_low_bdt: float
-    premium_moderate_bdt: float
-    reference_cover_bdt: float
+    # The pricing engine's assumptions (app/pricing.py).
+    life_expense_loading_pct: float
+    life_interest_pct: float
+    health_rate_per_lakh_bdt: float
+    smoker_loading_pct: float
+    monthly_loading_pct: float
 
 
 class TenantSettingsIn(BaseSchema):
@@ -129,9 +147,13 @@ class TenantSettingsIn(BaseSchema):
     turnaround_business_days: int | None = Field(default=None, ge=1, le=30)
     tier_low_max: float | None = Field(default=None, gt=0, lt=100)
     tier_moderate_max: float | None = Field(default=None, gt=0, lt=100)
-    premium_low_bdt: float | None = Field(default=None, gt=0, le=10_000_000)
-    premium_moderate_bdt: float | None = Field(default=None, gt=0, le=10_000_000)
-    reference_cover_bdt: float | None = Field(default=None, gt=0, le=1_000_000_000)
+    # Up to IDRA's cap for non-participating plans.
+    life_expense_loading_pct: float | None = Field(default=None, ge=5, le=22.32)
+    # At most IDRA's maximum assumed interest for non-participating plans.
+    life_interest_pct: float | None = Field(default=None, ge=0, le=5)
+    health_rate_per_lakh_bdt: float | None = Field(default=None, ge=300, le=20_000)
+    smoker_loading_pct: float | None = Field(default=None, ge=0, le=200)
+    monthly_loading_pct: float | None = Field(default=None, ge=0, le=15)
 
 
 class SettingsChangeSchema(BaseSchema):
@@ -264,37 +286,18 @@ class ClassifyResponseSchema(BaseSchema):
 
 
 class PlanSchema(BaseSchema):
-    """The policy recommendation for a tier, priced for this application.
-
-    Illustrative, not actuarial: Idea.md gives a premium per tier but no rate
-    card, so `baseMonthlyBdt` is the premium at `referenceCoverBdt` and
-    `monthlyPremiumBdt` scales it to the cover actually requested. The screen
-    says so wherever it shows a number.
-    """
+    """What the tier recommends, priced for this client at its suggested rating."""
 
     tier: str
     name: str
     recommendation: str
     human_step: str
-    base_monthly_bdt: float | None = None
-    reference_cover_bdt: float
+    product: str = "life"
+    rating_pct: int | None = None
+    annual_premium_bdt: float | None = None
     monthly_premium_bdt: float | None = None
-    wellness_discount_eligible: bool = False
-
-
-class PricingSchema(BaseSchema):
-    """The full plan table, with each tier's score band attached.
-
-    One response so the pricing screen cannot show a premium against the wrong
-    band: the cut-points come from `scoring.Thresholds`, the rates from
-    `plans.PLANS`, and neither is retyped in the dashboard.
-    """
-
-    plans: list["PlanSchema"]
-    low_max: float
-    moderate_max: float
-    # Echoed back so the screen can say what the premiums were worked out for.
-    coverage_amount: float | None = None
+    # Why it cannot be priced (age, term), when it cannot.
+    ineligible_reason: str | None = None
 
 
 class ModelSchema(BaseSchema):
@@ -332,9 +335,16 @@ class FileSchema(BaseSchema):
 
 class DecisionSchema(BaseSchema):
     decision: UnderwriterDecisionType
+    # The monthly premium the approval was issued at.
     final_premium: Decimal | None = None
     decided_at: datetime
     underwriter_name: str | None = None
+    rating_pct: int = 0
+    exclusions: list[str] = Field(default_factory=list)
+    decline_reason: str | None = None
+    decline_reason_label: str | None = None
+    decline_note: str | None = None
+    reapply_after: date | None = None
 
 
 class DoctorReviewIn(BaseSchema):
@@ -403,8 +413,17 @@ class ApplicationDetailSchema(BaseSchema):
     sent_to_doctor_at: datetime | None = None
     doctor_reviews: list[DoctorReviewSchema] = Field(default_factory=list)
     client_messages: list[ClientMessageSchema] = Field(default_factory=list)
-    # The policy an approval issued, with its payments.
+    # The policy an approval issued.
     policy: PolicySchema | None = None
+    # What pricing needs: the product, the client's age today, whether they
+    # declared smoking. And exclusions the readers' findings suggest.
+    product: str = "life"
+    age: int | None = None
+    smoker: bool = False
+    suggested_exclusions: list[str] = Field(default_factory=list)
+    # The underwriter who took this case.
+    assigned_to_id: UUID | None = None
+    assigned_to_name: str | None = None
     # Why an arm produced nothing. The review screen must never show a blank
     # panel with no explanation.
     errors: list[str] = Field(default_factory=list)
@@ -441,8 +460,40 @@ class EscalateIn(BaseSchema):
 
 
 class DecisionIn(BaseSchema):
+    """An underwriter's decision.
+
+    Approvals carry a rating (extra on the premium, one of pricing.RATINGS) and,
+    for hospital cover, exclusions. The premium is worked out by the server from
+    the rating; it is not typed. A decline carries a reason code
+    (app/decline.py), an optional note the client reads, and optionally when
+    they may apply again.
+    """
+
     decision: UnderwriterDecisionType
-    final_premium: Decimal | None = None
+    rating_pct: int = 0
+    exclusions: list[str] = Field(default_factory=list, max_length=12)
+    decline_reason: str | None = None
+    decline_note: str | None = Field(default=None, max_length=1000)
+    reapply_after_months: int | None = Field(default=None, ge=1, le=24)
+
+
+class QuoteIn(BaseSchema):
+    rating_pct: int = 0
+
+
+class QuoteSchema(BaseSchema):
+    product: str
+    sum_assured_bdt: float
+    term_years: int
+    age: int
+    annual_bdt: float
+    monthly_bdt: float
+    total_bdt: float
+    expected_claims_bdt: float
+    rating_pct: int
+    smoker: bool
+    eligible: bool
+    reason: str | None = None
 
 
 # ── audit ────────────────────────────────────────────────────────────────────

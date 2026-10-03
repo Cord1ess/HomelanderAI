@@ -8,6 +8,7 @@ All routes live under `/api` so that the built frontend can be served from `/`
 later without a path collision.
 """
 
+import asyncio
 import logging
 import threading
 from contextlib import asynccontextmanager
@@ -22,13 +23,17 @@ from app.routers import (
     access,
     applications,
     auth,
+    claims,
     client_sign_in,
+    deletion,
     health,
     insights,
     model_bench,
+    nid_reader,
     notifications,
     policies,
     portal,
+    pricing,
     tenant,
 )
 
@@ -67,7 +72,12 @@ def _warm_models() -> None:
 @asynccontextmanager
 async def lifespan(_: FastAPI):
     threading.Thread(target=_warm_models, name="warm-models", daemon=True).start()
+    # Clients' approved deletion requests are carried out on their day.
+    stop = asyncio.Event()
+    task = asyncio.create_task(deletion.scheduler(stop))
     yield
+    stop.set()
+    task.cancel()
 
 app = FastAPI(
     title=settings.app_name,
@@ -127,4 +137,8 @@ app.include_router(access.router, prefix="/api")
 app.include_router(policies.router, prefix="/api")
 app.include_router(client_sign_in.router, prefix="/api")
 app.include_router(model_bench.router, prefix="/api")
+app.include_router(claims.router, prefix="/api")
+app.include_router(deletion.router, prefix="/api")
+app.include_router(pricing.router, prefix="/api")
+app.include_router(nid_reader.router, prefix="/api")
 

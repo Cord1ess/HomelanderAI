@@ -41,13 +41,16 @@ from app import (
     outbox,
     persistence,
     plans,
+    pricing,
     progress,
     storage,
     triage,
     turnaround,
 )
+from app import decline as decline_rules
 from app import ecg as ecg_signal
 from app import evidence as evidence_kinds
+from app import policies as pricing_dates
 from app.arms import arm_for_intake, arms_for, form_arms
 from app.core.security import generate_password, generate_portal_id, hash_password
 from app.db.session import AsyncSessionLocal, get_db
@@ -108,9 +111,10 @@ from app.schemas.application import (
     ModelSchema,
     PlanSchema,
     PortalCredentialsSchema,
-    PricingSchema,
     QueueItemSchema,
     QueueSchema,
+    QuoteIn,
+    QuoteSchema,
     RequestedDocumentSchema,
     RequestEvidenceIn,
     ScoreSchema,
@@ -130,43 +134,6 @@ SCORING_ARM = "cxr_lung"
 
 # Face photos are identity, not evidence, and no model reads them.
 MAX_FACE_BYTES = 10 * 1024 * 1024
-
-
-@router.get(
-    "/pricing",
-    response_model=PricingSchema,
-    summary="The plan for each risk tier, priced for a given cover",
-)
-async def get_pricing(
-    coverage: float | None = Query(
-        default=None, ge=0, description="Sum assured in BDT; premiums scale from it"
-    ),
-    principal: Principal = Depends(current_principal),
-    db: AsyncSession = Depends(get_db),
-) -> PricingSchema:
-    """What each tier means for the policy, under this company's settings.
-
-    Premiums are worked out here rather than in the dashboard so one change to
-    the company's policy moves every screen at once. The plans and their prices
-    are the company owner's: an administrator's only.
-    """
-    if principal.role != UserRole.ADMIN.value:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Plans and pricing are for the company owner (an administrator).",
-        )
-    tenant = await db.get(Tenant, principal.tenant_id)
-    thresholds = _thresholds_for(tenant)
-    policy = plans.Policy.from_tenant(tenant) if tenant else plans.DEFAULT_POLICY
-    return PricingSchema(
-        plans=[
-            PlanSchema.model_validate(plans.for_tier(tier, coverage, policy))
-            for tier in ("low", "moderate", "elevated", "insufficient_evidence")
-        ],
-        low_max=thresholds.low_max,
-        moderate_max=thresholds.moderate_max,
-        coverage_amount=coverage,
-    )
 
 
 def _thresholds_for(tenant: Tenant | None) -> Thresholds:
@@ -315,6 +282,9 @@ async def submit_application(
     # panel it was attached to.
     file_kinds: list[str] = Form(default=[]),
     face_photo: UploadFile | None = File(default=None),
+    # The front of the client's national ID card. Identity, like the face
+    # photo: stored, never read by a model.
+    nid_image: UploadFile | None = File(default=None),
     db: AsyncSession = Depends(get_db),
     principal: Principal = Depends(current_principal),
 ) -> SubmitResponseSchema:
@@ -347,6 +317,45 @@ async def submit_application(
             detail="That email address does not look right.",
         )
 
+    # Health data is sensitive personal data: nothing is taken without the
+    # client's agreement, recorded with the time it was given.
+    if not intake.applicant.consent:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="The client has to agree to their health data being used before an "
+            "application can be taken.",
+        )
+    product = pricing.product_for(intake.coverage.coverage_type)
+    if product == "life" and not (intake.applicant.nominee_name or "").strip():
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Life cover needs a nominee: the person paid if the client dies.",
+        )
+    # The products' age limits are not checked here: an application outside
+    # them can still be taken (the intake screen warns first), and it cannot be
+    # approved — the underwriter declines it as outside the limits.
+    nid_number = "".join(ch for ch in (intake.applicant.nid_number or "") if ch.isdigit()) or None
+    if nid_number and len(nid_number) not in (10, 13, 17):
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="An NID number has 10, 13 or 17 digits.",
+        )
+    if nid_number:
+        already = (
+            await db.execute(
+                select(Applicant.external_ref).where(
+                    Applicant.tenant_id == principal.tenant_id,
+                    Applicant.nid_number == nid_number,
+                )
+            )
+        ).scalar_one_or_none()
+        if already:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=f"A client with this NID already exists ({already}). Open their profile "
+                "instead of taking them again.",
+            )
+
     # The applicant's portal sign-in. The password exists in this request only:
     # its hash is stored, and it is emailed or handed to the operator below.
     portal_password = generate_password()
@@ -360,6 +369,13 @@ async def submit_application(
         email=email,
         portal_id=generate_portal_id(),
         password_hash=hash_password(portal_password),
+        nid_number=nid_number,
+        nid_name=(intake.applicant.nid_name or "").strip() or None,
+        nid_date_of_birth=intake.applicant.nid_date_of_birth,
+        nominee_name=(intake.applicant.nominee_name or "").strip() or None,
+        nominee_relation=(intake.applicant.nominee_relation or "").strip() or None,
+        nominee_phone=(intake.applicant.nominee_phone or "").strip() or None,
+        consent_at=datetime.now(UTC),
     )
     db.add(applicant)
     # The reference comes from a BEFORE INSERT trigger, so it only exists after
@@ -381,7 +397,8 @@ async def submit_application(
         status=ApplicationStatus.SUBMITTED,
         coverage_type=intake.coverage.coverage_type,
         coverage_amount=intake.coverage.coverage_amount,
-        policy_term=intake.coverage.policy_term,
+        policy_term=intake.coverage.policy_term if product == "life" else "1",
+        payment_mode=intake.coverage.payment_mode,
         models_requested=intake.models_requested,
         declared_history=intake.declared_history,
         # Local date, not UTC. Working days are calendar days where the
@@ -416,6 +433,25 @@ async def submit_application(
 
             applicant.face_photo_path = storage.write(
                 principal.tenant_id, application.id, f"face-{applicant.id}.png", photo.data
+            )
+
+    if nid_image is not None and nid_image.filename:
+        raw = await nid_image.read()
+        if len(raw) > MAX_FACE_BYTES:
+            raise HTTPException(
+                status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+                detail="The NID card image is larger than 10 MB.",
+            )
+        if raw:
+            try:
+                card = process_upload(raw, nid_image.filename)
+            except IntakeError as exc:
+                raise HTTPException(
+                    status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                    detail=f"The NID card image could not be read: {exc}",
+                ) from exc
+            applicant.nid_image_path = storage.write(
+                principal.tenant_id, application.id, f"nid-{applicant.id}.png", card.data
             )
 
     _apply_measurements(applicant, intake.declared_history)
@@ -800,6 +836,7 @@ async def _notify_tenant(
 async def list_applications(
     status_filter: str | None = Query(default=None, alias="status"),
     q: str | None = Query(default=None, description="Match a reference or applicant name"),
+    mine: bool = Query(default=False, description="Only the cases I have taken"),
     limit: int = Query(default=50, ge=1, le=200),
     offset: int = Query(default=0, ge=0),
     db: AsyncSession = Depends(get_db),
@@ -837,6 +874,8 @@ async def list_applications(
 
     if status_filter and status_filter != "all":
         base = base.where(Application.status == status_filter)
+    if mine:
+        base = base.where(Application.assigned_to == principal.user_id)
 
     if q:
         pattern = f"%{q.strip()}%"
@@ -862,9 +901,26 @@ async def list_applications(
             )
         ).all()
     } if listed else {}
+    ids = [a.id for a, _, _ in listed]
+    declined = set(
+        (
+            await db.execute(
+                select(UnderwriterDecision.application_id).where(
+                    UnderwriterDecision.application_id.in_(ids),
+                    UnderwriterDecision.decision == UnderwriterDecisionType.DECLINED,
+                )
+            )
+        ).scalars().all()
+    ) if ids else set()
+    holder_ids = {a.assigned_to for a, _, _ in listed if a.assigned_to}
+    holders = {
+        u.id: u.full_name
+        for u in (await db.execute(select(User).where(User.id.in_(holder_ids)))).scalars()
+    } if holder_ids else {}
     items = []
     for application, applicant, score in listed:
         running = progress.get(application.id)
+        holder = holders.get(application.assigned_to) if application.assigned_to else None
         items.append(QueueItemSchema(
             id=application.id,
             reference=applicant.external_ref,
@@ -883,6 +939,9 @@ async def list_applications(
             progress_step=running.step if running else None,
             policy_number=issued.get(application.id, (None, None))[0],
             policy_status=issued.get(application.id, (None, None))[1],
+            declined=application.id in declined,
+            assigned_to_id=application.assigned_to,
+            assigned_to_name=holder,
         ))
 
     counted = select(Application.status, func.count()).where(
@@ -911,7 +970,10 @@ async def get_application(
 ) -> ApplicationDetailSchema:
     application, applicant = await _load_owned(db, application_id, principal)
     tenant = await db.get(Tenant, principal.tenant_id)
-    policy = plans.Policy.from_tenant(tenant) if tenant else plans.DEFAULT_POLICY
+    rates = pricing.Rates.from_tenant(tenant) if tenant else pricing.DEFAULT_RATES
+    product = pricing.product_for(application.coverage_type)
+    age = pricing.age_on(applicant.date_of_birth, date.today())
+    smoker = pricing.is_smoker(application.declared_history)
 
     score_row = (
         await db.execute(
@@ -1011,12 +1073,7 @@ async def get_application(
     decision = None
     if decision_row is not None:
         record, underwriter = decision_row
-        decision = DecisionSchema(
-            decision=record.decision,
-            final_premium=record.final_premium,
-            decided_at=record.decided_at,
-            underwriter_name=underwriter.full_name if underwriter else None,
-        )
+        decision = _decision_schema(record, underwriter.full_name if underwriter else None)
 
     return ApplicationDetailSchema(
         id=application.id,
@@ -1032,11 +1089,33 @@ async def get_application(
             phone=applicant.phone or "",
             date_of_birth=applicant.date_of_birth,
             sex=applicant.sex,
+            nid_number=applicant.nid_number,
+            nid_name=applicant.nid_name,
+            nid_date_of_birth=applicant.nid_date_of_birth,
+            nominee_name=applicant.nominee_name,
+            nominee_relation=applicant.nominee_relation,
+            nominee_phone=applicant.nominee_phone,
+            consent=applicant.consent_at is not None,
         ),
         coverage=CoverageIn(
             coverage_type=application.coverage_type,
             coverage_amount=application.coverage_amount,
             policy_term=application.policy_term,
+            payment_mode=(
+                "yearly" if application.payment_mode == "yearly" else "monthly"
+            ),
+        ),
+        product=product,
+        age=age,
+        smoker=smoker,
+        suggested_exclusions=pricing.suggested_exclusions(
+            _arm_tiers(arms, score_row), application.declared_history
+        ),
+        assigned_to_id=application.assigned_to,
+        assigned_to_name=(
+            (await db.get(User, application.assigned_to)).full_name
+            if application.assigned_to
+            else None
         ),
         models_requested=application.models_requested or [],
         declared_history=application.declared_history or {},
@@ -1044,8 +1123,13 @@ async def get_application(
             PlanSchema.model_validate(
                 plans.for_tier(
                     score_row.tier.value if score_row else application.status.value,
+                    product,
                     float(application.coverage_amount) if application.coverage_amount else None,
-                    policy,
+                    pricing.term_years(application.policy_term),
+                    age,
+                    applicant.sex,
+                    smoker,
+                    rates,
                 )
             )
             if (score_row or application.status == ApplicationStatus.INSUFFICIENT_EVIDENCE)
@@ -1290,11 +1374,58 @@ async def record_decision(
             detail="This application is with a doctor. It can be decided once they send it back.",
         )
 
-    if payload.decision.value == "approved_with_adjustment" and not payload.final_premium:
+    approving = payload.decision in (
+        UnderwriterDecisionType.CONFIRMED_FAST_TRACK,
+        UnderwriterDecisionType.APPROVED_WITH_ADJUSTMENT,
+    )
+    declining = payload.decision == UnderwriterDecisionType.DECLINED
+    product = pricing.product_for(application.coverage_type)
+    rating = payload.rating_pct
+    exclusions = [e.strip() for e in payload.exclusions if e and e.strip()]
+    if payload.decision == UnderwriterDecisionType.CONFIRMED_FAST_TRACK:
+        rating, exclusions = 0, []
+    if approving and rating not in pricing.RATINGS:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail="An adjusted approval needs a final premium.",
+            detail=f"The rating must be one of {', '.join(f'+{r}%' for r in pricing.RATINGS)}.",
         )
+    if exclusions and product != "health":
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Exclusions apply to hospital cover. For life cover, rate the premium instead.",
+        )
+    if payload.decision == UnderwriterDecisionType.APPROVED_WITH_ADJUSTMENT and not (
+        rating or exclusions
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="An adjusted approval needs a rating, an exclusion, or both. With neither, "
+            "approve at standard rates.",
+        )
+    if declining and payload.decline_reason not in decline_rules.REASONS:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Say why the application is declined.",
+        )
+    priced = None
+    if approving:
+        tenant = await db.get(Tenant, application.tenant_id)
+        priced = pricing.quote(
+            product,
+            float(application.coverage_amount or 0),
+            pricing.term_years(application.policy_term),
+            pricing.age_on(applicant.date_of_birth, date.today()),
+            applicant.sex,
+            pricing.is_smoker(application.declared_history),
+            rating,
+            pricing.Rates.from_tenant(tenant) if tenant else pricing.DEFAULT_RATES,
+        )
+        if not application.coverage_amount or not priced.eligible:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=(priced.reason or "There is no cover amount to insure.")
+                + " Decline it as outside the product's limits instead.",
+            )
 
     underwriter = await db.get(User, principal.user_id)
     if underwriter is None:
@@ -1310,10 +1441,7 @@ async def record_decision(
     # its results. The review screen hides those buttons, but a
     # rule that exists only in the browser is not a rule: the same request sent
     # directly would have been accepted.
-    if principal.role == UserRole.UNDERWRITER.value and payload.decision in (
-        UnderwriterDecisionType.CONFIRMED_FAST_TRACK,
-        UnderwriterDecisionType.APPROVED_WITH_ADJUSTMENT,
-    ):
+    if principal.role == UserRole.UNDERWRITER.value and (approving or declining):
         latest_score = (
             await db.execute(
                 select(CompositeScore)
@@ -1328,7 +1456,7 @@ async def record_decision(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail=(
                     "This application is elevated risk. Send it to a doctor first; "
-                    "once they have checked the results you can decide it."
+                    "once they have checked the results you can decide it, either way."
                 ),
             )
 
@@ -1337,14 +1465,23 @@ async def record_decision(
         application_id=application.id,
         underwriter_id=underwriter.id,
         decision=payload.decision,
-        final_premium=payload.final_premium,
+        final_premium=Decimal(str(priced.monthly_bdt)) if priced else None,
+        rating_pct=rating if approving else 0,
+        exclusions=exclusions if approving else [],
+        decline_reason=payload.decline_reason if declining else None,
+        decline_note=(payload.decline_note or "").strip() or None if declining else None,
+        reapply_after=(
+            pricing_dates.add_months(date.today(), payload.reapply_after_months)
+            if declining and payload.reapply_after_months
+            else None
+        ),
     )
     db.add(record)
     application.status = ApplicationStatus.DECIDED
     # An approval issues the policy the client then sees on their portal.
     from app.routers.policies import issue_policy
 
-    issued = await issue_policy(db, application, applicant, record)
+    issued = await issue_policy(db, application, applicant, record, priced) if priced else None
 
     await persistence.append_audit(
         db,
@@ -1354,7 +1491,10 @@ async def record_decision(
         event_type="decision_recorded",
         payload={
             "decision": payload.decision.value,
-            "final_premium": float(payload.final_premium) if payload.final_premium else None,
+            "rating_pct": record.rating_pct,
+            "exclusions": record.exclusions,
+            "decline_reason": record.decline_reason,
+            "annual_premium": priced.annual_bdt if priced else None,
             "policy_number": issued.policy_number if issued else None,
         },
     )
@@ -1362,7 +1502,12 @@ async def record_decision(
         db,
         application,
         NotificationType.DECISION_RECORDED,
-        f"Decision recorded: {payload.decision.value.replace('_', ' ')}",
+        f"{applicant.external_ref}: "
+        + (
+            f"declined ({decline_rules.staff_label(record.decline_reason)})"
+            if declining
+            else f"approved, policy {issued.policy_number}" if issued else "decision recorded"
+        ),
     )
 
     try:
@@ -1394,12 +1539,140 @@ async def record_decision(
             applicant.external_ref,
         )
 
+    return _decision_schema(record, underwriter.full_name)
+
+
+def _decision_schema(record: UnderwriterDecision, name: str | None) -> DecisionSchema:
     return DecisionSchema(
         decision=record.decision,
         final_premium=record.final_premium,
         decided_at=record.decided_at,
-        underwriter_name=underwriter.full_name,
+        underwriter_name=name,
+        rating_pct=record.rating_pct or 0,
+        exclusions=list(record.exclusions or []),
+        decline_reason=record.decline_reason,
+        decline_reason_label=decline_rules.staff_label(record.decline_reason),
+        decline_note=record.decline_note,
+        reapply_after=record.reapply_after,
     )
+
+
+def _arm_tiers(arms: list, score_row) -> dict[str, str]:
+    """Each reader's tier, by the boundaries its application was scored with."""
+    limits = (score_row.tier_thresholds or {}) if score_row else {}
+    low = float(limits.get("low_max", Thresholds().low_max))
+    moderate = float(limits.get("moderate_max", Thresholds().moderate_max))
+    out: dict[str, str] = {}
+    for run in arms:
+        if run.score is None:
+            continue
+        out[run.arm] = (
+            "low" if run.score <= low else "moderate" if run.score <= moderate else "elevated"
+        )
+    return out
+
+
+# ── pricing one application ──────────────────────────────────────────────────
+
+
+@router.post(
+    "/applications/{application_id}/quote",
+    response_model=QuoteSchema,
+    summary="The premium for this client at a given rating",
+)
+async def quote_application(
+    application_id: UUID,
+    payload: QuoteIn,
+    db: AsyncSession = Depends(get_db),
+    principal: Principal = Depends(current_principal),
+) -> QuoteSchema:
+    application, applicant = await _load_owned(db, application_id, principal)
+    if payload.rating_pct not in pricing.RATINGS:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Unknown rating."
+        )
+    tenant = await db.get(Tenant, principal.tenant_id)
+    q = pricing.quote(
+        pricing.product_for(application.coverage_type),
+        float(application.coverage_amount or 0),
+        pricing.term_years(application.policy_term),
+        pricing.age_on(applicant.date_of_birth, date.today()),
+        applicant.sex,
+        pricing.is_smoker(application.declared_history),
+        payload.rating_pct,
+        pricing.Rates.from_tenant(tenant) if tenant else pricing.DEFAULT_RATES,
+    )
+    return _quote_schema(q)
+
+
+def _quote_schema(q: pricing.Quote) -> QuoteSchema:
+    return QuoteSchema(
+        product=q.product,
+        sum_assured_bdt=q.sum_assured,
+        term_years=q.term_years,
+        age=q.age,
+        annual_bdt=q.annual_bdt,
+        monthly_bdt=q.monthly_bdt,
+        total_bdt=q.total_bdt,
+        expected_claims_bdt=q.expected_claims_bdt,
+        rating_pct=q.rating_pct,
+        smoker=q.smoker,
+        eligible=q.eligible,
+        reason=q.reason,
+    )
+
+
+# ── who has the case ─────────────────────────────────────────────────────────
+
+
+@router.post(
+    "/applications/{application_id}/assign",
+    response_model=ApplicationDetailSchema,
+    summary="Take the case (or hand it back with release=true)",
+)
+async def assign_application(
+    application_id: UUID,
+    release: bool = Query(default=False),
+    db: AsyncSession = Depends(get_db),
+    principal: Principal = Depends(current_principal),
+) -> ApplicationDetailSchema:
+    """One underwriter takes a case so two do not work it at once. Anyone may
+    see it; the queue says who has it. An administrator can take it over."""
+    _not_for_doctors(principal, "taking a case")
+    application, _ = await _load_owned(db, application_id, principal)
+    me = await db.get(User, principal.user_id)
+    if me is None:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="No user record.")
+    if release:
+        if application.assigned_to not in (None, me.id) and principal.role != UserRole.ADMIN.value:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Only the person who has it can hand it back.",
+            )
+        application.assigned_to = None
+        application.assigned_at = None
+    else:
+        if (
+            application.assigned_to not in (None, me.id)
+            and principal.role != UserRole.ADMIN.value
+        ):
+            holder = await db.get(User, application.assigned_to)
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=f"{holder.full_name if holder else 'Someone'} already has this case.",
+            )
+        application.assigned_to = me.id
+        application.assigned_at = datetime.now(UTC)
+    await persistence.append_audit(
+        db,
+        tenant_id=application.tenant_id,
+        application_id=application.id,
+        actor_user_id=me.id,
+        event_type="case_released" if release else "case_taken",
+        payload={"by": me.full_name},
+    )
+    await db.commit()
+    return await get_application(application_id, db, principal)
 
 
 # ── turnaround ───────────────────────────────────────────────────────────────

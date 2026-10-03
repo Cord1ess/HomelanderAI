@@ -9,7 +9,6 @@ import {
   Grid,
   Group,
   Image,
-  NumberInput,
   Paper,
   SimpleGrid,
   Stack,
@@ -27,7 +26,6 @@ import { notifications } from '@mantine/notifications'
 import {
   IconAlertTriangle,
   IconChevronDown,
-  IconCircleCheck,
   IconShieldCheck,
   IconShieldX,
 } from '@tabler/icons-react'
@@ -49,12 +47,12 @@ import {
   type EvidenceFile,
   type DecisionType,
   type Finding,
-  type Plan,
 } from '../../api/client'
 import { PageHeader } from '../../components/PageHeader'
 import { StatusBadge } from '../../components/StatusBadge'
 import { DoctorVerdictBadge } from '../../components/DoctorVerdictBadge'
 import { PolicyPanel } from '../clients/PolicyPanel'
+import { DecisionPanel } from './DecisionPanel'
 import { DoctorPanel } from './DoctorPanel'
 import { ReaderCards } from './ReaderCards'
 import { groupRuns, infoFor, limitsOf, bandFor, type Limits } from './readers'
@@ -76,16 +74,6 @@ import { ROLE_LABEL } from '../../types/auth'
  *  · `approved_with_adjustment` reveals a final-premium input.
  */
 
-const DECISIONS: { value: DecisionType; label: string }[] = [
-  { value: 'confirmed_fast_track', label: 'Confirm fast-track' },
-  { value: 'approved_with_adjustment', label: 'Approve with adjustment' },
-  { value: 'escalated_senior_review', label: 'Send to a doctor' },
-  // "Request more evidence" is deliberately not here. Decisions are
-  // write-once, so recording a request as one would decide the application
-  // forever the moment a document was asked for. It has its own panel and
-  // its own endpoint, and the decision stays open while the applicant is
-  // being waited on.
-]
 
 const TOP_N = 5
 
@@ -193,7 +181,6 @@ export function ReviewPage() {
       } else {
         await recordDecision(id, {
           decision: decision as DecisionType,
-          finalPremium: decision === 'approved_with_adjustment' ? premium : null,
         })
       }
     },
@@ -453,8 +440,6 @@ function Review({ data, state }: { data: ApplicationDetail; state: ReviewState }
   const errors = data.errors ?? []
 
   const decided = Boolean(data.decision)
-  const scored =
-    data.status === 'scored' || data.status === 'decided' || data.status === 'escalated'
   const escalated = data.status === 'escalated'
   const pending = data.status === 'submitted' || data.status === 'processing'
 
@@ -642,13 +627,6 @@ function Review({ data, state }: { data: ApplicationDetail; state: ReviewState }
                 </Text>
               )}
             </Group>
-            {!decided && (
-              <Text size="xs" mb="sm" style={{ color: 'var(--neo-muted)' }}>
-                Pick one. It is recorded under your name, written to the audit trail, and cannot be
-                changed afterwards. The client is emailed that there is an update.
-              </Text>
-            )}
-
             {escalated && !decided && (
               <Alert color="grape" variant="light" icon={<IconShieldCheck size={18} />} title="With a doctor" mb="sm">
                 <Text size="xs">
@@ -687,146 +665,8 @@ function Review({ data, state }: { data: ApplicationDetail; state: ReviewState }
               </Alert>
             )}
 
-            {decided ? (
-              <Alert
-                icon={<IconCircleCheck size={18} />}
-                color="teal"
-                variant="light"
-                title="Decision recorded"
-                className="decision-recorded"
-              >
-                <Text size="sm">
-                  <strong>
-                    {DECISIONS.find((d) => d.value === data.decision?.decision)?.label ??
-                      data.decision?.decision}
-                  </strong>{' '}
-                  by {data.decision?.underwriterName ?? 'an underwriter'},{' '}
-                  {relativeTime(data.decision?.decidedAt)}.
-                  {data.decision?.finalPremium != null &&
-                    ` Final premium ${Number(data.decision.finalPremium).toLocaleString()}.`}{' '}
-                  A recorded decision cannot be changed.
-                </Text>
-              </Alert>
-            ) : !scored && data.status !== 'insufficient_evidence' && data.status !== 'awaiting_evidence' ? (
-              <Text size="sm" c="dimmed">
-                A decision can be recorded once the models have finished reading the evidence.
-              </Text>
-            ) : (
-              <>
-                <SimpleGrid cols={1} spacing="xs">
-                  {DECISIONS.filter((d) => !(escalated && d.value === 'escalated_senior_review')).map((d) => {
-                    const isApprovalAction =
-                      d.value === 'confirmed_fast_track' || d.value === 'approved_with_adjustment'
-                    const isBlockedForUnderwriter =
-                      isApprovalAction &&
-                      ((escalated && !isAdmin) || (isUnderwriter && isElevated && !reviewedByDoctor))
-                    const isEscalate = d.value === 'escalated_senior_review'
-
-                    const btn = (
-                      <Button
-                        key={d.value}
-                        variant={state.decision === d.value ? 'filled' : 'light'}
-                        color={
-                          state.decision === d.value
-                            ? isEscalate
-                              ? 'orange'
-                              : isMedical
-                              ? 'grape'
-                              : 'clinical'
-                            : 'gray'
-                        }
-                        justify="space-between"
-                        disabled={isBlockedForUnderwriter}
-                        onClick={() => {
-                          state.setDecision(d.value)
-                          // Start from the plan's figure rather than an empty box, so
-                          // the rate is anchored to the tier and the cover requested.
-                          // The underwriter still sets the final number.
-                          if (d.value === 'approved_with_adjustment' && state.premium == null) {
-                            state.setPremium(data.plan?.monthlyPremiumBdt ?? undefined)
-                          }
-                        }}
-                      >
-                        {d.label}
-                      </Button>
-                    )
-
-                    if (isBlockedForUnderwriter) {
-                      return (
-                        <Tooltip
-                          key={d.value}
-                          label={
-                            escalated
-                              ? 'With a doctor: decide once they send it back'
-                              : 'Elevated risk: send this to a doctor first'
-                          }
-                          withArrow
-                        >
-                          <div>{btn}</div>
-                        </Tooltip>
-                      )
-                    }
-
-                    return btn
-                  })}
-                </SimpleGrid>
-
-                {state.decision === 'escalated_senior_review' && (
-                  <Textarea
-                    mt="md"
-                    label="A note for the doctor"
-                    description="Optional. What you want them to look at. They see it with the notification."
-                    placeholder="The apex of the right lung; the client reports a cough of six weeks."
-                    autosize
-                    minRows={2}
-                    value={state.escalateNote}
-                    onChange={(e) => state.setEscalateNote(e.currentTarget.value)}
-                  />
-                )}
-
-                {state.decision === 'approved_with_adjustment' && (
-                  <NumberInput
-                    mt="md"
-                    label="Final monthly premium (BDT)"
-                    description={
-                      data.plan?.monthlyPremiumBdt != null
-                        ? `Plan suggests ৳${Math.round(
-                            data.plan.monthlyPremiumBdt,
-                          ).toLocaleString('en-IN')} for the cover requested. Adjust as you see fit.`
-                        : 'Set the rate you are approving at.'
-                    }
-                    placeholder="7,500"
-                    thousandSeparator=","
-                    min={0}
-                    value={state.premium}
-                    onChange={(v) =>
-                      state.setPremium(typeof v === 'number' ? v : Number(v) || undefined)
-                    }
-                  />
-                )}
-
-                <Group justify="space-between" mt="md">
-                  <Text size="xs" c="dimmed">
-                    There is no decline here. If this should not be approved, send it to a doctor.
-                  </Text>
-                  <Button
-                    size="xs"
-                    disabled={
-                      !state.decision ||
-                      // An adjusted approval without a rate is not a decision.
-                      (state.decision === 'approved_with_adjustment' && (state.premium ?? 0) <= 0)
-                    }
-                    onClick={() => state.submit.mutate()}
-                    loading={state.submit.isPending}
-                  >
-                    {state.decision === 'escalated_senior_review' ? 'Send to doctor' : 'Record decision'}
-                  </Button>
-                </Group>
-              </>
-            )}
+            <DecisionPanel data={data} isElevated={isElevated} reviewedByDoctor={reviewedByDoctor} />
           </Paper>
-          {/* ── What this means for the policy ──────────────────── */}
-          {data.plan && <PlanPanel plan={data.plan} coverage={data.coverage} />}
           {/* ── Requested documents ─────────────────────────────── */}
           {((data.requestedDocuments ?? []).length > 0 || (!decided && !pending)) && (
             <Paper p="md" bd="1px solid var(--mantine-color-default-border)">
@@ -1349,8 +1189,6 @@ function MammogramViews({ files }: { files: EvidenceFile[] }) {
     </SimpleGrid>
   )
 }
-
-const bdt = (n: number) => `৳${Math.round(n).toLocaleString('en-IN')}`
 
 /**
  * Mortality relative to age, from the blood panel and the lifestyle answers.
@@ -2209,87 +2047,6 @@ function EcgPanel({ run, age }: { run: ArmRun; age: number | null }) {
         obtain the cardiologist's report.
       </Text>
     </div>
-  )
-}
-
-/**
- * What the tier means for the policy, priced against the cover the applicant
- * asked for.
- *
- * The premiums come from Idea.md §5, which gives a monthly figure per tier but
- * no rate card. The API treats those figures as the premium at a reference sum
- * assured and scales linearly, so asking for twice the cover doubles the
- * premium. That assumption is printed here rather than buried, because an
- * underwriter reading a number needs to know it is an illustration and not a
- * quote.
- */
-function PlanPanel({
-  plan,
-  coverage,
-}: {
-  plan: Plan
-  coverage: ApplicationDetail['coverage']
-}) {
-  const requested = coverage.coverageAmount ? Number(coverage.coverageAmount) : null
-
-  return (
-    <Paper p="md" bd="1px solid var(--mantine-color-default-border)">
-      <Group justify="space-between" align="flex-start" mb="sm">
-        <div>
-          <Text fw={600} size="sm">
-            Recommended plan
-          </Text>
-          <Text size="xs" c="dimmed">
-            What this tier is offered under your company's plans. A starting point for the rate, not the rate.
-          </Text>
-        </div>
-        <Badge variant="light" color="clinical" size="lg">
-          {plan.name}
-        </Badge>
-      </Group>
-
-      <SimpleGrid cols={1} spacing="sm">
-        <Field label="Cover requested">
-          {requested ? bdt(requested) : '—'}
-          {coverage.coverageType && (
-            <Text span size="xs" c="dimmed">
-              {' '}
-              · {coverage.coverageType}
-              {coverage.policyTerm ? `, ${coverage.policyTerm} yr` : ''}
-            </Text>
-          )}
-        </Field>
-
-        <Field label="Indicative monthly premium">
-          {plan.monthlyPremiumBdt != null ? (
-            bdt(plan.monthlyPremiumBdt)
-          ) : (
-            <Text span c="dimmed">
-              Not quoted at this tier
-            </Text>
-          )}
-        </Field>
-
-        <Field label="Human step required">
-          <Text span size="sm">
-            {plan.humanStep}
-          </Text>
-        </Field>
-      </SimpleGrid>
-
-      <Text size="sm" mt="md">
-        {plan.recommendation}.
-        {plan.wellnessDiscountEligible && ' Eligible for a wellness-plan discount.'}
-      </Text>
-
-      <Text size="xs" c="dimmed" mt="xs">
-        {plan.baseMonthlyBdt != null
-          ? `Illustrative only: ${bdt(plan.baseMonthlyBdt)}/month at ${bdt(
-              plan.referenceCoverBdt,
-            )} of cover, scaled to the amount requested. Not an actuarial quote — you set the final rate.`
-          : 'No rate is quoted at this tier. Once a doctor has checked the results, you set what, if anything, is offered.'}
-      </Text>
-    </Paper>
   )
 }
 

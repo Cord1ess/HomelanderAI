@@ -36,6 +36,8 @@ FORBIDDEN_KEYS = {
 
 def submit_with_email(client: TestClient, email: str | None = "client@example.com") -> dict:
     body = json.loads(intake_payload())
+    # Forty-six, inside the products' age limits, so it can be approved.
+    body["applicant"]["dateOfBirth"] = "1980-01-15"
     if email:
         body["applicant"]["email"] = email
     response = client.post(
@@ -231,7 +233,7 @@ def test_the_applicant_never_sees_a_score_or_a_finding(carrier, monkeypatch, rea
         sign_in(client, account)
         client.post(
             f"/api/applications/{created['id']}/decision",
-            json={"decision": "approved_with_adjustment", "finalPremium": 9000},
+            json={"decision": "approved_with_adjustment", "ratingPct": 50},
         )
 
     with TestClient(app) as client:
@@ -242,9 +244,10 @@ def test_the_applicant_never_sees_a_score_or_a_finding(carrier, monkeypatch, rea
 
     leaked = keys_in(body) & FORBIDDEN_KEYS
     assert not leaked, f"clinical detail reached the applicant: {sorted(leaked)}"
-    assert body["offer"]["outcome"] == "Approved with an adjusted premium"
-    assert body["offer"]["planName"] == "Standard with adjustment"
-    assert float(body["offer"]["monthlyPremiumBdt"]) == 9000
+    assert body["offer"]["outcome"] == "Approved, with adjusted terms"
+    # The terms reach the client as the policy's own: the rating and the price, not the tier.
+    assert body["policy"]["ratingPct"] == 50
+    assert float(body["offer"]["monthlyPremiumBdt"]) == float(body["policy"]["monthlyPremiumBdt"])
 
 
 def test_the_offer_follows_the_decision_not_the_models_tier(carrier, monkeypatch):
@@ -263,15 +266,15 @@ def test_the_offer_follows_the_decision_not_the_models_tier(carrier, monkeypatch
         )
 
     with TestClient(app) as client:
-        offer = client.post(
+        me = client.post(
             "/api/portal/login",
             json={"portalId": creds["portalId"], "password": creds["password"]},
-        ).json()["offer"]
+        ).json()
 
-    assert offer["outcome"] == "Approved at the standard rate"
-    assert offer["planName"] == "Standard"
-    # The standard rate is 5,000 a month per 1,000,000 of cover; this asks for 500,000.
-    assert float(offer["monthlyPremiumBdt"]) == 2500
+    assert me["offer"]["outcome"] == "Approved at the standard rate"
+    # The premium is the policy's, priced for this client at standard rates.
+    assert me["policy"]["ratingPct"] == 0
+    assert float(me["offer"]["monthlyPremiumBdt"]) == float(me["policy"]["monthlyPremiumBdt"])
 
 
 def test_the_portal_does_not_read_the_scores_table():
@@ -411,7 +414,7 @@ def test_a_decision_emails_a_notice_that_carries_no_outcome(carrier, sent):
         sent.clear()
         client.post(
             f"/api/applications/{created['id']}/decision",
-            json={"decision": "approved_with_adjustment", "finalPremium": 9000},
+            json={"decision": "approved_with_adjustment", "ratingPct": 50},
         )
 
     notice = next(m for m in sent if "update" in m["subject"].lower())

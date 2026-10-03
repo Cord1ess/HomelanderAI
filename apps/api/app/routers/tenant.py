@@ -42,9 +42,11 @@ EDITABLE = (
     "turnaround_business_days",
     "tier_low_max",
     "tier_moderate_max",
-    "premium_low_bdt",
-    "premium_moderate_bdt",
-    "reference_cover_bdt",
+    "life_expense_loading_pct",
+    "life_interest_pct",
+    "health_rate_per_lakh_bdt",
+    "smoker_loading_pct",
+    "monthly_loading_pct",
 )
 
 
@@ -66,9 +68,11 @@ def _as_schema(tenant: Tenant) -> TenantSettingsSchema:
         turnaround_business_days=tenant.turnaround_business_days,
         tier_low_max=float(tenant.tier_low_max),
         tier_moderate_max=float(tenant.tier_moderate_max),
-        premium_low_bdt=float(tenant.premium_low_bdt),
-        premium_moderate_bdt=float(tenant.premium_moderate_bdt),
-        reference_cover_bdt=float(tenant.reference_cover_bdt),
+        life_expense_loading_pct=float(tenant.life_expense_loading_pct),
+        life_interest_pct=float(tenant.life_interest_pct),
+        health_rate_per_lakh_bdt=float(tenant.health_rate_per_lakh_bdt),
+        smoker_loading_pct=float(tenant.smoker_loading_pct),
+        monthly_loading_pct=float(tenant.monthly_loading_pct),
     )
 
 

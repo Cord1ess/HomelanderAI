@@ -1,4 +1,4 @@
-import { Anchor, Badge, Box, Button, Grid, Group, Paper, SimpleGrid, Stack, Table, Text } from '@mantine/core'
+import { Alert, Anchor, Badge, Box, Button, Grid, Group, Paper, SimpleGrid, Stack, Table, Text } from '@mantine/core'
 import { IconArrowRight } from '@tabler/icons-react'
 import { useQuery } from '@tanstack/react-query'
 import { Link, useNavigate, useParams } from 'react-router-dom'
@@ -163,7 +163,26 @@ export function ClientProfilePage() {
                 {height && weight ? `${height} cm · ${weight} kg` : '—'}
               </Field>
               <Field label="BMI">{bmi ? bmi.toFixed(1) : '—'}</Field>
+              <Field label="NID">
+                <span className="hl-mono">{c.nidNumber ?? '—'}</span>
+              </Field>
+              <Field label="Nominee">
+                {c.nomineeName ? `${c.nomineeName}${c.nomineeRelation ? ` (${c.nomineeRelation})` : ''}` : '—'}
+              </Field>
             </SimpleGrid>
+            {c.nomineePhone && (
+              <Text size="xs" c="dimmed" mt={4}>
+                Nominee's phone: {c.nomineePhone}
+              </Text>
+            )}
+            <Text size="xs" c="dimmed" mt={4}>
+              {c.consentAt ? `Agreed to their data being used on ${day(c.consentAt)}.` : 'No consent recorded (taken before consent was asked for).'}
+            </Text>
+            {c.deletedAt && (
+              <Alert color="gray" variant="light" mt="sm" p="xs">
+                <Text size="xs">This client's personal data was deleted at their request on {day(c.deletedAt)}.</Text>
+              </Alert>
+            )}
             <Text size="xs" c="dimmed" mt="md">
               Client since {day(c.createdAt)}. The portal ID is what they sign in with to see where
               their application stands; they never see a score.

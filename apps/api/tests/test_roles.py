@@ -8,7 +8,6 @@ API's, not just the screen's: a request sent directly must be refused too.
 """
 
 import asyncio
-import json
 import uuid
 from decimal import Decimal
 
@@ -19,7 +18,7 @@ from app.core.security import hash_password
 from app.main import app
 from app.routers import applications
 from tests.conftest import needs_database
-from tests.test_applications import a_chest_xray, intake_payload, sign_in
+from tests.test_applications import a_chest_xray, eligible_payload, sign_in
 
 pytestmark = needs_database
 
@@ -82,11 +81,11 @@ def set_tier(tenant_id: uuid.UUID, application_id: str, tier: str, crs: str) -> 
     asyncio.run(write())
 
 
-def submit(client: TestClient) -> dict:
+def submit(client: TestClient, coverage: dict | None = None) -> dict:
     response = client.post(
         "/api/applications",
         data={
-            "payload": json.dumps(json.loads(intake_payload())),
+            "payload": eligible_payload(**({"coverage": coverage} if coverage else {})),
             "file_arms": ["cxr_lung"],
             "file_kinds": ["chest_xray"],
         },
@@ -96,14 +95,16 @@ def submit(client: TestClient) -> dict:
     return response.json()
 
 
-def an_application(carrier, tier: str, crs: str) -> tuple[dict, dict, dict, dict]:
+def an_application(
+    carrier, tier: str, crs: str, coverage: dict | None = None
+) -> tuple[dict, dict, dict, dict]:
     """(doctor, underwriter, admin, application) in one throwaway tenant."""
     admin = asyncio.run(carrier())
     underwriter = add_underwriter(admin["tenant_id"])
     doctor = add_user(admin["tenant_id"], "medical_professional")
     with TestClient(app) as client:
         sign_in(client, underwriter)
-        created = submit(client)
+        created = submit(client, coverage)
     set_tier(admin["tenant_id"], created["id"], tier, crs)
     return doctor, underwriter, admin, created
 
@@ -112,7 +113,7 @@ def an_application(carrier, tier: str, crs: str) -> tuple[dict, dict, dict, dict
     "body",
     [
         {"decision": "confirmed_fast_track"},
-        {"decision": "approved_with_adjustment", "finalPremium": 9000},
+        {"decision": "approved_with_adjustment", "ratingPct": 50},
     ],
 )
 def test_an_underwriter_cannot_approve_an_elevated_case_a_doctor_has_not_seen(carrier, body):
@@ -167,7 +168,7 @@ def test_the_doctor_checks_the_results_and_the_underwriter_decides(carrier):
 
         # The doctor does not decide the policy, whatever the tier.
         no = client.post(
-            f"{url}/decision", json={"decision": "approved_with_adjustment", "finalPremium": 12000}
+            f"{url}/decision", json={"decision": "approved_with_adjustment", "ratingPct": 50}
         )
         assert no.status_code == 403
         assert "underwriter" in no.json()["detail"]
@@ -194,7 +195,7 @@ def test_the_doctor_checks_the_results_and_the_underwriter_decides(carrier):
         assert next(i for i in queue if i["id"] == created["id"])["doctorVerdict"] == "accurate"
 
         decided = client.post(
-            f"{url}/decision", json={"decision": "approved_with_adjustment", "finalPremium": 12000}
+            f"{url}/decision", json={"decision": "approved_with_adjustment", "ratingPct": 50}
         )
         assert decided.status_code == 201, decided.text
         assert client.get(url).json()["status"] == "decided"
@@ -314,7 +315,7 @@ def test_a_doctor_does_not_take_applications_or_see_analytics(carrier):
         taken = client.post(
             "/api/applications",
             data={
-                "payload": json.dumps(json.loads(intake_payload())),
+                "payload": eligible_payload(),
                 "file_kinds": ["chest_xray"],
             },
             files={"files": ("xray.png", a_chest_xray(), "image/png")},
@@ -365,6 +366,6 @@ def test_an_underwriter_approves_a_moderate_case_as_before(carrier):
         sign_in(client, underwriter)
         response = client.post(
             f"/api/applications/{created['id']}/decision",
-            json={"decision": "approved_with_adjustment", "finalPremium": 8000},
+            json={"decision": "approved_with_adjustment", "ratingPct": 50},
         )
         assert response.status_code == 201, response.text

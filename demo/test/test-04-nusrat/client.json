@@ -5,8 +5,8 @@
   "dateOfBirth": "1981-05-09",
   "sex": "Female",
   "coverage": {
-    "type": "Critical illness",
-    "amount": 1500000,
+    "type": "Life",
+    "amount": 2000000,
     "term": "20"
   },
   "questions": {
@@ -21,5 +21,10 @@
     "ecg": {
       "palpitations": true
     }
+  },
+  "nominee": {
+    "name": "Tanvir Ahmed",
+    "relation": "Spouse",
+    "phone": "01711 000204"
   }
 }

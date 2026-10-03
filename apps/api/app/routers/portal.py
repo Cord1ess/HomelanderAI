@@ -20,12 +20,14 @@ from datetime import UTC, datetime
 from types import SimpleNamespace
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, File, HTTPException, Response, UploadFile, status
-from sqlalchemy import select
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Response, UploadFile, status
+from pydantic import Field
+from sqlalchemy import func, select
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app import persistence, plans, turnaround
+from app import decline as decline_rules
+from app import persistence, turnaround
 from app.config import settings
 from app.core.security import create_access_token, verify_password
 from app.db.session import get_db
@@ -34,16 +36,22 @@ from app.evidence import label as kind_label
 from app.models import (
     Applicant,
     Application,
+    Claim,
+    ClaimDocument,
     ClientMessage,
     EvidenceFile,
     InsurancePolicy,
     NotificationType,
     RequestedDocument,
-    Tenant,
     UnderwriterDecision,
     UnderwriterDecisionType,
 )
+from app.routers import deletion
+from app.schemas.auth import BaseSchema
 from app.schemas.portal import (
+    PortalClaimSchema,
+    PortalDeclineSchema,
+    PortalDeletionSchema,
     PortalDocumentSchema,
     PortalFileSchema,
     PortalLoginIn,
@@ -66,11 +74,8 @@ log = logging.getLogger(__name__)
 # standard rate" beside "Standard with adjustment". This module therefore does
 # not read the scores table at all, and a test holds it to that.
 _OUTCOMES = {
-    UnderwriterDecisionType.CONFIRMED_FAST_TRACK: ("Approved at the standard rate", "low"),
-    UnderwriterDecisionType.APPROVED_WITH_ADJUSTMENT: (
-        "Approved with an adjusted premium",
-        "moderate",
-    ),
+    UnderwriterDecisionType.CONFIRMED_FAST_TRACK: "Approved at the standard rate",
+    UnderwriterDecisionType.APPROVED_WITH_ADJUSTMENT: "Approved, with adjusted terms",
 }
 
 
@@ -96,6 +101,12 @@ def _stage(status_value: str, decision: UnderwriterDecisionType | None) -> tuple
             # tell the applicant something writes to them directly.
             "Someone from our team is taking a closer look at your application. "
             "This is normal. It does not mean you have been refused.",
+        )
+    if status_value == "decided" and decision == UnderwriterDecisionType.DECLINED:
+        return (
+            "decided",
+            "Decision made",
+            "We are not able to offer you cover. The reason is below.",
         )
     if status_value == "decided":
         return ("decided", "Decision made", "We have made a decision. You can see it on this page.")
@@ -266,6 +277,137 @@ async def portal_upload(
     return await _status_for(db, applicant)
 
 
+async def _me(db: AsyncSession, principal: PortalPrincipal) -> Applicant:
+    applicant = await db.get(Applicant, principal.applicant_id)
+    if applicant is None or applicant.tenant_id != principal.tenant_id or applicant.deleted_at:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Your portal session is not valid. Sign in again.",
+        )
+    return applicant
+
+
+async def _my_policy(db: AsyncSession, applicant: Applicant) -> InsurancePolicy:
+    policy = (
+        await db.execute(
+            select(InsurancePolicy)
+            .where(InsurancePolicy.applicant_id == applicant.id)
+            .order_by(InsurancePolicy.created_at.desc())
+            .limit(1)
+        )
+    ).scalar_one_or_none()
+    if policy is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="You do not have a policy to claim on."
+        )
+    return policy
+
+
+@router.post(
+    "/claims",
+    response_model=PortalStatusSchema,
+    summary="The client files a claim for hospital bills",
+)
+async def portal_claim(
+    payload: str = Form(..., description="JSON matching ClaimIn"),
+    files: list[UploadFile] = File(default=[]),
+    db: AsyncSession = Depends(get_db),
+    principal: PortalPrincipal = Depends(current_applicant),
+) -> PortalStatusSchema:
+    """Hospital cover only. A death claim is made by the nominee at the office,
+    with the death certificate; staff enter it."""
+    from app.routers.claims import file_claim, parse_claim
+
+    applicant = await _me(db, principal)
+    policy = await _my_policy(db, applicant)
+    if policy.product != "health":
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="A claim on life cover is made by your nominee at the office.",
+        )
+    if not [f for f in files if f.filename]:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Add the hospital bill and the discharge summary.",
+        )
+    await file_claim(db, policy, parse_claim(payload), files, True, None)
+    await db.commit()
+    return await _status_for(db, applicant)
+
+
+@router.post(
+    "/claims/{claim_id}/documents",
+    response_model=PortalStatusSchema,
+    summary="The client adds documents to their claim",
+)
+async def portal_claim_documents(
+    claim_id: UUID,
+    files: list[UploadFile] = File(...),
+    db: AsyncSession = Depends(get_db),
+    principal: PortalPrincipal = Depends(current_applicant),
+) -> PortalStatusSchema:
+    from app.routers.claims import store_documents
+
+    applicant = await _me(db, principal)
+    claim = (
+        await db.execute(
+            select(Claim).where(Claim.id == claim_id, Claim.applicant_id == applicant.id)
+        )
+    ).scalar_one_or_none()
+    if claim is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No such claim.")
+    if claim.status not in ("submitted", "documents_requested", "under_review"):
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT, detail="This claim has already been decided."
+        )
+    policy = await db.get(InsurancePolicy, claim.policy_id)
+    await store_documents(db, claim, policy.application_id, files, True)
+    if claim.status == "documents_requested":
+        claim.status = "submitted"
+    await db.commit()
+    return await _status_for(db, applicant)
+
+
+class DeletionIn(BaseSchema):
+    reason: str | None = Field(default=None, max_length=1000)
+
+
+@router.post(
+    "/deletion-request",
+    response_model=PortalStatusSchema,
+    summary="The client asks for their data to be deleted",
+)
+async def portal_request_deletion(
+    payload: DeletionIn,
+    db: AsyncSession = Depends(get_db),
+    principal: PortalPrincipal = Depends(current_applicant),
+) -> PortalStatusSchema:
+    applicant = await _me(db, principal)
+    await deletion.request(db, applicant, payload.reason)
+    await db.commit()
+    return await _status_for(db, applicant)
+
+
+@router.delete(
+    "/deletion-request",
+    response_model=PortalStatusSchema,
+    summary="The client withdraws their request",
+)
+async def portal_withdraw_deletion(
+    db: AsyncSession = Depends(get_db),
+    principal: PortalPrincipal = Depends(current_applicant),
+) -> PortalStatusSchema:
+    applicant = await _me(db, principal)
+    asked = await deletion.latest_for(db, applicant.id)
+    if asked is None or asked.status not in ("pending", "approved"):
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT, detail="There is nothing to withdraw."
+        )
+    asked.status = "withdrawn"
+    await db.commit()
+    return await _status_for(db, applicant)
+
+
 @router.post("/logout", summary="Applicant sign-out")
 async def portal_logout(response: Response) -> dict[str, str]:
     response.delete_cookie(key=PORTAL_COOKIE_NAME)
@@ -325,23 +467,19 @@ async def _status_for(db: AsyncSession, applicant: Applicant) -> PortalStatusSch
 
     offer = None
     if decision is not None and decision.decision in _OUTCOMES:
-        outcome, plan_key = _OUTCOMES[decision.decision]
-        # The premium the underwriter recorded wins. An adjusted approval always
-        # has one (the decision endpoint requires it); a fast-track usually does
-        # not, and means the standard rate for the cover that was asked for.
-        premium = decision.final_premium
-        if premium is None:
-            tenant = await db.get(Tenant, applicant.tenant_id)
-            policy = plans.Policy.from_tenant(tenant) if tenant else plans.DEFAULT_POLICY
-            premium = plans.monthly_premium(
-                plan_key,
-                float(application.coverage_amount) if application.coverage_amount else None,
-                policy,
-            )
         offer = PortalOfferSchema(
-            outcome=outcome,
-            plan_name=plans.PLANS[plan_key].name,
-            monthly_premium_bdt=premium,
+            outcome=_OUTCOMES[decision.decision],
+            plan_name=None,
+            monthly_premium_bdt=decision.final_premium,
+            decided_at=decision.decided_at,
+        )
+    declined = None
+    if decision is not None and decision.decision == UnderwriterDecisionType.DECLINED:
+        declined = PortalDeclineSchema(
+            reason=decline_rules.client_text(decision.decline_reason)
+            or "We are not able to offer you cover at this time.",
+            note=decision.decline_note,
+            reapply_after=decision.reapply_after,
             decided_at=decision.decided_at,
         )
 
@@ -353,8 +491,59 @@ async def _status_for(db: AsyncSession, applicant: Applicant) -> PortalStatusSch
         )
     ).scalar_one_or_none()
 
+    claims = (
+        (
+            await db.execute(
+                select(Claim).where(Claim.policy_id == issued.id).order_by(Claim.created_at.desc())
+            )
+        ).scalars().all()
+        if issued
+        else []
+    )
+    doc_counts = dict(
+        (
+            await db.execute(
+                select(ClaimDocument.claim_id, func.count())
+                .where(ClaimDocument.claim_id.in_([c.id for c in claims]))
+                .group_by(ClaimDocument.claim_id)
+            )
+        ).all()
+    ) if claims else {}
+    asked = await deletion.latest_for(db, applicant.id)
+
     return PortalStatusSchema(
         policy=(await describe(db, [issued]))[0] if issued else None,
+        declined=declined,
+        nominee_name=applicant.nominee_name,
+        claims=[
+            PortalClaimSchema(
+                id=c.id,
+                claim_number=c.claim_number,
+                event_date=c.event_date,
+                claimed_amount_bdt=c.claimed_amount_bdt,
+                description=c.description,
+                hospital=c.hospital,
+                status=c.status,
+                documents_note=c.documents_note if c.status == "documents_requested" else None,
+                approved_amount_bdt=c.approved_amount_bdt,
+                decision_note=c.decision_note,
+                settle_by=c.settle_by,
+                settled_at=c.settled_at,
+                documents=doc_counts.get(c.id, 0),
+                created_at=c.created_at,
+            )
+            for c in claims
+        ],
+        deletion=(
+            PortalDeletionSchema(
+                status=asked.status,
+                requested_at=asked.requested_at,
+                delete_on=asked.delete_on,
+                decline_reason=asked.decline_reason,
+            )
+            if asked
+            else None
+        ),
         reference=applicant.external_ref,
         applicant_name=applicant.name,
         coverage_type=application.coverage_type,
