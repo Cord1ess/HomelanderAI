@@ -130,11 +130,15 @@ in a JSON file so they can be argued about without touching code.
 
 ### The picture
 
-The gradient of the reported class's probability with respect to the input,
-summed over leads and smoothed to a quarter of a second, shades the tracing
-where the network's decision was sensitive. It is the ECG's counterpart to the
-chest arm's heatmap and carries the same caveat: it shows where the network
-looked, not what a cardiologist would point at.
+For the reported abnormality, each lead is flattened in turn and the network
+run again; the share of the probability that disappears is that lead's
+weight, tinted on its row and printed beside it. For a right bundle branch
+block that is V1 and lead I; for a left one, I, II, V1 and V6. With nothing
+reported, no picture is drawn and the screen says why.
+
+It replaced a gradient map along the time axis that tested no better than
+random at marking the parts of the tracing that mattered. The measurements,
+and why no time-axis map is drawn at all, are in [HEATMAPS.md](HEATMAPS.md).
 
 ---
 
@@ -195,7 +199,7 @@ changed. Without them it reports itself unavailable, like the other arms.
 
     apps/api/app/ecg.py                      reading, storing and drawing a tracing
     apps/api/app/arms/ecg_nets.py            the two networks, defined so the weights load by name
-    apps/api/app/arms/ecg_12lead.py          the arm: thresholds, weights, saliency, ECG age
+    apps/api/app/arms/ecg_12lead.py          the arm: thresholds, weights, lead map, ECG age
     apps/api/app/arms/ecg_12lead_model.json  classes, thresholds, weights, validation, weight pins
     scripts/fetch_ecg_models.py              download, convert, check, demo tracings
     apps/api/tests/test_ecg.py

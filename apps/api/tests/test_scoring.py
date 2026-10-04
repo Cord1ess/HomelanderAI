@@ -210,25 +210,27 @@ def test_every_rule_can_actually_fire():
 
 
 def test_fusion_accumulates_with_diminishing_returns():
-    """One certain reading is elevated, not a verdict; more positives add less
-    each time and never reach 100; a clean reading never lowers a concerning one."""
+    """A single reading keeps its own tier; further positives add less each
+    time; a clean reading never lowers a concerning one."""
     from app.scoring import fuse
 
     assert fuse([]) == 0.0
     assert fuse([0.0]) == 0.0
-    assert fuse([100.0]) == 75.0
-    assert fuse([100.0, 100.0]) == 93.75
-    assert fuse([100.0, 100.0, 100.0]) < 100.0
-    assert fuse([100.0, 100.0, 100.0, 100.0, 100.0]) < 100.0
+    # Every reader puts 30 at the top of its low tier and 65 at senior review;
+    # alone, its reading must land in the same tier once fused.
+    for alone in (12.0, 30.0, 45.0, 65.0, 80.0, 100.0):
+        assert fuse([alone]) == alone
+    assert fuse([60.0, 60.0]) > 60.0
+    assert fuse([60.0, 60.0, 60.0]) > fuse([60.0, 60.0])
 
     # Order does not matter, and a clean film does not dilute a concerning one.
     assert fuse([100.0, 2.0]) == fuse([2.0, 100.0])
     assert fuse([100.0, 2.0]) >= fuse([100.0])
 
-    # Each reading counts by its own strength, so mid-range readings do not
-    # pile into alarm. One reader saying "worth a look" leaves the application
-    # in the low tier; several of them reach moderate, never elevated.
-    assert fuse([45.0]) < 30.0
+    # Each further reading counts by its own squared strength, so mid-range
+    # readings do not pile into alarm: several "worth a look" readings stay
+    # moderate, never elevated.
     assert 30.0 < fuse([45.0, 45.0, 45.0]) < 65.0
+    assert fuse([45.0] * 5) < 65.0
     # And a set of clean readings stays clean.
-    assert fuse([2.0, 1.0, 0.0]) < 1.0
+    assert fuse([2.0, 1.0, 0.0]) < 3.0

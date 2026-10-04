@@ -511,6 +511,18 @@ def find(name: str, text: str) -> list[Span]:
 
 def _keep(found: dict, text: str, run: list) -> None:
     start, end, p = run
+    # The disease model sometimes takes the cue in front of a name into the
+    # name itself: "Denies tuberculosis" as one entity. Left there, the cue
+    # sits inside the span, the assertion check never sees it, and a denied
+    # condition reads as present. Move it back out, in front of the span.
+    moved = True
+    while moved:
+        moved = False
+        for pattern, _ in PREFIX_TRIGGERS:
+            # On the slice: `^` does not anchor at a `pos` offset.
+            match = pattern.match(text[start:end])
+            if match and match.end() < end - start:
+                start, moved = start + match.end(), True
     found[(start, end)] = Span(text=text[start:end], start=start, end=end, confidence=round(p, 3))
 
 

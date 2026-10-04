@@ -121,7 +121,7 @@ Boundaries are per company. An administrator adjusts them with a live preview, e
 
 | | |
 |---|---|
-| <img src="docs/assets/icons/zoom-scan.svg" width="20" height="20" align="top" alt="" /> **Heatmaps on the evidence** | Grad-CAM on chest films, an exact class-activation map on retinal photos, gradient saliency on the ECG trace. Stored as artifacts keyed to the run, so the audit record reproduces what the underwriter saw. |
+| <img src="docs/assets/icons/zoom-scan.svg" width="20" height="20" align="top" alt="" /> **Heatmaps on the evidence** | Drawn only to explain a reading above the low tier, and each method chosen by testing it against occlusion or expert-marked lesions ([docs/HEATMAPS.md](docs/HEATMAPS.md)): SmoothGrad on retinal photos, lead-by-lead flattening on the ECG, max-pool attribution on mammograms, occlusion on chest films. Stored as artifacts keyed to the run, so the audit record reproduces what the underwriter saw. |
 | <img src="docs/assets/icons/chart-bar.svg" width="20" height="20" align="top" alt="" /> **Factor attribution** | Each finding's contribution to the score, and each declared-history rule that fired, with its reason in plain words. |
 | <img src="docs/assets/icons/tag.svg" width="20" height="20" align="top" alt="" /> **Validation on every score** | The arm's validation string travels with the number to every screen that shows it. |
 | <img src="docs/assets/icons/link.svg" width="20" height="20" align="top" alt="" /> **Hash-chained audit log** | Append-only, SHA-256 chained, re-verified on read. Altering one entry breaks every entry after it. Tamper-evident, and described precisely as such. |

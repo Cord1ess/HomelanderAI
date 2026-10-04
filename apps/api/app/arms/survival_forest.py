@@ -112,11 +112,92 @@ def peer_profile(spec: dict, age: float, sex: str, measured: dict) -> dict:
     return {**peer, "age": age, "male": 1.0 if sex == "M" else 0.0}
 
 
-def hazard_ratio_vs_peer(spec: dict, values: dict, age: float, sex: str) -> float:
+def peer_margin(spec: dict, values: dict, age: float, sex: str) -> float:
+    """The typical peer's log-hazard: the median over real people of this sex
+    and five-year band, held at the applicant's age, each measured on the same
+    things the applicant entered (the rest hidden, as `peer_profile` explains).
+
+    Not the log-hazard of a person who is median on every value. That person
+    is far healthier than the median person — risk climbs faster above the
+    median than it falls below it — and comparing against them put the median
+    NHANES adult at 2.2 times "their peer" (scripts/survival_peers.py).
+    """
+    stored = spec.get("peer_samples")
+    male = 1.0 if sex == "M" else 0.0
+    if not stored:
+        return margin_of(spec["trees"], row_from(peer_profile(spec, age, sex, values)))
+    names = stored["features"]
+    rows = np.array(stored["rows"][sex][band_for(age)], dtype=np.float64)  # None -> nan
+    peers = np.full((len(rows), len(FEATURES)), np.nan)
+    for j, name in enumerate(FEATURES):
+        if name == "age":
+            peers[:, j] = age
+        elif name == "male":
+            peers[:, j] = male
+        elif not _is_missing(values.get(name)):
+            peers[:, j] = rows[:, names.index(name)]
+    return float(np.median(margins_of(spec, peers)))
+
+
+def _tree_arrays(spec: dict) -> dict:
+    """The trees as padded arrays, built once per loaded spec, so many rows
+    can walk every tree together."""
+    cached = spec.get("_arrays")
+    if cached is not None:
+        return cached
     trees = spec["trees"]
-    own = margin_of(trees, row_from({**values, "age": age, "male": 1.0 if sex == "M" else 0.0}))
-    peer = margin_of(trees, row_from(peer_profile(spec, age, sex, values)))
-    return math.exp(own - peer)
+    width = max(len(t) for t in trees)
+    shape = (len(trees), width)
+    out = {
+        "f": np.zeros(shape, np.int64),
+        "t": np.zeros(shape, np.float32),
+        "yes": np.zeros(shape, np.int64),
+        "no": np.zeros(shape, np.int64),
+        "missing": np.zeros(shape, np.int64),
+        "leaf": np.ones(shape, bool),
+        "value": np.zeros(shape, np.float64),
+        "depth": 0,
+    }
+    for i, nodes in enumerate(trees):
+        for k, node in enumerate(nodes):
+            if "leaf" in node:
+                out["value"][i, k] = node["leaf"]
+            else:
+                out["leaf"][i, k] = False
+                out["f"][i, k], out["t"][i, k] = node["f"], node["t"]
+                out["yes"][i, k], out["no"][i, k] = node["yes"], node["no"]
+                out["missing"][i, k] = node["missing"]
+    out["depth"] = int(spec.get("params", {}).get("max_depth", 6)) + 1
+    spec["_arrays"] = out
+    return out
+
+
+def margins_of(spec: dict, matrix: np.ndarray) -> np.ndarray:
+    """`margin_of` for many rows at once (rows x FEATURES, nan = missing):
+    the same rule — below the float32 threshold goes left, missing takes the
+    learned default — walked through every tree together."""
+    a = _tree_arrays(spec)
+    n_trees = a["f"].shape[0]
+    tree = np.arange(n_trees)[:, None]
+    node = np.zeros((n_trees, len(matrix)), np.int64)
+    for _ in range(a["depth"]):
+        leaf = a["leaf"][tree, node]
+        if leaf.all():
+            break
+        value = matrix[np.arange(len(matrix))[None, :], a["f"][tree, node]]
+        missing = np.isnan(value)
+        with np.errstate(invalid="ignore"):
+            below = value.astype(np.float32) < a["t"][tree, node]
+        branch = np.where(below, a["yes"][tree, node], a["no"][tree, node])
+        step = np.where(missing, a["missing"][tree, node], branch)
+        node = np.where(leaf, node, step)
+    return a["value"][tree, node].sum(axis=0)
+
+
+def hazard_ratio_vs_peer(spec: dict, values: dict, age: float, sex: str) -> float:
+    male = 1.0 if sex == "M" else 0.0
+    own = margin_of(spec["trees"], row_from({**values, "age": age, "male": male}))
+    return math.exp(own - peer_margin(spec, values, age, sex))
 
 
 def contributions(spec: dict, values: dict, age: float, sex: str) -> dict[str, float]:

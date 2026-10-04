@@ -417,10 +417,22 @@ def check(
     undisclosed: dict[str, dict] = {}
     explained: list[str] = []
     immaterial: list[str] = []
+    # The conditions the note names in each sentence. A drug used for several
+    # things ("warfarin for a deep vein thrombosis") is read as used for the
+    # one written beside it, not for every condition it could treat.
+    named_in: dict[str, set[str]] = {}
+    for item in stated:
+        if item.assertion in ("PRESENT", "PAST"):
+            named_in.setdefault(item.sentence[:240], set()).update(item.conditions)
+
     for generic, hits in counted.items():
         row = _ROW.get(generic, {"generic": generic, "conditions": []})
         conditions = list(row.get("conditions", []))
         ambiguous = bool(row.get("ambiguous"))
+        beside = set().union(*(named_in.get(h.sentence[:240], set()) for h in hits))
+        indicated = [c for c in conditions if c in beside]
+        if ambiguous and indicated:
+            conditions, ambiguous = indicated, False
         known = [c for c in conditions if c in declared_set]
         missing = [c for c in conditions if c not in declared_set]
         if not conditions:

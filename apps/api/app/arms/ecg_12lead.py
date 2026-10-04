@@ -24,9 +24,15 @@ straight to senior review; a sinus tachycardia is a prompt. With nothing
 reported the score stays in the low tier, rising towards its top as any
 probability approaches its threshold.
 
-**Explanation.** The gradient of the reported abnormality's probability with
-respect to the input, summed over leads and smoothed, shades the tracing where
-the network looked. It is the ECG's counterpart to the chest arm's heatmap.
+**Explanation.** For the reported abnormality, each lead is flattened in turn
+and the network run again: the share of the probability that disappears is
+that lead's weight, printed beside it and tinted on the tracing. Measured, not
+estimated. Two other methods were tested on CODE-test true positives and
+dropped (see docs/HEATMAPS.md): the input gradient this arm used to draw was
+no better than random at finding the windows that mattered, and no 0.25 s
+window of any lead mattered on its own, because the network reads these
+findings from every beat — so a map along the time axis would be painting
+noise. With nothing reported there is nothing to explain, and no map is drawn.
 
 Both weights are downloaded from Zenodo (CC-BY-4.0) and converted once by
 `scripts/fetch_ecg_models.py`; the arm loads the converted files strictly and
@@ -38,8 +44,6 @@ import hashlib
 import json
 import threading
 from pathlib import Path
-
-import numpy as np
 
 from app import ecg
 from app.arms import ArmResult
@@ -150,16 +154,26 @@ def score_from(probabilities: dict[str, float]) -> tuple[float, list[str]]:
     return max(points_for(c, probabilities[c]) for c in CLASSES), reported
 
 
-def _saliency(models, tensor, class_index: int) -> np.ndarray:
-    """|d p_class / d input|, summed over leads, smoothed to 0.25 s, scaled to [0, 1]."""
-    x = tensor.clone().requires_grad_(True)
-    prob = models["dx"](x)[0, class_index]
-    prob.backward()
-    grad = x.grad[0].abs().sum(dim=0).numpy()
-    kernel = np.ones(ecg.SAMPLE_RATE // 4) / (ecg.SAMPLE_RATE // 4)
-    smooth = np.convolve(grad, kernel, mode="same")
-    peak = float(smooth.max())
-    return smooth / peak if peak > 0 else smooth
+def lead_importance(models, tensor, class_index: int) -> dict[str, float]:
+    """Share of the class probability lost when each lead is flattened, 0-1.
+
+    Twelve extra forward passes in one batch. Flattening a lead to zero is the
+    isoelectric line: the lead stops carrying anything, and the fall in the
+    probability is how much the reading leaned on it.
+    """
+    torch = models["torch"]
+    with torch.no_grad():
+        base = float(models["dx"](tensor)[0, class_index])
+        batch = tensor.repeat(12, 1, 1)
+        for lead in range(12):
+            batch[lead, lead, :] = 0.0
+        flattened = models["dx"](batch)[:, class_index].numpy()
+    if base <= 0:
+        return {}
+    return {
+        lead: round(float(max(0.0, base - p) / base), 3)
+        for lead, p in zip(ecg.LEADS, flattened, strict=True)
+    }
 
 
 def run(raw: bytes) -> ArmResult:
@@ -188,20 +202,43 @@ def run(raw: bytes) -> ArmResult:
     probabilities = {c: round(float(p), 4) for c, p in zip(CLASSES, probs, strict=True)}
     score, reported = score_from(probabilities)
 
-    # The heatmap follows the abnormality that set the score, or the closest
-    # call when nothing was reported.
-    focus = (
-        max(reported, key=lambda c: WEIGHTS[c])
-        if reported
-        else max(CLASSES, key=lambda c: probabilities[c] / THRESHOLDS[c])
-    )
+    # The map explains the abnormality that set the score. With none reported
+    # there is nothing to explain, and a map of a near-zero probability would
+    # be noise drawn as if it meant something.
+    focus = max(reported, key=lambda c: WEIGHTS[c]) if reported else None
     artifacts: dict[str, bytes] = {}
-    try:
-        heat = _saliency(models, tensor, CLASSES.index(focus))
-        artifacts["gradcam"] = ecg.render(array, saliency=heat)
-    except Exception:
-        # The picture supports the reading; losing it must not cost the reading.
-        pass
+    heatmap: dict = {
+        "method": "lead flattening",
+        "shows": None,
+        "drawn": False,
+        "reason": "No abnormality was reported, so there is nothing for a map to explain.",
+    }
+    if focus is not None:
+        try:
+            weights = lead_importance(models, tensor, CLASSES.index(focus))
+            artifacts["gradcam"] = ecg.render(array, lead_weights=weights)
+            top = [k for k in sorted(weights, key=lambda k: -weights[k])[:3] if weights[k] >= 0.05]
+            carried = (
+                f"{', '.join(top)} carried the most."
+                if top
+                else "no lead carries it on its own: it is read from all of them, "
+                "so none is tinted."
+            )
+            heatmap = {
+                "method": "lead flattening",
+                "shows": LABELS[focus],
+                "drawn": True,
+                "lead_shares": weights,
+                "note": (
+                    f"Each lead was flattened in turn and the network run again. The tint and "
+                    f"the figure beside each lead are the share of the {LABELS[focus].lower()} "
+                    f"probability lost without it; {carried} "
+                    "The finding is read from every beat, so no single moment is marked."
+                ),
+            }
+        except Exception as exc:
+            # The picture supports the reading; losing it must not cost the reading.
+            heatmap = {**heatmap, "reason": f"the map could not be drawn: {type(exc).__name__}"}
 
     return ArmResult(
         score=score,
@@ -218,6 +255,7 @@ def run(raw: bytes) -> ArmResult:
             "reported": reported,
             "reported_labels": [LABELS[c] for c in reported],
             "focus": focus,
+            "heatmap": heatmap,
             "ecg_age": round(ecg_age, 1),
             "age_calibration": _SPEC["age_calibration"],
             "age_validation": _SPEC["age_validation"],

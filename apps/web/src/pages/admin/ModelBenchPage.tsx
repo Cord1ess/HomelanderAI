@@ -231,6 +231,8 @@ function Results({ result }: { result: BenchResult }) {
 function RunCard({ run }: { run: BenchRun }) {
   const [open, setOpen] = useState(false)
   const images = run.images ?? []
+  // What the arm says about its map: what it shows, or why none was drawn.
+  const heatmap = (run.details as { heatmap?: { note?: string; reason?: string | null } } | null)?.heatmap
   return (
     <Paper p="md" bd={`1px solid ${run.error ? 'var(--neo-danger)' : 'var(--neo-border-mid)'}`}>
       <Group justify="space-between" align="flex-start">
@@ -290,6 +292,11 @@ function RunCard({ run }: { run: BenchRun }) {
             <Image key={i} src={src} alt="What the model drew" h={220} w="auto" fit="contain" radius="sm" />
           ))}
         </Group>
+      )}
+      {heatmap && (heatmap.note || heatmap.reason) && (
+        <Text size="xs" c="dimmed" mt="xs">
+          {images.length > 0 ? heatmap.note : heatmap.reason}
+        </Text>
       )}
       <Button size="compact-xs" variant="subtle" mt="sm" onClick={() => setOpen((o) => !o)}>
         {open ? 'Hide the details' : 'Show everything the model returned'}

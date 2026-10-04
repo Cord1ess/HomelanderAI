@@ -30,8 +30,17 @@ through the scoring rules, not through Mirai.
 
 An exam takes about 43 seconds on an Intel Core Ultra 5 at 8 threads, which is
 why it runs in the background scoring task.
+
+**The heatmap** comes from a second server in the same image
+(`Mirai/explain`): gradient x activation at the locations Mirai's max pool
+kept, which is exact for this network, checked against occlusion
+(docs/HEATMAPS.md). It is asked for only when the risk is above the low tier —
+below it there is nothing to explain — and it is kept only if that server's
+risk matches this one's to the last digit, so the map always belongs to the
+number on the screen.
 """
 
+import base64
 import hashlib
 import io
 import json
@@ -170,6 +179,68 @@ def call(files: dict[tuple[str, str], bytes]) -> dict:
             raise exc from None
 
 
+def _post(url: str, files: dict[tuple[str, str], bytes], timeout: int) -> dict:
+    body, content_type = _multipart(files)
+    request = urllib.request.Request(
+        url,
+        data=body,
+        method="POST",
+        headers={"Content-Type": content_type, "Content-Length": str(len(body))},
+    )
+    with urllib.request.urlopen(request, timeout=timeout) as response:
+        return json.loads(response.read().decode("utf-8"))
+
+
+def explain(files: dict[tuple[str, str], bytes], risks: list[float]) -> tuple[bytes | None, dict]:
+    """(heatmap PNG or None, what to say about it). Never raises."""
+    account: dict = {
+        "method": "gradient x activation at Mirai's max-pool locations",
+        "drawn": False,
+    }
+    if not settings.mirai_explain_url:
+        return None, {**account, "reason": "The mammogram heatmap service is turned off."}
+    try:
+        answer = _post(
+            f"{settings.mirai_explain_url.rstrip('/')}/explain",
+            files,
+            settings.mirai_explain_timeout_seconds,
+        )
+    except Exception as exc:
+        reason = getattr(exc, "reason", exc)
+        return None, {
+            **account,
+            "reason": (
+                f"The heatmap could not be made ({reason}); start it with "
+                "`docker compose up -d mirai-explain`. The risk above does not depend on it."
+            ),
+        }
+    if risks_from(answer) != risks:
+        # A map of a different number would be worse than no map.
+        return None, {
+            **account,
+            "reason": (
+                "The heatmap service gave a different risk from the reader, "
+                "so its map was not used."
+            ),
+        }
+    try:
+        png = base64.b64decode(answer["heatmap_png"], validate=True)
+        shares = sorted(answer.get("views") or [], key=lambda v: -float(v.get("share", 0)))
+        lead = f"{shares[0]['view']} ({float(shares[0]['share']):.0%})" if shares else "the views"
+    except (KeyError, TypeError, ValueError, IndexError):
+        return None, {**account, "reason": "The heatmap service's answer carried no usable map."}
+    return png, {
+        **account,
+        "drawn": True,
+        "views": shares,
+        "note": (
+            "Red marks where in the four views the five-year risk came from: for each of the "
+            "features Mirai keeps, the one place it was taken from, weighted by how much it "
+            f"raised the risk. Most came from the {lead}. A prompt to look, not a finding."
+        ),
+    }
+
+
 def risks_from(answer: dict) -> list[float] | None:
     """The five yearly risks, or None if the answer does not carry all five."""
     predictions = (answer.get("data") or {}).get("predictions")
@@ -224,11 +295,22 @@ def run_set(files: list[bytes]) -> ArmResult:
         )
 
     five_year = risks[4]
+    score = score_from(five_year)
+    artifacts: dict[str, bytes] = {}
+    if score > _LOW_TOP[1]:
+        png, heatmap = explain(views, risks)
+        if png:
+            artifacts["gradcam"] = png
+    else:
+        heatmap = {
+            "drawn": False,
+            "reason": "The risk is in the low tier, so there is nothing for a map to explain.",
+        }
     digest = hashlib.sha256(
         b"".join(hashlib.sha256(v).digest() for v in views.values())
     ).hexdigest()
     return ArmResult(
-        score=score_from(five_year),
+        score=score,
         raw_score=five_year,
         details={
             "risk_by_year": risks,
@@ -241,5 +323,7 @@ def run_set(files: list[bytes]) -> ArmResult:
             "scorer": f"{NAME} v{VERSION}",
             "validation": VALIDATION,
             "input_hash": digest,
+            "heatmap": heatmap,
         },
+        artifacts=artifacts,
     )

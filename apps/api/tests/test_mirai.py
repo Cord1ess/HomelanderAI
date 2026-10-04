@@ -11,8 +11,10 @@ the risks the authors publish for their own demo exam. Those skip, saying why,
 when the container is not running (`docker compose up -d mirai`).
 """
 
+import base64
 import io
 import json
+import urllib.error
 import urllib.request
 from pathlib import Path
 
@@ -210,29 +212,86 @@ def test_a_stopped_service_says_how_to_start_it(monkeypatch):
 def test_the_request_carries_four_views_and_the_data_field(monkeypatch):
     """The service requires the `data` field and rejects the request without it,
     and reads every file under `dicom`."""
-    sent: dict = {}
-
-    class Response:
-        def __enter__(self):
-            return self
-
-        def __exit__(self, *exc):
-            return False
-
-        def read(self):
-            return json.dumps(answer(0.01, 0.02, 0.03, 0.04, 0.05)).encode()
-
-    def capture(request, timeout):
-        sent["url"] = request.full_url
-        sent["body"] = request.data
-        sent["timeout"] = timeout
-        return Response()
-
-    monkeypatch.setattr(urllib.request, "urlopen", capture)
+    sent: list[dict] = []
+    reading = answer(0.01, 0.02, 0.03, 0.04, 0.05)
+    monkeypatch.setattr(urllib.request, "urlopen", _server(sent, reading))
     assert mirai.run_set(FOUR).score is not None
-    assert sent["url"].endswith("/dicom/files")
-    assert sent["body"].count(b'name="dicom"') == 4
-    assert sent["body"].count(b'name="data"') == 1
+    assert sent[0]["url"].endswith("/dicom/files")
+    assert sent[0]["body"].count(b'name="dicom"') == 4
+    assert sent[0]["body"].count(b'name="data"') == 1
+
+
+class _Response:
+    def __init__(self, body: dict):
+        self.body = body
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        return False
+
+    def read(self):
+        return json.dumps(self.body).encode()
+
+
+def _server(sent: list, reading: dict, explained: dict | None = None):
+    """A stand-in for both services: the reader at /dicom/files, the heatmap
+    at /explain. Records every request."""
+
+    def urlopen(request, timeout):
+        sent.append({"url": request.full_url, "body": request.data, "timeout": timeout})
+        if request.full_url.endswith("/explain"):
+            if explained is None:
+                raise urllib.error.URLError("connection refused")
+            return _Response(explained)
+        return _Response(reading)
+
+    return urlopen
+
+
+# The arm passes the map through untouched, so any bytes stand in for the PNG.
+MAP = b"the heatmap"
+PNG = base64.b64encode(MAP).decode()
+
+
+def test_a_low_risk_exam_asks_for_no_heatmap(monkeypatch):
+    """Below the low tier there is nothing to explain: no second call, no map."""
+    sent: list[dict] = []
+    low = answer(0.001, 0.002, 0.003, 0.004, 0.01)
+    monkeypatch.setattr(urllib.request, "urlopen", _server(sent, low))
+    result = mirai.run_set(FOUR)
+    assert result.score <= 30
+    assert [s["url"].rsplit("/", 1)[-1] for s in sent] == ["files"]
+    assert not result.artifacts
+    assert result.details["heatmap"]["drawn"] is False
+
+
+def test_the_heatmap_is_kept_only_when_it_explains_the_same_risk(monkeypatch):
+    risks = (0.03, 0.05, 0.07, 0.09, 0.1)
+    same = {**answer(*risks), "heatmap_png": PNG, "views": [{"view": "L CC", "share": 0.6}]}
+    sent: list[dict] = []
+    monkeypatch.setattr(urllib.request, "urlopen", _server(sent, answer(*risks), same))
+    kept = mirai.run_set(FOUR)
+    assert kept.artifacts["gradcam"] == MAP
+    assert kept.details["heatmap"]["drawn"] is True
+    assert "L CC (60%)" in kept.details["heatmap"]["note"]
+
+    other = {**answer(0.03, 0.05, 0.07, 0.09, 0.2), "heatmap_png": PNG, "views": []}
+    monkeypatch.setattr(urllib.request, "urlopen", _server([], answer(*risks), other))
+    refused = mirai.run_set(FOUR)
+    assert refused.score == kept.score, "the risk never depends on the heatmap"
+    assert not refused.artifacts
+    assert "different risk" in refused.details["heatmap"]["reason"]
+
+
+def test_a_heatmap_service_that_is_down_costs_only_the_map(monkeypatch):
+    risks = (0.03, 0.05, 0.07, 0.09, 0.1)
+    monkeypatch.setattr(urllib.request, "urlopen", _server([], answer(*risks), None))
+    result = mirai.run_set(FOUR)
+    assert result.score is not None and result.error is None
+    assert not result.artifacts
+    assert "mirai-explain" in result.details["heatmap"]["reason"]
 
 
 def test_the_arm_never_sends_risk_factors():

@@ -251,15 +251,16 @@ def to_model_units(array: np.ndarray) -> np.ndarray:
 
 def render(
     array: np.ndarray,
-    saliency: np.ndarray | None = None,
+    lead_weights: dict[str, float] | None = None,
     width: int = 1600,
     row_height: int = 90,
 ) -> bytes:
     """The twelve leads as a PNG, one under the other at a common scale.
 
-    `saliency` is an optional per-sample weight in [0, 1] that shades the
-    background where the classifier looked — the ECG's equivalent of the
-    chest arm's heatmap. Drawn with Pillow only.
+    `lead_weights` maps a lead name to the share, 0 to 1, of the reported
+    abnormality's probability that is lost when that lead is flattened. Each
+    lead's row is tinted by it and the share is printed beside the lead —
+    the ECG's counterpart to the image arms' heatmaps. Drawn with Pillow only.
     """
     n = array.shape[1]
     margin_left, top_pad = 56, 16
@@ -269,18 +270,16 @@ def render(
     plot_w = width - margin_left - 16
     xs = margin_left + np.arange(n) * (plot_w / (n - 1))
 
-    if saliency is not None and saliency.size == n:
-        heat = np.clip(saliency, 0.0, 1.0)
-        # One vertical band per column of pixels, intensity from the samples in it.
-        for px in range(margin_left, margin_left + plot_w):
-            lo = int((px - margin_left) / plot_w * n)
-            hi = max(lo + 1, int((px + 1 - margin_left) / plot_w * n))
-            h = float(heat[lo:hi].max())
-            if h > 0.05:
-                draw.line(
-                    [(px, top_pad), (px, height - top_pad)],
-                    fill=(int(80 + 150 * h), int(30 * (1 - h)), int(30 * (1 - h))),
-                )
+    weights = lead_weights or {}
+    for row, lead in enumerate(LEADS):
+        # A third of the probability lost is full strength; below 5% is not drawn.
+        h = float(np.clip((weights.get(lead, 0.0) - 0.05) / 0.28, 0.0, 1.0))
+        if h > 0:
+            top = top_pad + row * row_height
+            draw.rectangle(
+                [(margin_left, top + 2), (width - 16, top + row_height - 2)],
+                fill=(int(13 + 110 * h), int(14 + 12 * h), int(9 + 4 * h)),
+            )
 
     # Grid: one second per major line at 400 Hz.
     for sec in range(0, n // SAMPLE_RATE + 1):
@@ -292,6 +291,9 @@ def render(
         base = top_pad + row * row_height + row_height * 0.6
         draw.line([(margin_left, base), (width - 16, base)], fill=(30, 32, 22))
         draw.text((10, base - 8), lead, fill=(176, 179, 154))
+        share = weights.get(lead, 0.0)
+        if share >= 0.05:
+            draw.text((10, base + 6), f"-{share:.0%}", fill=(240, 150, 120))
         ys = base - array[row] * scale
         draw.line(list(zip(xs.tolist(), ys.tolist(), strict=True)), fill=(206, 217, 140), width=1)
 

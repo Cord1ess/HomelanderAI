@@ -129,24 +129,22 @@ alongside it (+10).
 
 ## The heatmap
 
-The score is an average over a 16×16 grid. That is not an approximation: the
-head is a linear layer on features that are themselves an average over that
-grid, so *weights · activations*, cell by cell, **is** the score, taken apart by
-location. The overlay draws those cells. A test checks that they add back up to
-the score to four decimal places.
+**SmoothGrad**: the gradient of the referable logit times the pixels,
+averaged over sixteen noisy copies of the photograph and blurred by 4 px,
+seeded so one photograph always gets one map. It is drawn as a cyan ring round
+each marked spot with a light tint inside, so the lesion it marks stays
+visible; cyan rather than the chest arm's red because a retina is already red
+and haemorrhages are the darkest red in it. It is drawn only for a reading
+above the low tier.
 
-Grad-CAM reduces to exactly this for a network of this shape, which is why the
-artifact is filed as one. Computing it directly needs no backward pass, and has
-none of Grad-CAM's smoothing to go wrong: the first version, built on the
-library, highlighted the black corner of the frame.
-
-It is cyan rather than the chest arm's red, because a retina is already red and
-haemorrhages are the darkest red in it.
-
-It earns its place. One healthy eye among the samples scores 42, in the moderate
-band. The map shows why: the model is reacting to a hazy bright artefact at the
-edge of the photograph, not to a lesion. An underwriter can see that and
-discount it. Without the map they could not.
+It replaced a map of the head's weights over the backbone's 16x16 grid. That
+map was exact for the score — the score is the average of those cells — but
+exact for the score is not the same as pointing at disease: each cell is 32 px
+of a 512 px photograph, and on IDRiD's expert lesion masks its brightest point
+landed on a lesion in only a third of photographs. SmoothGrad's lands on one
+in 86%, and blurring the 5% of the retina it marks moves the referable logit
+far more than blurring a random 5%. The comparison is in
+[HEATMAPS.md](HEATMAPS.md).
 
 ---
 
@@ -209,9 +207,26 @@ published system has.
 more sensitive than specific on external data: at 30 it catches 99% of referable
 eyes but also flags 39% of healthy ones. On DDR the same cut-point flags 5%.
 That is calibration drift between hospitals, and it is the reason limit 2 below
-says to read the operating points and not just the AUC. It cannot be fixed by
-tuning on the external sets without spending them; the right fix is a clean
-calibration set, which is what Messidor-2 would provide.
+says to read the operating points and not just the AUC.
+
+**Recalibrated 2026-10-03.** The score is no longer the probability times 100.
+The top of the low tier is placed at the 90th percentile of eyes *without*
+referable retinopathy, senior review at the 98th, linear in the model's logit
+(`scripts/retina_calibrate.py`, anchors in `dr_fundus_model.json`). They were
+set on 562 non-referable DeepDRiD photographs that the validation sample did
+not use, and checked on photographs that played no part in setting them:
+
+| | score > 30, before | after | score > 65, before | after |
+|---|---|---|---|---|
+| DeepDRiD, 600 held out | sens 0.99, spec 0.59 | sens 0.80, spec 0.92 | sens 0.93, spec 0.77 | sens 0.42, spec 0.99 |
+| IDRiD test, another country | sens 0.95, spec 0.51 | sens 0.86, spec 0.87 | sens 0.94, spec 0.69 | sens 0.69, spec 0.97 |
+
+Rankings, and so every AUC here, are unchanged: the anchors only move where
+the boundaries fall. The trade is deliberate and worth stating: about one
+healthy eye in ten is now flagged instead of one in two, and about one
+referable eye in six stays in the low tier, where before almost none did. The
+percentiles are two numbers in the script if the business wants the other
+side of that trade. Messidor-2 would still be the better calibration set.
 
 Every number here is written into `dr_fundus_model.json` beside the weights it
 describes, with a bootstrap interval, so the claim and the model cannot drift

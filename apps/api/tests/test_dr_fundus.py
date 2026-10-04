@@ -193,7 +193,8 @@ def test_scores_a_real_photograph_with_its_provenance():
 
     assert result.error is None
     assert 0.0 <= result.score <= 100.0
-    assert result.raw_score == pytest.approx(result.score / 100.0, abs=1e-3)
+    # The score is the probability placed on the tier scale by the anchors.
+    assert result.score == pytest.approx(dr_fundus.score_from(result.raw_score), abs=0.5)
 
     details = result.details
     assert details["backbone"] == dr_fundus.BACKBONE
@@ -308,3 +309,19 @@ def test_diabetes_history_adjusts_a_retina_score():
         "diabetes_duration_over_10_years",
         "diabetes_with_hypertension",
     }
+
+
+def test_the_anchors_put_the_tier_boundaries_where_they_were_set():
+    """Top of the low tier at the 90th percentile of non-referable eyes, senior
+    review at the 98th (scripts/retina_calibrate.py), linear in the logit."""
+    import math
+
+    anchors = dr_fundus._SPEC["score_anchors"]
+
+    def p(logit):
+        return 1 / (1 + math.exp(-logit))
+
+    assert dr_fundus.score_from(p(anchors["logit_low_tier_top"])) == pytest.approx(30.0, abs=0.01)
+    assert dr_fundus.score_from(p(anchors["logit_senior_review"])) == pytest.approx(65.0, abs=0.01)
+    assert dr_fundus.score_from(1e-6) == 0.0
+    assert dr_fundus.score_from(1 - 1e-12) == 100.0

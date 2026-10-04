@@ -26,9 +26,47 @@ needs_samples = pytest.mark.skipif(
 
 
 def png(size=(256, 256), color=128) -> bytes:
+    """A synthetic film with contrast. Not a radiograph — these tests are about
+    the plumbing — but a flat image is now refused as not one, as it should be.
+    `color` shifts its brightness so different calls give different files."""
     buffer = BytesIO()
-    Image.new("L", size, color=color).save(buffer, format="PNG")
+    image = Image.new("L", size)
+    w, h = size
+    image.putdata([(color + x * 7 + y * 3) % 256 for y in range(h) for x in range(w)])
+    image.save(buffer, format="PNG")
     return buffer.getvalue()
+
+
+def flat(color=128) -> bytes:
+    buffer = BytesIO()
+    Image.new("L", (256, 256), color=color).save(buffer, format="PNG")
+    return buffer.getvalue()
+
+
+def test_a_blank_image_is_refused_not_scored():
+    """The model read a featureless grey square as 75; it must not answer."""
+    result = tb_xray.run(flat())
+    assert result.score is None
+    assert "not a radiograph" in result.error
+
+
+def test_a_colour_photograph_is_refused_not_scored():
+    buffer = BytesIO()
+    image = Image.new("RGB", (256, 256))
+    image.putdata([(200, 40 + (x % 50), 30) for y in range(256) for x in range(256)])
+    image.save(buffer, format="PNG")
+    result = tb_xray.run(buffer.getvalue())
+    assert result.score is None
+    assert "colour photograph" in result.error
+
+
+def test_a_real_film_passes_the_radiograph_check():
+    from PIL import Image as PILImage
+
+    film = next(iter(sorted(SHENZHEN.glob("*.png"))), None)
+    if film is None:
+        pytest.skip("no Shenzhen films present")
+    assert tb_xray.not_a_radiograph(PILImage.open(film)) is None
 
 
 # ── pure maths — no torch needed ─────────────────────────────────────────────
@@ -187,10 +225,16 @@ def test_scores_a_real_chest_xray():
 @needs_vision
 @needs_samples
 def test_produces_a_readable_gradcam():
-    sample = next(iter(sorted((SAMPLES / "TB").glob("*.png"))))
-    result = tb_xray.run(sample.read_bytes())
-
+    # A map is drawn only to explain a reading above the low tier, so use the
+    # first TB sample that reads above it.
+    result = None
+    for sample in sorted((SAMPLES / "TB").glob("*.png")):
+        result = tb_xray.run(sample.read_bytes())
+        if result.score is not None and result.score > tb_xray.LOW_TIER_TOP:
+            break
+    assert result is not None and result.score > tb_xray.LOW_TIER_TOP, "no sample reads above it"
     assert "gradcam" in result.artifacts
+    assert result.details["heatmap"]["drawn"] is True
     overlay = Image.open(BytesIO(result.artifacts["gradcam"]))
     overlay.load()
     assert overlay.format == "PNG"
@@ -257,15 +301,19 @@ def test_the_heatmap_is_drawn_on_the_image_the_model_was_given():
     """
     import numpy as np
 
-    # The least square image available — where the two framings differ most.
-    candidates = sorted(SHENZHEN.glob("*.png"))[:60]
-    path = min(candidates, key=lambda p: min(Image.open(p).size) / max(Image.open(p).size))
+    # The least square image available — where the two framings differ most —
+    # among those that read above the low tier, since only those get a map.
+    def squareness(p):
+        return min(Image.open(p).size) / max(Image.open(p).size)
 
+    candidates = sorted(sorted(SHENZHEN.glob("*_1.png"))[:60], key=squareness)
+    path, result = next(
+        (p, r)
+        for p, r in ((p, tb_xray.run(p.read_bytes())) for p in candidates)
+        if "gradcam" in r.artifacts
+    )
     original = Image.open(path)
     original.load()
-    result = tb_xray.run(path.read_bytes())
-
-    assert "gradcam" in result.artifacts, "no heatmap was produced"
     overlay = np.asarray(Image.open(BytesIO(result.artifacts["gradcam"])), dtype=np.float32) / 255.0
     assert overlay.shape == (224, 224, 3)
 
@@ -299,3 +347,18 @@ def test_the_heatmap_actually_highlights_something():
     heat = overlay[..., 0] - overlay[..., 2]  # red lifted, blue damped
 
     assert heat.max() - heat.min() > 0.1, "the heatmap is flat"
+
+
+@needs_vision
+@needs_shenzhen
+def test_a_low_reading_draws_no_map_and_says_why():
+    """Below the low tier there is nothing to explain; a map scaled to its own
+    brightest point would paint noise as if it meant something."""
+    result = None
+    for film in sorted(SHENZHEN.glob("*_0.png"))[:20]:
+        result = tb_xray.run(film.read_bytes())
+        if result.score is not None and result.score <= tb_xray.LOW_TIER_TOP:
+            break
+    assert result is not None and result.score <= tb_xray.LOW_TIER_TOP
+    assert not result.artifacts
+    assert "low tier" in result.details["heatmap"]["reason"]

@@ -65,6 +65,12 @@ class Settings(BaseSettings):
     # without holding the other readers' results hostage for long; a timeout is
     # reported on the screen as a timeout.
     mirai_timeout_seconds: int = 180
+    # The mammogram heatmap: the same Mirai image with a small second server
+    # (`docker compose up -d mirai-explain`, built from Mirai/explain). Asked
+    # only for an exam above the low tier, after the risk is in. Empty turns
+    # the heatmap off; the risk does not depend on it.
+    mirai_explain_url: str = "http://127.0.0.1:5001"
+    mirai_explain_timeout_seconds: int = 240
 
     # ── Outgoing mail ─────────────────────────────────────────
     # Used to send applicants their portal sign-in and a note when a decision

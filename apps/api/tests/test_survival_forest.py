@@ -162,3 +162,42 @@ def test_factors_are_hazard_ratios_against_the_peers_value():
     as_peer = {**values, "smoker": peer["smoker"], "age": 45, "male": 1.0}
     swapped = sf.margin_of(spec["trees"], sf.row_from(as_peer))
     assert factors["smoker"] == pytest.approx(math.exp(own - swapped), abs=0.001)
+
+
+@needs_model
+def test_the_typical_person_of_a_band_is_their_own_peer():
+    """Real people of one band, compared with that band, centre on 1.0.
+
+    The peer used to be a person median on every value at once, who is far
+    healthier than the median person; NHANES adults came out at 2.2 times
+    their peer and most were sent to senior review."""
+    spec = sf.load()
+    stored = spec["peer_samples"]
+    names = stored["features"]
+    ratios = []
+    for row in stored["rows"]["F"][sf.band_for(52)][:60]:
+        values = {n: v for n, v in zip(names, row, strict=True) if v is not None}
+        ratios.append(sf.hazard_ratio_vs_peer(spec, values, 52, "F"))
+    ratios.sort()
+    median = ratios[len(ratios) // 2]
+    assert 0.8 < median < 1.25, median
+
+
+@needs_model
+def test_the_batch_walk_matches_the_single_walk_exactly():
+    """The peers are walked through every tree at once; that must give the
+    very margins the one-row walk gives, missing values included."""
+    import numpy as np
+
+    spec = sf.load()
+    stored = spec["peer_samples"]
+    names = stored["features"]
+    rows = stored["rows"]["M"][sf.band_for(61)][:40]
+    dicts = [
+        {**{n: v for n, v in zip(names, row, strict=True) if v is not None}, "age": 61, "male": 1.0}
+        for row in rows
+    ]
+    matrix = np.array([[np.nan if d.get(f) is None else d[f] for f in sf.FEATURES] for d in dicts])
+    batch = sf.margins_of(spec, matrix)
+    one = [sf.margin_of(spec["trees"], sf.row_from(d)) for d in dicts]
+    assert np.allclose(batch, one, rtol=0, atol=1e-9)

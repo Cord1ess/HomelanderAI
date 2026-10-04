@@ -287,12 +287,10 @@ def test_an_abnormal_panel_is_not_averaged_away_by_a_clean_film():
     """An abnormal panel must still reach the underwriter when the film beside
     it is clean.
 
-    The score is a noisy-OR fusion over every arm, not the highest reading, so
-    the exact number is lower than the panel's own — that is deliberate, since
-    one alarming reading among several calm ones is weaker evidence than
-    several alarming ones. What must not happen is the panel being diluted into
-    a tier that hides it. The test fakes the chest arm so it runs without torch
-    and with a known score."""
+    Fusion starts from the strongest reading and lets the others only add
+    to it, so a calm film can never pull the panel down into a tier that
+    hides it. The test fakes the chest arm so it runs without torch and with a
+    known score."""
     from app.arms import tb_xray
     from app.intake import process_upload
     from tests.test_tb_xray import png
@@ -324,10 +322,10 @@ def test_an_abnormal_panel_is_not_averaged_away_by_a_clean_film():
 
     assert result.status == STATUS_SCORED
     assert {r.arm_name for r in result.runs} == {"tb_xray", "mortality"}
-    # Fusion puts the result below the panel's own reading and well above the
-    # calm film's, which is what "not averaged away" means here.
+    # The panel's own reading stands; the calm film adds almost nothing and
+    # takes nothing away.
     panel = m.run_form(abnormal, 45, "M").score
-    assert 5.0 < result.crs < panel
+    assert panel <= result.crs <= panel + 1.0
     assert result.tier == "elevated"
 
 

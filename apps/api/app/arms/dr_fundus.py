@@ -41,6 +41,7 @@ torch is an optional dependency (`uv sync --extra vision`). Without it
 
 import hashlib
 import json
+import math
 import threading
 import urllib.request
 from io import BytesIO
@@ -81,6 +82,11 @@ WEIGHT_HASH = (
 )
 
 VALIDATION: str = _SPEC["validation"]
+
+# The map is drawn only to explain a reading above the low tier.
+LOW_TIER_TOP = 30.0
+SMOOTHGRAD_SAMPLES = 16
+SMOOTHGRAD_NOISE = 0.05
 ICDR_CLASSES: tuple[str, ...] = tuple(_SPEC["classes"])
 
 # ICDR grade 2, moderate non-proliferative retinopathy, is where a patient is
@@ -170,8 +176,7 @@ def _forward(model, tensor) -> tuple[np.ndarray, np.ndarray]:
 
     `activations` is the last convolutional block's output, 2048 channels on a
     16x16 grid. `features` is its average over that grid — which is all a
-    ResNet's pooling layer does — so the two are the same forward pass and the
-    heatmap below costs nothing extra.
+    ResNet's pooling layer does — so the two are the same forward pass.
     """
     import torch
 
@@ -213,6 +218,25 @@ def predict(found: np.ndarray) -> tuple[float, list[float]]:
     return float(referable), [float(p) for p in shifted / shifted.sum()]
 
 
+def score_from(referable: float) -> float:
+    """P(referable) placed on the 0-100 tier scale.
+
+    Not the probability itself: the head was fitted on DDR, and on other
+    cameras an ordinary eye reads higher — as a score, the probability put
+    41-49% of eyes without referable disease above the low tier on DeepDRiD
+    and IDRiD. The anchors put the top of the low tier at the 90th percentile
+    of non-referable eyes and senior review at the 98th, linear in the logit,
+    clamped (scripts/retina_calibrate.py). Without anchors, the probability.
+    """
+    anchors = _SPEC.get("score_anchors")
+    if not anchors:
+        return round(referable * 100.0, 2)
+    p = min(max(referable, 1e-9), 1 - 1e-9)
+    logit = math.log(p / (1 - p))
+    low, senior = anchors["logit_low_tier_top"], anchors["logit_senior_review"]
+    return round(max(0.0, min(100.0, 30.0 + 35.0 * (logit - low) / (senior - low))), 2)
+
+
 def run(image_bytes: bytes) -> ArmResult:
     """Score one fundus photograph. Never raises — a failure comes back as an
     ArmResult with `score=None` and the reason, so the pipeline records why and
@@ -233,7 +257,7 @@ def run(image_bytes: bytes) -> ArmResult:
         return ArmResult(score=None, error=f"unreadable image: {exc}")
 
     try:
-        found, activations = _forward(_get_model(), to_tensor(framed.image))
+        found, _ = _forward(_get_model(), to_tensor(framed.image))
     except Exception as exc:
         return ArmResult(score=None, error=f"inference failed: {type(exc).__name__}: {exc}")
 
@@ -243,14 +267,32 @@ def run(image_bytes: bytes) -> ArmResult:
         return ArmResult(score=None, error=f"scoring failed: {type(exc).__name__}: {exc}")
 
     artifacts = {}
-    try:
-        overlay = _heatmap(activations, framed.image)
-        if overlay:
-            artifacts["gradcam"] = overlay
-    except Exception:
-        # The heatmap is supporting evidence, not the result. Losing it must not
-        # cost the underwriter their score.
-        pass
+    heatmap: dict = {
+        "method": f"SmoothGrad, gradient x input, {SMOOTHGRAD_SAMPLES} samples",
+        "drawn": False,
+        "reason": "The reading is in the low tier, so there is nothing for a map to explain.",
+    }
+    score = score_from(referable)
+    if score > LOW_TIER_TOP:
+        try:
+            overlay = _heatmap(_get_model(), to_tensor(framed.image), framed.image)
+            if overlay:
+                artifacts["gradcam"] = overlay
+                heatmap = {
+                    **heatmap,
+                    "drawn": True,
+                    "reason": None,
+                    "note": (
+                        "Cyan marks the spots in the photograph whose change would move the "
+                        "referable call most. Checked against expert-drawn lesions: its "
+                        "brightest point fell on a microaneurysm, haemorrhage or exudate in "
+                        "86% of photographs. A prompt to look, not a grading."
+                    ),
+                }
+        except Exception as exc:
+            # The heatmap is supporting evidence, not the result. Losing it must not
+            # cost the underwriter their score.
+            heatmap = {**heatmap, "reason": f"the map could not be drawn: {type(exc).__name__}"}
 
     grade = int(np.argmax(grades))
     probabilities = {
@@ -258,7 +300,7 @@ def run(image_bytes: bytes) -> ArmResult:
     }
 
     return ArmResult(
-        score=round(referable * 100.0, 2),
+        score=score,
         raw_score=round(referable, 4),
         details={
             # What the review screen's "what moved the score" panel reads. Each
@@ -280,6 +322,7 @@ def run(image_bytes: bytes) -> ArmResult:
                 "brightness": framed.brightness,
             },
             "backbone": BACKBONE,
+            "heatmap": heatmap,
             "scorer": f"{_SPEC['model']} v{_SPEC['version']} trained on {_SPEC['trained_on']}",
             "validation": VALIDATION,
         },
@@ -287,42 +330,67 @@ def run(image_bytes: bytes) -> ArmResult:
     )
 
 
-def _heatmap(activations: np.ndarray, framed_image) -> bytes | None:
-    """Where in the photograph the referable call came from.
+def _heatmap(model, tensor, framed_image) -> bytes | None:
+    """Where in the photograph the referable call is most sensitive.
 
-    Exact, not estimated. The head is a linear layer on features that are an
-    average over a 16x16 grid, so the score is *itself* an average over that
-    grid: weights . activations, cell by cell. Drawing those cells is the score
-    taken apart by location. Grad-CAM reduces to precisely this for a network of
-    this shape, which is why the artifact is filed as one; computing it directly
-    needs no backward pass and has none of Grad-CAM's smoothing to go wrong —
-    the first version, built on Grad-CAM, lit up the black corner of the frame.
+    SmoothGrad: the gradient of the referable logit with respect to the
+    pixels, times the pixels, averaged over sixteen copies with a little noise
+    added, then blurred by 4 px. Seeded, so one photograph always gets one map.
+
+    Chosen by measurement (docs/HEATMAPS.md). On IDRiD photographs with
+    expert-drawn lesion masks, the map this arm used to draw — the head's
+    weights over the network's 16x16 grid, exact for the score but 32 px a
+    cell — put its brightest point on a lesion in 36% of photographs and
+    barely more of its heat on lesions than their area. This one: 86%, and
+    blurring the 5% of the retina it marks moves the logit fifty times more
+    than blurring a random 5%.
     """
+    import torch
+    import torch.nn.functional as F
     from PIL import Image
 
-    coef = np.array(_SPEC["referable"]["coef"], dtype=np.float32)
-    toward = np.maximum(np.tensordot(coef, activations, axes=1), 0.0)
-    if toward.max() <= 0:
-        # Nothing in the photograph pushed toward a referable call.
-        return None
+    coef = torch.tensor(_SPEC["referable"]["coef"], dtype=torch.float32)
+    generator = torch.Generator().manual_seed(0)
+    total = torch.zeros_like(tensor)
+    for _ in range(SMOOTHGRAD_SAMPLES // 4):
+        noise = torch.randn(4, *tensor.shape, generator=generator)
+        x = (tensor[None] + SMOOTHGRAD_NOISE * noise).requires_grad_(True)
+        h = model.maxpool(model.relu(model.bn1(model.conv1(x))))
+        h = model.layer4(model.layer3(model.layer2(model.layer1(h))))
+        logit = (h.mean(dim=(2, 3)) @ coef).sum()
+        # Gradients for the pixels only: nothing accumulates on the shared weights.
+        (grad,) = torch.autograd.grad(logit, x)
+        total += (grad * x.detach()).sum(0)
+    heat = total.abs().sum(0)[None, None]
 
-    size = framed_image.size
-    heat = np.asarray(
-        Image.fromarray(toward / toward.max()).resize(size, Image.Resampling.BICUBIC),
-        dtype=np.float32,
-    )
+    # A 4 px Gaussian, in torch: one spot reads as a spot, not a pixel.
+    ax = torch.arange(-12, 13, dtype=torch.float32)
+    g = torch.exp(-(ax**2) / (2 * 4.0**2))
+    g = g / g.sum()
+    heat = F.conv2d(F.pad(heat, (12, 12, 0, 0), mode="reflect"), g.view(1, 1, 1, -1))
+    heat = F.conv2d(F.pad(heat, (0, 0, 12, 12), mode="reflect"), g.view(1, 1, -1, 1))
+    heat = heat[0, 0].numpy()
 
-    # Only the retina can be evidence. The network's cells along the rim of the
-    # disc overlap the black surround, and a highlight out there tells the
-    # underwriter nothing and looks like a bug.
+    # Only the retina can be evidence; the black surround carries nothing.
     base = np.asarray(framed_image, dtype=np.float32) / 255.0
-    heat = np.clip(heat, 0.0, 1.0) * (base.mean(axis=2) > 0.06)
+    retina = base.mean(axis=2) > 0.06
+    if not retina.any():
+        return None
+    scale = float(np.percentile(heat[retina], 99.5)) or 1.0
+    heat = np.clip(heat / scale, 0.0, 1.0) * retina
 
     # Cyan, not the red the chest arm uses: a retina is already red, and
     # haemorrhages are the darkest red in it, so a red highlight would bury
     # exactly what it is pointing at.
-    strength = np.clip((heat - 0.25) / 0.75, 0.0, 1.0)[..., None] * 0.65
-    blended = base * (1.0 - strength) + np.array([0.0, 1.0, 1.0]) * strength
+    # A ring round each marked spot and only a light tint inside it, so the
+    # lesion it marks stays visible: a solid fill would hide what it points at.
+    marked = torch.from_numpy((heat >= 0.45).astype(np.float32))[None, None]
+    grown = F.max_pool2d(marked, 7, stride=1, padding=3)
+    ring = ((grown - marked)[0, 0].numpy() > 0)[..., None]
+    tint = np.clip((heat - 0.45) / 0.55, 0.0, 1.0)[..., None] * 0.25
+    cyan = np.array([0.0, 1.0, 1.0])
+    blended = base * (1.0 - tint) + cyan * tint
+    blended = np.where(ring, cyan * 0.9 + blended * 0.1, blended)
 
     buffer = BytesIO()
     Image.fromarray((blended * 255).astype(np.uint8), mode="RGB").save(buffer, format="PNG")

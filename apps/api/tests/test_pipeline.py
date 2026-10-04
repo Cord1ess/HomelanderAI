@@ -30,8 +30,14 @@ needs_samples = pytest.mark.skipif(
 
 
 def png(color=128, size=(256, 256)) -> bytes:
+    """A synthetic film with contrast. Not a radiograph — these tests are about
+    the plumbing — but a flat image is now refused as not one, as it should be.
+    `color` shifts its brightness so different calls give different files."""
     buffer = BytesIO()
-    Image.new("L", size, color=color).save(buffer, format="PNG")
+    image = Image.new("L", size)
+    w, h = size
+    image.putdata([(color + x * 7 + y * 3) % 256 for y in range(h) for x in range(w)])
+    image.save(buffer, format="PNG")
     return buffer.getvalue()
 
 
@@ -165,7 +171,10 @@ def test_thresholds_are_carried_through():
 
 
 @needs_vision
-def test_artifacts_are_namespaced_by_arm():
+def test_artifacts_are_namespaced_by_arm(monkeypatch):
+    # A flat synthetic film has no region worth marking, so stand in a map:
+    # this is about where artifacts are filed, not what they show.
+    monkeypatch.setattr(tb_xray, "_heatmap", lambda *a, **k: b"a map")
     result = evaluate([(png(), "chest.png")], history())
 
     assert result.artifacts
@@ -176,7 +185,12 @@ def test_artifacts_are_namespaced_by_arm():
 @needs_vision
 @needs_samples
 def test_real_xray_end_to_end():
-    sample = next(iter(sorted((SAMPLES / "TB").glob("*.png"))))
+    # A map is drawn only above the low tier, so take a sample that reads there.
+    sample = next(
+        p
+        for p in sorted((SAMPLES / "TB").glob("*.png"))
+        if tb_xray.run(p.read_bytes()).score > tb_xray.LOW_TIER_TOP
+    )
 
     result = evaluate(
         [(sample.read_bytes(), sample.name)],
@@ -247,9 +261,11 @@ def test_a_retinal_photograph_reaches_the_retina_model_and_only_it():
 
     assert result.status == STATUS_SCORED
     assert {r.arm_name for r in result.runs} == {"dr_fundus"}
-    # A proliferative eye. Not validation (FLAIR has seen EyePACS), but a score
-    # below the elevated band here would mean the arm is not really running.
-    assert result.tier == "elevated"
+    # A proliferative eye. Not validation (FLAIR has seen EyePACS), but a
+    # reading below senior review here would mean the arm is not really running.
+    # The arm's own score, not the fused tier: fusion weights one reader at 0.75.
+    (run,) = result.runs
+    assert run.result.score > 65
     assert set(result.artifacts) == {"dr_fundus.gradcam"}
 
 

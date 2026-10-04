@@ -42,6 +42,7 @@ nobody working on the dashboard or database needs a multi-GB download.
 
 import hashlib
 import json
+import math
 from io import BytesIO
 from pathlib import Path
 
@@ -76,6 +77,13 @@ WEIGHT_HASH = (
 # How this model was tested. Carried on the arm so it reaches the intake form
 # and the review screen without either of them hard-coding it.
 VALIDATION: str = _SPEC["validation"]
+
+# The map is drawn only to explain a reading above the low tier.
+LOW_TIER_TOP = 30.0
+# Occlusion map: a 7x7 grid of 32 px regions on the 224 px film; a region
+# must lower the TB logit by at least this much for any map to be drawn.
+OCCLUSION_GRID = 7
+MIN_LOGIT_FALL = 0.05
 
 # Findings that raise TB suspicion on a plain film. The model returns all 18;
 # these are the ones the composite is built from.
@@ -146,6 +154,48 @@ def predict(found: dict[str, float]) -> tuple[float, dict[str, float]]:
         for name, value in zip(spec["features"], weighted, strict=True)
     }
     return float(probability), contributions
+
+
+# A radiograph has contrast: lungs dark, bone and soft tissue light. Real
+# films sit far above this spread of grey levels (0-255); a blank or flat image
+# sits at zero, and the model handed one still answers — it read a featureless
+# grey square as 75, elevated.
+MIN_GREY_SPREAD = 8.0
+# Radiographs are grey. A colour photograph — a fundus photo, a phone picture
+# of something else — has channels that disagree by far more than this.
+MAX_COLOUR_SPREAD = 25.0
+
+
+def not_a_radiograph(pil) -> str | None:
+    """Why this image cannot be a radiograph, or None if it could be."""
+    rgb = np.asarray(pil.convert("RGB"), dtype=np.float32)
+    colour = float((rgb.max(axis=2) - rgb.min(axis=2)).mean())
+    if colour > MAX_COLOUR_SPREAD:
+        return "it is a colour photograph; radiographs are greyscale"
+    if float(rgb.mean(axis=2).std()) < MIN_GREY_SPREAD:
+        return "it is blank or nearly uniform; a radiograph has contrast"
+    return None
+
+
+def score_from(probability: float) -> float:
+    """The model's probability placed on the 0-100 tier scale.
+
+    Not the probability itself. The model was fitted on Shenzhen, where half
+    the films are TB, so an ordinary film reads high: as a score, its
+    probability put 71% of Montgomery's normal films above the low tier and
+    half of TBX11K's healthy films in senior review. The anchors put the top
+    of the low tier at the 90th percentile of films without TB and senior
+    review at the 98th, linear in the logit and clamped
+    (scripts/tb_calibrate.py). Without anchors the probability is used as
+    before.
+    """
+    anchors = _get_spec().get("score_anchors")
+    if not anchors:
+        return round(probability * 100.0, 2)
+    p = min(max(probability, 1e-9), 1 - 1e-9)
+    logit = math.log(p / (1 - p))
+    low, senior = anchors["logit_low_tier_top"], anchors["logit_senior_review"]
+    return round(max(0.0, min(100.0, 30.0 + 35.0 * (logit - low) / (senior - low))), 2)
 
 
 def composite(found: dict[str, float]) -> float:
@@ -224,6 +274,12 @@ def run(image_bytes: bytes) -> ArmResult:
     except Exception as exc:
         return ArmResult(score=None, error=f"unreadable image: {exc}")
 
+    # Refuse rather than answer: the model has no way to say "this is not a
+    # chest film", so it would invent a number.
+    problem = not_a_radiograph(pil)
+    if problem:
+        return ArmResult(score=None, error=f"not a radiograph: {problem}")
+
     try:
         found = findings(image_bytes)
         tensor = _preprocess(pil)
@@ -239,20 +295,44 @@ def run(image_bytes: bytes) -> ArmResult:
     spec = _get_spec()
 
     artifacts = {}
-    try:
-        overlay = _gradcam(model, tensor, contributions)
-        if overlay:
-            artifacts["gradcam"] = overlay
-    except Exception:
-        # The heatmap is supporting evidence, not the result. Losing it must not
-        # cost the underwriter their score.
-        pass
+    heatmap: dict = {
+        "method": f"occlusion, {OCCLUSION_GRID}x{OCCLUSION_GRID} regions",
+        "drawn": False,
+        "reason": "The reading is in the low tier, so there is nothing for a map to explain.",
+    }
+    score = score_from(probability)
+    if score > LOW_TIER_TOP:
+        try:
+            overlay = _heatmap(model, tensor)
+            if overlay:
+                artifacts["gradcam"] = overlay
+                heatmap = {
+                    **heatmap,
+                    "drawn": True,
+                    "reason": None,
+                    "note": (
+                        "Each region of the film was greyed out in turn and the model run again; "
+                        "red marks the regions whose loss lowered the TB score most. It shows "
+                        "what the model leaned on, which is not always where a radiologist "
+                        "would point: on films with expert-marked TB it found the marked area "
+                        "about four times in ten."
+                    ),
+                }
+            else:
+                heatmap = {
+                    **heatmap,
+                    "reason": "No single region of the film lowers the TB score when hidden.",
+                }
+        except Exception as exc:
+            # The heatmap is supporting evidence, not the result. Losing it must not
+            # cost the underwriter their score.
+            heatmap = {**heatmap, "reason": f"the map could not be drawn: {type(exc).__name__}"}
 
     # Top positive contributors, for the review screen.
     drivers = sorted(contributions.items(), key=lambda kv: -kv[1])[:5]
 
     return ArmResult(
-        score=round(probability * 100.0, 2),
+        score=score,
         raw_score=round(probability, 4),
         details={
             "findings": found,
@@ -262,64 +342,73 @@ def run(image_bytes: bytes) -> ArmResult:
             "scorer": f"{spec['model']} v{spec['version']} trained on {spec['trained_on']}",
             "validation": spec["validation"],
             "cv_auc": spec["cv_auc_mean"],
+            "heatmap": heatmap,
         },
         artifacts=artifacts,
     )
 
 
-def _gradcam(model, tensor, contributions: dict[str, float]) -> bytes | None:
-    """Heatmap over the finding that contributed most to the TB score.
+def _tb_logit(model, batch):
+    """The TB score's logit for a batch of preprocessed films — the regression
+    over the backbone's findings, differentiable end to end."""
+    import torch
 
-    Targeting the top *contributor* rather than the highest raw probability
-    matters: the heatmap should show what actually moved the decision, not
-    whatever the backbone happened to be most confident about. A finding the
-    model weighs at zero is not evidence, however high its probability.
-    """
-    from PIL import Image
-    from pytorch_grad_cam import GradCAM
-    from pytorch_grad_cam.utils.model_targets import ClassifierOutputTarget
-
-    ranked = sorted(contributions, key=lambda k: -contributions[k])
-    target_name = next(
-        (k for k in ranked if contributions[k] > 0 and k in model.pathologies), None
+    spec = _get_spec()
+    names = list(model.pathologies)
+    index = [names.index(f) for f in spec["features"]]
+    weight = torch.tensor(
+        np.array(spec["coef"]) / np.array(spec["scale"]), dtype=torch.float32
     )
-    if target_name is None:
+    return (model(batch)[:, index] * weight).sum(1)
+
+
+def _heatmap(model, tensor) -> bytes | None:
+    """Which regions of the film the TB score depends on: occlusion.
+
+    The film is cut into a 7x7 grid; each region is greyed out in turn and the
+    model run again, 49 films in one batch. A region is as red as the TB logit
+    falls without it. Measured, not estimated.
+
+    Chosen by measurement (docs/HEATMAPS.md). On TBX11K films with
+    radiologist-drawn TB boxes, the Grad-CAM this arm used to draw put its
+    brightest point inside a box no more often than chance (13% against 9%)
+    and less of its heat in the boxes than their area. Occlusion: 38%, and 1.8
+    times their area. SmoothGrad sat between the two.
+    """
+    import torch
+    import torch.nn.functional as F
+    from PIL import Image
+
+    step = tensor.shape[-1] // OCCLUSION_GRID
+    with torch.no_grad():
+        base = float(_tb_logit(model, tensor[None])[0])
+        batch = tensor[None].repeat(OCCLUSION_GRID * OCCLUSION_GRID, 1, 1, 1)
+        for i in range(OCCLUSION_GRID):
+            for j in range(OCCLUSION_GRID):
+                rows, cols = slice(i * step, (i + 1) * step), slice(j * step, (j + 1) * step)
+                # 0 is mid-grey in the model's units, [-1024, 1024].
+                batch[i * OCCLUSION_GRID + j, :, rows, cols] = 0.0
+        falls = base - _tb_logit(model, batch).numpy()
+    falls = np.maximum(falls.reshape(OCCLUSION_GRID, OCCLUSION_GRID), 0.0)
+    if falls.max() < MIN_LOGIT_FALL:
+        # Nothing on its own matters: the reading comes from the film as a whole.
         return None
-
-    index = list(model.pathologies).index(target_name)
-
-    # denseblock4 by name rather than features[-1] by position. Both sit at the
-    # same 7x7 resolution, but the name keeps pointing at the right thing if the
-    # architecture ever gains a layer on the end.
-    target_layer = getattr(model.features, "denseblock4", model.features[-1])
-
-    cam = GradCAM(model=model, target_layers=[target_layer])
-    grayscale = cam(
-        input_tensor=tensor[None, ...].clone().requires_grad_(True),
-        targets=[ClassifierOutputTarget(index)],
-        # The CAM is only 7x7 before it is scaled to 224, so single noisy cells
-        # show up as large blobs. Taking the principal component across channels
-        # suppresses that at no extra inference cost.
-        eigen_smooth=True,
-    )[0]
-
-    heat = (grayscale - grayscale.min()) / (np.ptp(grayscale) or 1.0)
+    heat = torch.from_numpy((falls / falls.max()).astype(np.float32))[None, None]
+    heat = F.interpolate(heat, size=tensor.shape[-2:], mode="bilinear", align_corners=False)
+    heat = heat[0, 0].numpy()
 
     # The backdrop is the tensor the model was actually given, mapped back from
-    # [-1024, 1024] to [0, 1].
-    #
-    # It used to be built by resizing the original image to 224x224, which is a
-    # different framing: preprocessing centre-crops to a square *before*
-    # resizing, and these radiographs are not square (aspect 0.84-1.05). So the
-    # highlight was drawn over anatomy several percent away from the pixels that
-    # produced it — on a feature whose entire job is "show me where".
-    base = np.clip((tensor[0].numpy() + 1024.0) / 2048.0, 0.0, 1.0)
-    rgb = np.stack([base, base, base], axis=-1)
+    # [-1024, 1024] to [0, 1] — the same framing the regions were cut from.
+    base_img = np.clip((tensor[0].numpy() + 1024.0) / 2048.0, 0.0, 1.0)
+    rgb = np.stack([base_img, base_img, base_img], axis=-1)
 
-    # Red overlay: raise red where the model looked, damp green and blue.
-    rgb[..., 0] = np.clip(rgb[..., 0] + heat * 0.6, 0, 1)
-    rgb[..., 1] *= 1.0 - heat * 0.4
-    rgb[..., 2] *= 1.0 - heat * 0.4
+    # Red, with a ring round the strongest regions so the anatomy inside stays
+    # visible.
+    strength = np.clip((heat - 0.3) / 0.7, 0.0, 1.0)[..., None] * 0.45
+    rgb = rgb * (1.0 - strength) + np.array([1.0, 0.1, 0.05]) * strength
+    marked = torch.from_numpy((heat >= 0.6).astype(np.float32))[None, None]
+    ring = (F.max_pool2d(marked, 5, stride=1, padding=2) - marked)[0, 0].numpy() > 0
+    rgb[ring] = np.array([1.0, 0.15, 0.1])
 
     buffer = BytesIO()
     Image.fromarray((rgb * 255).astype(np.uint8), mode="RGB").save(buffer, format="PNG")

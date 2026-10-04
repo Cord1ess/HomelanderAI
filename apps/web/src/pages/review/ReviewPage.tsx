@@ -382,7 +382,22 @@ function ageAt(dateOfBirth: string | null | undefined, when: string | null | und
  * requested-model list, which labelled a chest film "12-lead ECG" whenever
  * both were attached, and showed only the first image however many arrived.
  */
-function EvidencePanel({ file, heatmap }: { file: EvidenceFile; heatmap?: EvidenceFile }) {
+/** What an arm says about its map: what it shows, or why none was drawn. */
+interface HeatmapAccount {
+  drawn?: boolean
+  note?: string
+  reason?: string
+}
+
+function EvidencePanel({
+  file,
+  heatmap,
+  account,
+}: {
+  file: EvidenceFile
+  heatmap?: EvidenceFile
+  account?: HeatmapAccount
+}) {
   const [overlay, setOverlay] = useState(false)
   const label = file.evidenceLabel ?? 'Evidence'
   const isTracing = file.evidenceKind === 'ecg'
@@ -427,10 +442,11 @@ function EvidencePanel({ file, heatmap }: { file: EvidenceFile; heatmap?: Eviden
       </Box>
       <Text size="xs" c="dimmed" mt="sm">
         {heatmap
-          ? isTracing
-            ? 'The shading marks where in the tracing the network looked for the reported abnormality — not a diagnosis.'
-            : 'The overlay marks the region that moved the score most — not a diagnosis.'
-          : 'No heatmap was produced for this image.'}
+          ? (account?.note ??
+            (isTracing
+              ? 'The shading marks the leads the reported abnormality was read from — not a diagnosis.'
+              : 'The overlay marks the region that moved the score most — not a diagnosis.'))
+          : (account?.reason ?? 'No heatmap was produced for this image.')}
       </Text>
     </Paper>
   )
@@ -928,7 +944,7 @@ function ModelSection({
     heatmaps.find((h) => h.ofFileId === image.id) ??
     (heatmaps.length === 1 && images.length === 1 ? heatmaps[0] : undefined)
   const note = files.find((f) => f.kind === 'evidence' && isText(f))
-  const details = (run.details ?? {}) as { scorer?: string; validation?: string }
+  const details = (run.details ?? {}) as { scorer?: string; validation?: string; heatmap?: HeatmapAccount }
 
   const body = (() => {
     switch (run.arm) {
@@ -951,11 +967,16 @@ function ModelSection({
 
   const evidence =
     run.arm === 'mirai' ? (
-      <MammogramViews files={images} />
+      <MammogramViews
+        files={images}
+        // The map that belongs to one of these four views, never another reader's.
+        heatmap={heatmaps.find((h) => images.some((image) => image.id === h.ofFileId))}
+        account={details.heatmap}
+      />
     ) : (
       <Stack gap="sm">
         {images.map((image) => (
-          <EvidencePanel key={image.id} file={image} heatmap={heatmapFor(image)} />
+          <EvidencePanel key={image.id} file={image} heatmap={heatmapFor(image)} account={details.heatmap} />
         ))}
       </Stack>
     )
@@ -1157,7 +1178,16 @@ function RetinaPanel({ run }: { run: ArmRun }) {
 }
 
 /** The four mammogram views, small, in the order a radiologist hangs them. */
-function MammogramViews({ files }: { files: EvidenceFile[] }) {
+function MammogramViews({
+  files,
+  heatmap,
+  account,
+}: {
+  files: EvidenceFile[]
+  heatmap?: EvidenceFile
+  account?: HeatmapAccount
+}) {
+  const [overlay, setOverlay] = useState(false)
   const position = (f: EvidenceFile) => {
     const name = `${f.filename ?? ''}`.toLowerCase()
     const right = /right|_r_|\br\b|-r-|rcc|rmlo/.test(name)
@@ -1165,7 +1195,33 @@ function MammogramViews({ files }: { files: EvidenceFile[] }) {
     return (right ? 0 : 1) + (mlo ? 2 : 0)
   }
   const sorted = [...files].sort((a, b) => position(a) - position(b))
+  const caption = heatmap
+    ? account?.note
+    : (account?.reason ?? 'No heatmap was produced for this exam.')
   return (
+    <Stack gap="xs">
+      <Group justify="flex-end">
+        <Switch
+          label="Heatmap overlay"
+          size="xs"
+          checked={overlay && Boolean(heatmap)}
+          onChange={() => setOverlay(!overlay)}
+          disabled={!heatmap}
+        />
+      </Group>
+      {overlay && heatmap ? (
+        <Box
+          style={{
+            display: 'grid',
+            placeItems: 'center',
+            backgroundColor: '#000',
+            borderRadius: 'var(--mantine-radius-sm)',
+            overflow: 'hidden',
+          }}
+        >
+          <Image src={fileUrl(heatmap.id)} alt="The four views with the model's heatmap" mah={360} fit="contain" />
+        </Box>
+      ) : (
     <SimpleGrid cols={2} spacing="xs">
       {sorted.map((f) => (
         <Box key={f.id}>
@@ -1187,6 +1243,13 @@ function MammogramViews({ files }: { files: EvidenceFile[] }) {
         </Box>
       ))}
     </SimpleGrid>
+      )}
+      {caption && (
+        <Text size="xs" c="dimmed">
+          {caption}
+        </Text>
+      )}
+    </Stack>
   )
 }
 

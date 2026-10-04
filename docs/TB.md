@@ -216,12 +216,16 @@ to a senior underwriter.
 
 ## The heatmap
 
-The system produces a picture of the X-ray with a red overlay showing which
-region the model reacted to. This uses Grad-CAM.
+For a reading above the low tier, the system draws the film the model read
+with the regions the TB score depends on in red. It is **occlusion**: the film
+is cut into a 7 x 7 grid, each region is greyed out in turn and the model run
+again, and a region is as red as the score falls without it.
 
-It targets the finding that **contributed most to the score**, not simply the
-finding with the highest probability. A finding the scoring model ignores is not
-evidence, however confident the vision model was about it.
+It replaced a Grad-CAM on the top-contributing finding which, tested against
+the boxes radiologists drew round TB lesions on TBX11K films, was no better
+than random. Occlusion found the box about four times in ten — better, and
+honest about what the model leaned on, but not a lesion finder: this model
+reads general findings, not TB itself. See [HEATMAPS.md](HEATMAPS.md).
 
 If heatmap generation fails, the score is still returned. The picture supports
 the result; it is not the result.
@@ -274,6 +278,32 @@ was taken. The retina arm shows the same pattern (`docs/RETINA.md`).
 The fix is to recalibrate the score on a *third* dataset. Tuning the cut-points
 on Montgomery would turn the only external test into training data and make
 0.909 meaningless, so it has not been done.
+
+**Recalibration was tried on a third dataset and not shipped (2026-10-03).**
+TBX11K (Chinese hospitals, not Shenzhen) confirmed the ranking — AUC 0.907 —
+and the problem: half its healthy films reached senior review. Anchoring the
+tier boundaries at the 90th and 98th percentiles of TBX11K's healthy films
+(`scripts/tb_calibrate.py`) looked good on Montgomery (specificity at 30 rose
+from 0.29 to 0.83) but failed on Shenzhen: TB films above the low tier fell
+from 89% to 25%. TBX11K's healthy films simply read far higher than other
+hospitals' (90th percentile at a probability of 0.96), so boundaries set there
+move the error from false alarms to missed TB rather than removing it. The
+score therefore stays the probability. No single boundary works everywhere —
+the model's output shifts with the hospital:
+
+| low-tier boundary (probability) | Shenzhen sens / spec | Montgomery sens / spec | TBX11K sens / spec |
+|---|---|---|---|
+| 0.3 (in use) | 0.89 / 0.67 | 0.98 / 0.29 | 0.99 / 0.15 |
+| 0.5 | 0.79 / 0.84 | 0.93 / 0.50 | 0.96 / 0.35 |
+| 0.7 | 0.66 / 0.92 | 0.90 / 0.69 | 0.94 / 0.57 |
+| 0.9 | 0.42 / 0.99 | 0.86 / 0.80 | 0.84 / 0.82 |
+
+Every boundary that cuts false alarms at Montgomery and TBX11K misses TB at
+Shenzhen. For a TB screen a miss costs more than a second look, so the
+sensitive boundary stays, with its false alarms stated. The honest fix is the
+one the retina arm got: boundaries set on films from the hospitals that will
+actually send them, checked on a second site before use. The script is kept
+for that.
 
 **2. Two weights do not match medical reasoning.** Fracture pushes *toward* TB,
 and Fibrosis pushes *away* from it — but broken ribs are not a TB sign, and lung

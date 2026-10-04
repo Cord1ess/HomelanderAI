@@ -70,11 +70,22 @@ checked against XGBoost's own predictions before it is written — so `xgboost`
 is a training dependency only (`uv sync --extra train`).
 
 The reading is a hazard ratio against a **peer measured on the same values**:
-the training-set median profile for the applicant's sex and five-year age
-band, restricted to the values the applicant entered. That restriction
-matters. In NHANES the people who skipped the blood draw died sooner, and the
-trees learned it; a peer with a full panel beside an applicant with none would
-charge the applicant for what was never measured.
+the median risk of 150 real training-set adults of the applicant's sex and
+five-year age band, held at the applicant's age, each measured only on the
+values the applicant entered. That restriction matters. In NHANES the people
+who skipped the blood draw died sooner, and the trees learned it; a peer with
+a full panel beside an applicant with none would charge the applicant for what
+was never measured.
+
+**Corrected 2026-10-03.** The peer used to be one invented person, median on
+every value at once. Such a person is far healthier than the median person,
+because risk climbs faster above the median than it falls below it, and on
+NHANES 2011-2018 (adults the model never trained on) the median ratio came out
+at 2.3 instead of 1, sending 59% of ordinary adults to senior review. Against
+real peers the median is 1.14 and 23% reach senior review
+(`scripts/survival_peers.py` measures both). The trees did not change; only
+what they are compared with. The per-value factors below still swap in that
+invented person's value one at a time, which is what they are meant to show.
 
 Each entered value is shown as the hazard factor it carries against the
 peer's value (×1.82 for smoking, ×1.46 for a sedentary life, and so on).

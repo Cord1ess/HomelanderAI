@@ -30,7 +30,8 @@ if (info.status !== 0) {
   process.exit(0)
 }
 
-const up = run(['compose', 'up', '-d', 'mirai'])
+// The reader and its heatmap. The heatmap image is built once, on first run.
+const up = run(['compose', 'up', '-d', 'mirai', 'mirai-explain'])
 if (up.status !== 0) {
   warn([
     '  Mammogram reader could not be started:',
@@ -40,4 +41,6 @@ if (up.status !== 0) {
   process.exit(0)
 }
 
-console.log('Mammogram reader (Mirai) is running on http://127.0.0.1:5000 — about 45 s per exam.')
+console.log(
+  'Mammogram reader (Mirai) is running on http://127.0.0.1:5000 — about 45 s per exam; its heatmap on :5001.',
+)

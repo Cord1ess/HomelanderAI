@@ -120,8 +120,12 @@ Without the container those tests skip and say why; the rest still run.
   the answer is plausible, but no published validation covers them.
 - Screening populations in the US, Sweden and Taiwan. **Not validated in
   South Asia**, and not validated on diagnostic (symptomatic) exams.
-- A risk estimate, not a finding: Mirai does not say where it looked, so there
-  is no heatmap.
+- A risk estimate, not a finding. For an exam above the low tier a heatmap is
+  drawn by a second server in the same image (`Mirai/explain`, service
+  `mirai-explain`): gradient x activation at the locations Mirai's max pool
+  kept, checked against occlusion on the demo exam (see
+  [HEATMAPS.md](HEATMAPS.md)). It is kept only when that server's risk equals
+  the reader's exactly. It marks where the risk came from, not a lesion.
 - The authors state the code is for research and not for clinical decisions.
 
 ## Files

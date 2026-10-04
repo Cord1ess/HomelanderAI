@@ -199,12 +199,11 @@ RULES: list[Rule] = [
 
 INSUFFICIENT = "insufficient_evidence"
 
-# How much one reader's certainty is allowed to say on its own. A single
-# certain reading lands at 75, elevated but not a verdict; every further
-# positive reading adds a share of what is left, so many positives approach 100
-# and never reach it. One clean film next to one concerning film still reads
-# as concerning: the concerning one is not averaged away.
-ARM_WEIGHT = 0.75
+# How much each reading *after the strongest* adds. The strongest reading
+# stands on its own scale; each further one adds this share of its squared
+# strength, of what is left. One clean film next to one concerning film still
+# reads as concerning: the concerning one is not averaged away.
+ARM_WEIGHT = 0.5
 
 # Declared history can move the score by at most this many points, and it
 # moves it in proportion to the room left: +25 on a score of 40 adds 15, on a
@@ -216,18 +215,25 @@ MAX_HISTORY_POINTS = 30.0
 def fuse(readings: list[float]) -> float:
     """Combine every reader's 0-100 score into one 0-100 risk.
 
-    Noisy-OR over the readings, each weighted by ARM_WEIGHT, and each squared
-    first. The squaring is what keeps a pile of mid-range readings from adding
-    up to alarm: a reader at 45 out of 100 is saying "worth a look", and three
-    of those must not read as one certainty. A reader at 95 still dominates,
-    which is the behaviour screening needs.
+    The strongest reading is the starting point, unchanged. Every reader
+    places its score on the same scale — 30 the top of the low tier, 65
+    senior review — so a reader that says "senior review" must still say it
+    once fused. It used to be weighted and squared too, which turned a lone
+    65 into 32 (moderate) and needed about 93 from a single reader to reach
+    elevated: no reader's own tier survived.
+
+    Each further reading adds ARM_WEIGHT x its squared strength, of what is
+    left. The squaring keeps a pile of mid-range readings from adding up to
+    alarm: up to five readers at 45 stay moderate (three reach about 56).
 
     Order does not matter, and no reading can lower the result: evidence of
     risk accumulates.
     """
-    risk = 0.0
-    for reading in readings:
-        strength = max(0.0, min(100.0, reading)) / 100.0
+    strengths = sorted((max(0.0, min(100.0, r)) / 100.0 for r in readings), reverse=True)
+    if not strengths:
+        return 0.0
+    risk = strengths[0]
+    for strength in strengths[1:]:
         risk += (1.0 - risk) * ARM_WEIGHT * strength * strength
     return round(100.0 * risk, 2)
 

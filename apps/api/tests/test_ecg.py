@@ -147,7 +147,7 @@ def test_a_stored_array_of_the_wrong_shape_is_refused():
 
 def test_render_draws_twelve_rows_as_a_png():
     array = ecg.canonical(ecg.parse_csv(synthetic()))
-    png = ecg.render(array, saliency=np.linspace(0, 1, ecg.LENGTH), width=800, row_height=40)
+    png = ecg.render(array, lead_weights={"V1": 0.3, "I": 0.1}, width=800, row_height=40)
     image = Image.open(io.BytesIO(png))
     assert image.format == "PNG"
     assert image.size == (800, 40 * 12 + 32)
@@ -269,8 +269,11 @@ def test_the_networks_score_a_synthetic_tracing_and_draw_it():
     assert all(0 <= p <= 1 for p in details["probabilities"].values())
     assert set(details["findings"]) == set(ecg_12lead.LABELS.values())
     assert 0 < details["ecg_age"] < 150
-    assert "gradcam" in result.artifacts
-    assert Image.open(io.BytesIO(result.artifacts["gradcam"])).format == "PNG"
+    # A map only explains a reported abnormality; with none, none is drawn.
+    assert ("gradcam" in result.artifacts) == bool(details["reported"])
+    assert details["heatmap"]["drawn"] == bool(details["reported"])
+    if result.artifacts:
+        assert Image.open(io.BytesIO(result.artifacts["gradcam"])).format == "PNG"
 
 
 @needs_weights
@@ -320,7 +323,9 @@ def test_an_ecg_export_is_scored_and_served_as_a_picture(carrier):
         assert detail["findings"], "the six abnormalities feed the findings panel"
 
         kinds = {f["kind"] for f in detail["files"]}
-        assert {"evidence", "gradcam"} <= kinds
+        assert "evidence" in kinds
+        # A map is drawn only to explain a reported abnormality.
+        assert ("gradcam" in kinds) == bool(arms["ecg_12lead"]["details"]["reported"])
         for file in detail["files"]:
             served = client.get(f"/api/files/{file['id']}")
             assert served.status_code == 200
